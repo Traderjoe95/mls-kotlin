@@ -1,0 +1,17 @@
+openapi: 3.1
+jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
+info:
+  title: MLS Authentication Service
+  version: 0.1.0
+  summary: Authentication Functionality for MLS Clients
+  description: |
+    Provides functionality of the AS (Authentication Service) as specified in Section 4 of the
+    [MLS Architecture document](https://datatracker.ietf.org/doc/html/draft-ietf-mls-architecture-11). This includes
+
+    * User Registration
+    * User Authentication
+    * Credential Creation
+    * Credential Validation
+  contact:
+    name: Johannes Leupold
+    email: johannes.leupold@gmail.com
