@@ -2,8 +2,6 @@ package com.github.traderjoe95.mls.protocol.types.framing.message
 
 import arrow.core.raise.Raise
 import com.github.traderjoe95.mls.codec.type.DataType
-import com.github.traderjoe95.mls.codec.type.V
-import com.github.traderjoe95.mls.codec.type.get
 import com.github.traderjoe95.mls.codec.type.struct.Struct4T
 import com.github.traderjoe95.mls.codec.type.struct.Struct5T
 import com.github.traderjoe95.mls.codec.type.struct.lift
@@ -15,7 +13,6 @@ import com.github.traderjoe95.mls.protocol.error.SignatureError
 import com.github.traderjoe95.mls.protocol.group.GroupContext
 import com.github.traderjoe95.mls.protocol.group.GroupState
 import com.github.traderjoe95.mls.protocol.tree.RatchetTree
-import com.github.traderjoe95.mls.protocol.types.Extension
 import com.github.traderjoe95.mls.protocol.types.GroupInfoExtension
 import com.github.traderjoe95.mls.protocol.types.GroupInfoExtensions
 import com.github.traderjoe95.mls.protocol.types.HasExtensions

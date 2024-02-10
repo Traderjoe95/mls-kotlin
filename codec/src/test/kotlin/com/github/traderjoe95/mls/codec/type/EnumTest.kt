@@ -22,7 +22,7 @@ class EnumTest : ShouldSpec({
   context("EnumT") {
     val enum1Byte = shouldNotRaise { enum<TestEnum1B>() }
     val enum2Byte = shouldNotRaise { enum<TestEnum2B>() }
-    val enum3Byte = shouldNotRaise { enum<TestEnum3B>() }
+    val enum3Byte = shouldNotRaise { enum<TestEnum3B>(upperBound = 0xFFFFFFU) }
     val enum4Byte = shouldNotRaise { enum<TestEnum4B>() }
 
     context("when encoding") {
@@ -69,10 +69,6 @@ class EnumTest : ShouldSpec({
         shouldRaise<EncoderError.InvalidEnumValue> {
           enum2Byte.encode(TestEnum2B.UPPER_)
         } shouldBe EncoderError.InvalidEnumValue("TestEnum2B", "UPPER_")
-
-        shouldRaise<EncoderError.InvalidEnumValue> {
-          enum3Byte.encode(TestEnum3B.UPPER_)
-        } shouldBe EncoderError.InvalidEnumValue("TestEnum3B", "UPPER_")
       }
     }
 
@@ -200,23 +196,6 @@ class EnumTest : ShouldSpec({
           shouldRaise<DecoderError.InvalidEnumValue> {
             enum2Byte.decode(it)
           } shouldBe DecoderError.InvalidEnumValue(it.firstIndex, "TestEnum2B", "UPPER_")
-        }
-
-        val ord2 = 0x10000U
-        checkAll(
-          Arb.slice(
-            byteArrayOf(
-              ord2 shrToByte 16,
-              ord2 shrToByte 8,
-              ord2.toByte(),
-            ),
-            alreadyConsumedLength = 0U..128U,
-            extraLength = 0U..128U,
-          ),
-        ) {
-          shouldRaise<DecoderError.InvalidEnumValue> {
-            enum3Byte.decode(it)
-          } shouldBe DecoderError.InvalidEnumValue(it.firstIndex, "TestEnum3B", "UPPER_")
         }
       }
 
@@ -415,7 +394,6 @@ enum class TestEnum3B(override val ord: UIntRange, override val isValid: Boolean
   A(1U),
   B(2U..10U),
   C(11U..30U),
-  UPPER_(0x10000U, isValid = false),
   ;
 
   constructor(ord: UInt, isValid: Boolean = true) : this(ord..ord, isValid)
@@ -431,6 +409,7 @@ enum class TestEnum4B(override val ord: UIntRange, override val isValid: Boolean
   constructor(ord: UInt, isValid: Boolean = true) : this(ord..ord, isValid)
 }
 
+@Suppress("unused")
 enum class TestEnumAmbiguous(override val ord: UIntRange, override val isValid: Boolean = true) : ProtocolEnum<TestEnumAmbiguous> {
   A(0U..2U),
   B(1U..10U),
@@ -439,6 +418,7 @@ enum class TestEnumAmbiguous(override val ord: UIntRange, override val isValid: 
   E(12U..14U),
 }
 
+@Suppress("unused")
 enum class TestEnumUndefined(override val ord: UIntRange, override val isValid: Boolean = true) : ProtocolEnum<TestEnumUndefined> {
   A(0U..2U),
   B(UIntRange.EMPTY),

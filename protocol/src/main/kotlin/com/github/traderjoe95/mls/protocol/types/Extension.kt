@@ -44,38 +44,48 @@ enum class ExtensionType(
   // GREASE
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_1(0x0A0AU, isValid = false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_2(0x1A1AU, isValid = false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_3(0x2A2AU, isValid = false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_4(0x3A3AU, isValid = false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_5(0x4A4AU, isValid = false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_6(0x5A5AU, isValid = false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_7(0x6A6AU, isValid = false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_8(0x7A7AU, isValid = false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_9(0x8A8AU, isValid = false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_10(0x9A9AU, isValid = false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_11(0xAAAAU, isValid = false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_12(0xBABAU, isValid = false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_13(0xCACAU, isValid = false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_14(0xDADAU, isValid = false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_15(0xEAEAU, isValid = false),
-
-  // Upper bound to force field width
-  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
-  UPPER_(0xFFFFU, isValid = false),
   ;
 
   override val ord: UIntRange = ord..ord
@@ -84,7 +94,7 @@ enum class ExtensionType(
   override fun toString(): String = "$name($asUShort)"
 
   companion object {
-    val T: EnumT<ExtensionType> = throwAnyError { enum() }
+    val T: EnumT<ExtensionType> = throwAnyError { enum(upperBound = 0xFFFFU) }
 
     operator fun invoke(type: UShort): ExtensionType? = entries.find { it.isValid && type in it.ord }
 
@@ -153,15 +163,18 @@ abstract class HasExtensions<V : Extension<*>> {
 inline fun <reified E : Extension<*>> DataType<Extension<*>>.asSubtype(): DataType<E> =
   derive(
     up = { ext ->
-      if (ext is E) ext
-      else raise(
-        DecoderError.UnexpectedError(
-          "Unsupported extension ${ext::class.simpleName} in context of ${E::class.simpleName}"
+      if (ext is E) {
+        ext
+      } else {
+        raise(
+          DecoderError.UnexpectedError(
+            "Unsupported extension ${ext::class.simpleName} in context of ${E::class.simpleName}",
+          ),
         )
-      )
+      }
     },
     down = { it },
-    name = E::class.simpleName
+    name = E::class.simpleName,
   )
 
 fun <E : Extension<*>> DataType<E>.extensionList(): DataType<List<E>> =
@@ -317,7 +330,6 @@ data class UnknownExtension(
       override fun encode(value: UnknownExtension): ByteArray = value.value
 
       context(Raise<DecoderError>)
-      override fun decode(bytes: Slice): Pair<UnknownExtension, Slice> =
-        raise(DecoderError.UnexpectedError("Decoding not supported"))
+      override fun decode(bytes: Slice): Pair<UnknownExtension, Slice> = raise(DecoderError.UnexpectedError("Decoding not supported"))
     }
 }

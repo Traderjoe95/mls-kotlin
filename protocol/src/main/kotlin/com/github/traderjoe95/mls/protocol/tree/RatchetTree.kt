@@ -40,10 +40,6 @@ value class RatchetTree private constructor(private val nodes: Array<NodeRecord<
   val leaves: List<LeafNodeRecord?>
     get() = nodes[leafIndices] as List<LeafNodeRecord?>
 
-  @Suppress("UNCHECKED_CAST", "kotlin:S6531")
-  val parents: List<ParentNodeRecord?>
-    get() = nodes[parentIndices] as List<ParentNodeRecord?>
-
   val firstBlankLeaf: UInt?
     get() = leafIndices.find { it.isBlank }
 
@@ -135,9 +131,6 @@ value class RatchetTree private constructor(private val nodes: Array<NodeRecord<
 
   private val leftSubtree: RatchetTree
     get() = RatchetTree(nodes.sliceArray(0U..<root))
-
-  val UInt.subtree: RatchetTree
-    get() = RatchetTree(nodes[subtreeRange].toTypedArray())
 
   private fun extend(): RatchetTree {
     return RatchetTree(

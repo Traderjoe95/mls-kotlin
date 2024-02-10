@@ -2,9 +2,7 @@ package com.github.traderjoe95.mls.protocol.types.framing.message
 
 import arrow.core.raise.Raise
 import com.github.traderjoe95.mls.codec.type.DataType
-import com.github.traderjoe95.mls.codec.type.V
 import com.github.traderjoe95.mls.codec.type.derive
-import com.github.traderjoe95.mls.codec.type.get
 import com.github.traderjoe95.mls.codec.type.struct.Struct5T
 import com.github.traderjoe95.mls.codec.type.struct.Struct6T
 import com.github.traderjoe95.mls.codec.type.struct.lift

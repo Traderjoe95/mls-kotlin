@@ -5,5 +5,7 @@ interface EnumError : AnyError {
 
   data class UndefinedOrd(val enum: String, val undefined: Set<String>) : EnumError
 
+  data class InconsistentUpperBound(val enum: String, val upperBound: UInt, val tooHigh: Set<String>) : EnumError
+
   data class NoValues(val enum: String) : EnumError
 }

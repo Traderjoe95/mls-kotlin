@@ -12,5 +12,3 @@ inline fun <T> shouldNotRaise(crossinline block: Raise<AnyError>.() -> T): T =
 
 inline fun <reified T : Any> shouldRaise(crossinline block: Raise<AnyError>.() -> Any?): T =
   either(block).shouldBeLeft().shouldBeTypeOf<T>()
-
-inline fun shouldRaiseAny(crossinline block: Raise<AnyError>.() -> Any?): AnyError = either(block).shouldBeLeft()

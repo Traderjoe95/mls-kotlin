@@ -30,16 +30,12 @@ enum class PskType(ord: UInt, override val isValid: Boolean = true) : ProtocolEn
 
   External(1U),
   Resumption(2U),
-
-  // Upper bound to force field width
-  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
-  UPPER_(0xFFU, false),
   ;
 
   override val ord: UIntRange = ord..ord
 
   companion object {
-    val T: EnumT<PskType> = throwAnyError { enum() }
+    val T: EnumT<PskType> = throwAnyError { enum(upperBound = 0xFFU) }
   }
 }
 
@@ -50,16 +46,12 @@ enum class ResumptionPskUsage(ord: UInt, override val isValid: Boolean = true) :
   Application(1U),
   ReInit(2U),
   Branch(3U),
-
-  // Upper bound to force field width
-  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
-  UPPER_(0xFFU, false),
   ;
 
   override val ord: UIntRange = ord..ord
 
   companion object {
-    val T: EnumT<ResumptionPskUsage> = throwAnyError { enum() }
+    val T: EnumT<ResumptionPskUsage> = throwAnyError { enum(upperBound = 0xFFFFU) }
 
     val PROTOCOL_RESUMPTION: Set<ResumptionPskUsage> = setOf(ReInit, Branch)
   }

@@ -14,7 +14,6 @@ import com.github.traderjoe95.mls.codec.type.struct.lift
 import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.codec.type.uint32
 import com.github.traderjoe95.mls.codec.type.uint64
-import com.github.traderjoe95.mls.codec.util.uSize
 import com.github.traderjoe95.mls.protocol.error.DecoderError
 import com.github.traderjoe95.mls.protocol.error.EncoderError
 import com.github.traderjoe95.mls.protocol.error.MessageSenderError
@@ -161,7 +160,7 @@ data class PrivateMessage(
     context(GroupState, Raise<PrivateMessageSenderError>)
     suspend fun create(
       authContent: AuthenticatedContent<*>,
-      paddingStrategy: PaddingStrategy = Padme
+      paddingStrategy: PaddingStrategy = Padme,
     ): PrivateMessage =
       EncoderError.wrap {
         if (authContent.senderType != SenderType.Member) {

@@ -21,38 +21,48 @@ enum class ProposalType(ord: UInt, override val isValid: Boolean = true) : Proto
   // GREASE
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_1(0x0A0AU, false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_2(0x1A1AU, false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_3(0x2A2AU, false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_4(0x3A3AU, false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_5(0x4A4AU, false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_6(0x5A5AU, false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_7(0x6A6AU, false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_8(0x7A7AU, false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_9(0x8A8AU, false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_10(0x9A9AU, false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_11(0xAAAAU, false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_12(0xBABAU, false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_13(0xCACAU, false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_14(0xDADAU, false),
+
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_15(0xEAEAU, false),
-
-  // Upper bound to force field width
-  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
-  UPPER_(0xFFFFU, false),
   ;
 
   override val ord: UIntRange = ord..ord
@@ -61,7 +71,7 @@ enum class ProposalType(ord: UInt, override val isValid: Boolean = true) : Proto
   override fun toString(): String = "$name($asUShort)"
 
   companion object {
-    val T: EnumT<ProposalType> = throwAnyError { enum() }
+    val T: EnumT<ProposalType> = throwAnyError { enum(upperBound = 0xFFFFU) }
 
     operator fun invoke(type: UShort): ProposalType? = entries.find { it.isValid && type in it.ord }
 

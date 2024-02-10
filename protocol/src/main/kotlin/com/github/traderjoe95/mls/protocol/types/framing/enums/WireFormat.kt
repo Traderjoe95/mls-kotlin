@@ -14,15 +14,11 @@ enum class WireFormat(ord: UInt, override val isValid: Boolean = true) : Protoco
   MlsWelcome(0x0003U),
   MlsGroupInfo(0x0004U),
   MlsKeyPackage(0x0005U),
-
-  // Upper bound to force field width
-  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
-  UPPER_(0xFFFFU, false),
   ;
 
   override val ord: UIntRange = ord..ord
 
   companion object {
-    val T: EnumT<WireFormat> = throwAnyError { enum() }
+    val T: EnumT<WireFormat> = throwAnyError { enum(upperBound = 0xFFFFU) }
   }
 }

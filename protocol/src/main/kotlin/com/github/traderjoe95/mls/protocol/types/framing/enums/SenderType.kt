@@ -13,15 +13,11 @@ enum class SenderType(ord: UInt, override val isValid: Boolean = true) : Protoco
   External(2U),
   NewMemberProposal(3U),
   NewMemberCommit(4U),
-
-  // Upper bound to force field width
-  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
-  UPPER_(0xFFU, false),
   ;
 
   override val ord: UIntRange = ord..ord
 
   companion object {
-    val T: EnumT<SenderType> = throwAnyError { enum() }
+    val T: EnumT<SenderType> = throwAnyError { enum(upperBound = 0xFFU) }
   }
 }

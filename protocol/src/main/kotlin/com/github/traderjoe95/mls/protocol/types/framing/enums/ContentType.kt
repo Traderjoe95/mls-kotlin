@@ -12,14 +12,11 @@ enum class ContentType(ord: UInt, override val isValid: Boolean = true) : Protoc
   Application(1U),
   Proposal(2U),
   Commit(3U),
-
-  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
-  UPPER_(0xFFU, false),
   ;
 
   override val ord: UIntRange = ord..ord
 
   companion object {
-    val T: EnumT<ContentType> = throwAnyError { enum() }
+    val T: EnumT<ContentType> = throwAnyError { enum(upperBound = 0xFFU) }
   }
 }

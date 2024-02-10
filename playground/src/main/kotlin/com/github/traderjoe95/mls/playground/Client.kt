@@ -75,9 +75,9 @@ class Client(
       GroupChat(
         newGroup(
           Config.cipherSuite,
-          RequiredCapabilities(credentialTypes = listOf(CredentialType.Basic))
+          RequiredCapabilities(credentialTypes = listOf(CredentialType.Basic)),
         ),
-        this@Client
+        this@Client,
       ).register()
     }
 

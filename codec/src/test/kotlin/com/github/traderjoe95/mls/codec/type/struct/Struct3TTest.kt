@@ -11,7 +11,6 @@ import com.github.traderjoe95.mls.codec.type.OpaqueT
 import com.github.traderjoe95.mls.codec.type.OptionalT
 import com.github.traderjoe95.mls.codec.type.V
 import com.github.traderjoe95.mls.codec.type.VariableLength
-import com.github.traderjoe95.mls.codec.type.get
 import com.github.traderjoe95.mls.codec.type.opaque
 import com.github.traderjoe95.mls.codec.type.optional
 import com.github.traderjoe95.mls.codec.type.struct.member.Field

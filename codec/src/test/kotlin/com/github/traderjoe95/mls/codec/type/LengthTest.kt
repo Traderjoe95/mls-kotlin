@@ -1,14 +1,12 @@
 package com.github.traderjoe95.mls.codec.type
 
 import com.github.traderjoe95.mls.codec.byteArray
-import com.github.traderjoe95.mls.codec.div
 import com.github.traderjoe95.mls.codec.error.DecoderError
 import com.github.traderjoe95.mls.codec.error.EncoderError
 import com.github.traderjoe95.mls.codec.error.LengthError
 import com.github.traderjoe95.mls.codec.shouldNotRaise
 import com.github.traderjoe95.mls.codec.shouldRaise
 import com.github.traderjoe95.mls.codec.slice
-import com.github.traderjoe95.mls.codec.times
 import com.github.traderjoe95.mls.codec.type.DataType.Companion.done
 import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.codec.uIntRange

@@ -62,27 +62,3 @@ internal fun GroupContext.evolve(
     newExtensions,
   )
 }
-
-context(ICipherSuite, Raise<EncoderError>)
-internal fun GroupContext.withConfirmedTranscriptHash(
-  wireFormat: WireFormat,
-  framedContent: FramedContent<Commit>,
-  signature: Signature,
-): GroupContext =
-  GroupContext(
-    protocolVersion,
-    cipherSuite,
-    groupId,
-    epoch + 1U,
-    treeHash,
-    hash(
-      interimTranscriptHash +
-        EncoderError.wrap {
-          ConfirmedTranscriptHashInput.T.encode(
-            ConfirmedTranscriptHashInput(wireFormat, framedContent, signature),
-          )
-        },
-    ),
-    extensions,
-    interimTranscriptHash,
-  )

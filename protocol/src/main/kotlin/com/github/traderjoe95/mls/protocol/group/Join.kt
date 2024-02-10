@@ -35,12 +35,10 @@ import com.github.traderjoe95.mls.protocol.types.RatchetTreeExt
 import com.github.traderjoe95.mls.protocol.types.RequiredCapabilities
 import com.github.traderjoe95.mls.protocol.types.crypto.Aad
 import com.github.traderjoe95.mls.protocol.types.crypto.ExternalPskId
-import com.github.traderjoe95.mls.protocol.types.crypto.HpkePrivateKey
 import com.github.traderjoe95.mls.protocol.types.crypto.PreSharedKeyId
 import com.github.traderjoe95.mls.protocol.types.crypto.ResumptionPskId
 import com.github.traderjoe95.mls.protocol.types.crypto.ResumptionPskUsage
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret
-import com.github.traderjoe95.mls.protocol.types.crypto.SigningKey
 import com.github.traderjoe95.mls.protocol.types.framing.MlsMessage
 import com.github.traderjoe95.mls.protocol.types.framing.Sender
 import com.github.traderjoe95.mls.protocol.types.framing.content.AuthenticatedContent
@@ -311,7 +309,10 @@ suspend fun <Identity : Any> ApplicationCtx<Identity>.joinGroupExternal(
   }
 
 context(Raise<ExtensionSupportError>)
-private fun KeyPackageLeafNode.checkSupport(extensions: GroupContextExtensions, ownLeaf: UInt) {
+private fun KeyPackageLeafNode.checkSupport(
+  extensions: GroupContextExtensions,
+  ownLeaf: UInt,
+) {
   // Check that own leaf node is compatible with group requirements
   extensions.filterIsInstance<RequiredCapabilities>().firstOrNull()?.let { requiredCapabilities ->
     if (!requiredCapabilities.isCompatible(capabilities)) {
@@ -319,8 +320,8 @@ private fun KeyPackageLeafNode.checkSupport(extensions: GroupContextExtensions, 
         LeafNodeCheckError.UnsupportedCapabilities(
           ownLeaf,
           requiredCapabilities,
-          capabilities
-        )
+          capabilities,
+        ),
       )
     }
   }
@@ -333,8 +334,8 @@ private fun KeyPackageLeafNode.checkSupport(extensions: GroupContextExtensions, 
       raise(
         ExtensionSupportError.UnsupportedGroupContextExtensions(
           capabilities,
-          unsupportedExtensions
-        )
+          unsupportedExtensions,
+        ),
       )
     }
 }
@@ -350,7 +351,7 @@ private suspend fun <Identity : Any> ApplicationCtx<Identity>.validateResumption
 ) = when (resumptionPsk.usage) {
   ResumptionPskUsage.ReInit -> validateReInit(groupContext, tree, resumptionPsk)
   ResumptionPskUsage.Branch -> validateBranch(groupContext, tree, resumptionPsk)
-  else -> { /* Nothing to validate */
+  else -> { // Nothing to validate
   }
 }
 

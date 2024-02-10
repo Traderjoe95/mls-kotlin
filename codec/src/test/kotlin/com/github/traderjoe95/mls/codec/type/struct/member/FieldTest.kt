@@ -117,7 +117,7 @@ class FieldTest : ShouldSpec({
 
               val testStruct =
                 struct("Test") {
-                  it.field("uint8", com.github.traderjoe95.mls.codec.type.uint8, ubyte)
+                  it.field("uint8", uint8, ubyte)
                     .field("uShort", uint16.asUShort, ushort)
                 }
 

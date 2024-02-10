@@ -61,15 +61,11 @@ enum class ProposalOrRefType(ord: UInt, override val isValid: Boolean = true) : 
 
   Proposal(1U),
   Reference(2U),
-
-  // Upper bound to force field width
-  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
-  UPPER_(0xFFFFU, false),
   ;
 
   override val ord: UIntRange = ord..ord
 
   companion object {
-    val T: EnumT<ProposalOrRefType> = throwAnyError { enum() }
+    val T: EnumT<ProposalOrRefType> = throwAnyError { enum(upperBound = 0xFFU) }
   }
 }

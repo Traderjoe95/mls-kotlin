@@ -28,8 +28,7 @@ sealed interface JoinError : WelcomeJoinError, ExternalJoinError {
 
 sealed interface ExtensionSupportError : JoinError, GroupCreationError {
   data class UnsupportedGroupContextExtensions(
-    val capabilities: Capabilities, val unsupported: List<GroupContextExtension<*>>
+    val capabilities: Capabilities,
+    val unsupported: List<GroupContextExtension<*>>,
   ) : ExtensionSupportError
 }
-
-

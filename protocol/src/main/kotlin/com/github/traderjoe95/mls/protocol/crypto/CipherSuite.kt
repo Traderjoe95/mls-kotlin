@@ -48,37 +48,48 @@ enum class CipherSuite(
   // GREASE
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
   GREASE_1(0x0A0AU, Dummy, false),
-  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
-  GREASE_2(0x1A1AU, Dummy, false),
-  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
-  GREASE_3(0x2A2AU, Dummy, false),
-  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
-  GREASE_4(0x3A3AU, Dummy, false),
-  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
-  GREASE_5(0x4A4AU, Dummy, false),
-  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
-  GREASE_6(0x5A5AU, Dummy, false),
-  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
-  GREASE_7(0x6A6AU, Dummy, false),
-  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
-  GREASE_8(0x7A7AU, Dummy, false),
-  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
-  GREASE_9(0x8A8AU, Dummy, false),
-  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
-  GREASE_10(0x9A9AU, Dummy, false),
-  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
-  GREASE_11(0xAAAAU, Dummy, false),
-  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
-  GREASE_12(0xBABAU, Dummy, false),
-  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
-  GREASE_13(0xCACAU, Dummy, false),
-  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
-  GREASE_14(0xDADAU, Dummy, false),
-  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
-  GREASE_15(0xEAEAU, Dummy, false),
 
   @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
-  UPPER_(0xFFFFU, Dummy, false),
+  GREASE_2(0x1A1AU, Dummy, false),
+
+  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
+  GREASE_3(0x2A2AU, Dummy, false),
+
+  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
+  GREASE_4(0x3A3AU, Dummy, false),
+
+  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
+  GREASE_5(0x4A4AU, Dummy, false),
+
+  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
+  GREASE_6(0x5A5AU, Dummy, false),
+
+  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
+  GREASE_7(0x6A6AU, Dummy, false),
+
+  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
+  GREASE_8(0x7A7AU, Dummy, false),
+
+  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
+  GREASE_9(0x8A8AU, Dummy, false),
+
+  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
+  GREASE_10(0x9A9AU, Dummy, false),
+
+  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
+  GREASE_11(0xAAAAU, Dummy, false),
+
+  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
+  GREASE_12(0xBABAU, Dummy, false),
+
+  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
+  GREASE_13(0xCACAU, Dummy, false),
+
+  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
+  GREASE_14(0xDADAU, Dummy, false),
+
+  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
+  GREASE_15(0xEAEAU, Dummy, false),
   ;
 
   override val ord: UIntRange = ord..ord
@@ -87,7 +98,7 @@ enum class CipherSuite(
   override fun toString(): String = "$name($asUShort)"
 
   companion object {
-    val T: EnumT<CipherSuite> = throwAnyError { enum() }
+    val T: EnumT<CipherSuite> = throwAnyError { enum(upperBound = 0xFFFFU) }
 
     val VALID: List<UShort> = entries.filter { it.isValid }.map { it.asUShort }
 

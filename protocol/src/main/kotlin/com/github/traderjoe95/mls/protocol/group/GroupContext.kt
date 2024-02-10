@@ -3,7 +3,6 @@ package com.github.traderjoe95.mls.protocol.group
 import arrow.core.raise.Raise
 import com.github.traderjoe95.mls.codec.type.DataType
 import com.github.traderjoe95.mls.codec.type.V
-import com.github.traderjoe95.mls.codec.type.get
 import com.github.traderjoe95.mls.codec.type.opaque
 import com.github.traderjoe95.mls.codec.type.struct.Struct1T
 import com.github.traderjoe95.mls.codec.type.struct.Struct3T
@@ -19,7 +18,6 @@ import com.github.traderjoe95.mls.protocol.error.EncoderError
 import com.github.traderjoe95.mls.protocol.error.GroupCreationError
 import com.github.traderjoe95.mls.protocol.tree.RatchetTree
 import com.github.traderjoe95.mls.protocol.tree.treeHash
-import com.github.traderjoe95.mls.protocol.types.Extension
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtension
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtensions
 import com.github.traderjoe95.mls.protocol.types.HasExtensions

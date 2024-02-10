@@ -19,14 +19,11 @@ sealed class LeafNodeSource(ord: UInt, override val isValid: Boolean = true) : P
         enum(
           // Reserved
           Reserved,
-
           // RFC-9420
           KeyPackage,
           Update,
           Commit,
-
-          // Upper Bound to force field width
-          UPPER_,
+          upperBound = 0xFFU,
         )
       }
   }
@@ -39,8 +36,4 @@ sealed class LeafNodeSource(ord: UInt, override val isValid: Boolean = true) : P
   data object Update : LeafNodeSource(2U)
 
   data object Commit : LeafNodeSource(3U)
-
-  @Suppress("ClassName")
-  @Deprecated("This is technically required, but must not be used")
-  data object UPPER_ : LeafNodeSource(255U, false)
 }

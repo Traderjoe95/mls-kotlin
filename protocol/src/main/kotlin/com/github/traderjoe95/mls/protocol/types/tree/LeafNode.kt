@@ -4,8 +4,6 @@ package com.github.traderjoe95.mls.protocol.types.tree
 
 import arrow.core.raise.Raise
 import com.github.traderjoe95.mls.codec.type.DataType
-import com.github.traderjoe95.mls.codec.type.V
-import com.github.traderjoe95.mls.codec.type.get
 import com.github.traderjoe95.mls.codec.type.struct.Struct2T
 import com.github.traderjoe95.mls.codec.type.struct.Struct8T
 import com.github.traderjoe95.mls.codec.type.struct.lift
@@ -248,7 +246,7 @@ data class LeafNode<S : LeafNodeSource>(
         LeafNodeLocation?,
       > {
     companion object {
-      @Suppress("UNCHECKED_CAST", "kotlin:6531")
+      @Suppress("kotlin:6531")
       val T: DataType<Tbs> =
         struct("LeafNodeTBS") {
           it.field("encryption_key", HpkePublicKey.T)

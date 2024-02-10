@@ -2,7 +2,6 @@ package com.github.traderjoe95.mls.protocol.types.framing.message.padding.determ
 
 import com.github.traderjoe95.mls.protocol.types.framing.message.padding.PaddingStrategy
 import com.github.traderjoe95.mls.protocol.util.log2
-import com.github.traderjoe95.mls.protocol.util.pow2
 import com.github.traderjoe95.mls.protocol.util.wipe
 
 data object Padme : PaddingStrategy {
@@ -19,7 +18,7 @@ data object Padme : PaddingStrategy {
     val s = log2(e) + 1
 
     val lastBits = e - s
-    val bitMask = pow2(lastBits) - 1
+    val bitMask = (1 shl lastBits) - 1
 
     return (size + bitMask) and bitMask.inv()
   }

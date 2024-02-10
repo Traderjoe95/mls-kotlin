@@ -11,20 +11,26 @@ import com.github.traderjoe95.mls.codec.util.fromBytes
 import com.github.traderjoe95.mls.codec.util.intersect
 import com.github.traderjoe95.mls.codec.util.isNotEmpty
 import com.github.traderjoe95.mls.codec.util.toBytes
+import kotlin.enums.enumEntries
 
 context(Raise<EnumError>)
-inline fun <reified E> enum(): EnumT<E> where E : Enum<E>, E : ProtocolEnum<E> = EnumT.create<E>()
+inline fun <reified E> enum(upperBound: UInt? = null): EnumT<E> where E : Enum<E>, E : ProtocolEnum<E> =
+  EnumT.create<E>(upperBound = upperBound)
 
 context(Raise<EnumError>)
-inline fun <reified E : ProtocolEnum<E>> enum(vararg values: E): EnumT<E> = EnumT.create(*values)
+inline fun <reified E : ProtocolEnum<E>> enum(
+  vararg values: E,
+  upperBound: UInt? = null,
+): EnumT<E> = EnumT.create(values.asIterable(), upperBound = upperBound)
 
 class EnumT<V>
   @PublishedApi
   internal constructor(
     override val name: String,
     @PublishedApi internal val values: Array<V>,
+    upperBound: UInt?,
   ) : DataType<V> where V : ProtocolEnum<V> {
-  private val byteWidth: UInt = values.maxOf { it.ord.last }.byteLength
+  private val byteWidth: UInt = (upperBound ?: values.maxOf { it.ord.last }).byteLength
   override val encodedLength: UInt
     get() = byteWidth
 
@@ -49,10 +55,15 @@ class EnumT<V>
 
   companion object {
     context(Raise<EnumError>)
-    inline fun <reified E> create(): EnumT<E> where E : Enum<E>, E : ProtocolEnum<E> = create(*enumValues<E>())
+    @OptIn(ExperimentalStdlibApi::class)
+    inline fun <reified E> create(upperBound: UInt? = null): EnumT<E> where E : Enum<E>, E : ProtocolEnum<E> =
+      create(enumEntries<E>(), upperBound = upperBound)
 
     context(Raise<EnumError>)
-    inline fun <reified E : ProtocolEnum<E>> create(vararg values: E): EnumT<E> {
+    inline fun <reified E : ProtocolEnum<E>> create(
+      values: Iterable<E>,
+      upperBound: UInt? = null,
+    ): EnumT<E> {
       val name = E::class.simpleName!!
       val sortedValues = values.sortedBy { it.ord.first }.toNonEmptyListOrNull() ?: raise(EnumError.NoValues(name))
 
@@ -72,7 +83,13 @@ class EnumT<V>
         if (it.isNotEmpty()) raise(EnumError.UndefinedOrd(name, it))
       }
 
-      return EnumT(name, sortedValues.toTypedArray())
+      upperBound?.let { b ->
+        sortedValues.filter { it.ord.last > b }.map { it.name }.toSet().let {
+          if (it.isNotEmpty()) raise(EnumError.InconsistentUpperBound(name, b, it))
+        }
+      }
+
+      return EnumT(name, sortedValues.toTypedArray(), upperBound = upperBound)
     }
   }
 }

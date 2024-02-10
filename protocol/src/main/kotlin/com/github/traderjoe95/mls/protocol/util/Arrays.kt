@@ -1,7 +1,6 @@
 package com.github.traderjoe95.mls.protocol.util
 
 import arrow.core.Nel
-import java.security.SecureRandom
 
 val Array<*>.uSize: UInt
   get() = size.toUInt()
