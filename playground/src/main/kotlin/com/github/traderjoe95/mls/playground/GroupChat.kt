@@ -5,7 +5,7 @@ import arrow.core.raise.Raise
 import arrow.core.raise.either
 import arrow.core.raise.recover
 import com.github.traderjoe95.mls.playground.service.DeliveryService
-import com.github.traderjoe95.mls.protocol.error.EncoderError
+import com.github.traderjoe95.mls.protocol.error.GroupInfoError
 import com.github.traderjoe95.mls.protocol.error.RecipientCommitError
 import com.github.traderjoe95.mls.protocol.error.SenderCommitError
 import com.github.traderjoe95.mls.protocol.group.GroupState
@@ -23,11 +23,11 @@ import com.github.traderjoe95.mls.protocol.types.framing.enums.ContentType
 import com.github.traderjoe95.mls.protocol.types.framing.message.GroupMessage
 
 class GroupChat(
-  private val state: GroupState,
+  val state: GroupState,
   private val client: Client,
-) : GroupState by state {
+) {
   init {
-    DeliveryService.registerGroup(groupId, client.userName)
+    DeliveryService.registerForGroup(state.groupId, client.userName)
   }
 
   suspend fun addMember(user: String): Either<SenderCommitError, GroupChat> =
@@ -37,8 +37,8 @@ class GroupChat(
           listOf(
             Add(DeliveryService.getKeyPackage(Config.protocolVersion, Config.cipherSuite, user).getOrThrow()),
           ),
-        ).let { (ctx, commit, _, welcome) ->
-          client.sendMessageToGroup(commit, groupId).getOrThrow()
+        ).let { (ctx, commit, welcome) ->
+          client.sendMessageToGroup(commit, state.groupId).getOrThrow()
           client.sendMessageToUser(welcome!!, user).getOrThrow()
 
           GroupChat(ctx, client).register()
@@ -50,46 +50,51 @@ class GroupChat(
     either {
       with(client) {
         val (_, leafIndex) =
-          tree.findLeaf {
+          state.tree.findLeaf {
             client.authenticateCredentialIdentity(user, this).isRight()
           } ?: error("User $user is not member of the group")
 
         state.prepareCommit(
           listOf(Remove(leafIndex)),
-        ).let { (ctx, commit, _, _) ->
-          client.sendMessageToGroup(commit, groupId).getOrThrow()
+        ).let { (ctx, commit, _) ->
+          client.sendMessageToGroup(commit, state.groupId).getOrThrow()
 
           GroupChat(ctx, client).register()
         }
       }
     }
 
+  fun makePublic(): Either<GroupInfoError, Unit> =
+    either {
+      DeliveryService.storeGroupInfo(state.groupInfo(public = true))
+    }
+
   suspend fun sendPrivateApplicationMessage(message: String) =
     either {
       client.sendMessageToGroup(
-        MlsMessage.private(ApplicationData(message.encodeToByteArray())),
-        groupId,
+        with(state) { MlsMessage.private(ApplicationData(message.encodeToByteArray())) },
+        state.groupId,
       ).bind()
     }
 
   suspend fun sendPublicApplicationMessage(message: String) =
     either {
       client.sendMessageToGroup(
-        MlsMessage.public(ApplicationData(message.encodeToByteArray())),
-        groupId,
+        with(state) { MlsMessage.public(ApplicationData(message.encodeToByteArray())) },
+        state.groupId,
       ).bind()
     }
 
   suspend fun processMessage(message: GroupMessage<*>): GroupChat =
     either {
-      if (message.contentType == ContentType.Commit && message.epoch != currentEpoch) {
+      if (message.contentType == ContentType.Commit && message.epoch != state.currentEpoch) {
         println("[${client.userName}] Received commit for wrong epoch, dropping")
         this@GroupChat
-      } else if (message.contentType == ContentType.Proposal && message.epoch != currentEpoch) {
+      } else if (message.contentType == ContentType.Proposal && message.epoch != state.currentEpoch) {
         println("[${client.userName}] Received proposal for wrong epoch, dropping")
         this@GroupChat
       } else {
-        processAuthenticatedContent(message.getAuthenticatedContent())
+        processAuthenticatedContent(with(state) { message.getAuthenticatedContent() })
       }
     }.getOrThrow()
 
@@ -98,11 +103,11 @@ class GroupChat(
     when (val body = authContent.content.content) {
       is Commit ->
         with(client) {
-          println("[${client.userName}] Commit for $groupId: ${body.proposals}")
+          println("[${client.userName}] Commit for ${state.groupId}: ${body.proposals}")
           @Suppress("UNCHECKED_CAST")
           GroupChat(
             recover(
-              block = { processCommit(authContent as AuthenticatedContent<Commit>) },
+              block = { state.processCommit(authContent as AuthenticatedContent<Commit>) },
               recover = {
 //              if (it == RemovedFromGroup) DeliveryService.unregisterGroup(groupId, client.applicationId)
 
@@ -115,10 +120,8 @@ class GroupChat(
 
       is Proposal ->
         apply {
-          EncoderError.wrap {
-            println("[${client.userName}] Proposal for $groupId: $body")
-            storeProposal(body, authContent.sender.index)
-          }
+          println("[${client.userName}] Proposal for ${state.groupId}: $body")
+          state.storeProposal(body, authContent.sender.index)
         }
 
       is ApplicationData ->

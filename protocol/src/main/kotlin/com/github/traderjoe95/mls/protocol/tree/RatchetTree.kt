@@ -1,8 +1,7 @@
 package com.github.traderjoe95.mls.protocol.tree
 
-import arrow.core.None
 import arrow.core.Option
-import arrow.core.Some
+import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.error.DecoderError
 import com.github.traderjoe95.mls.codec.type.DataType
 import com.github.traderjoe95.mls.codec.type.V
@@ -12,129 +11,90 @@ import com.github.traderjoe95.mls.codec.type.optional
 import com.github.traderjoe95.mls.codec.util.uSize
 import com.github.traderjoe95.mls.protocol.types.tree.LeafNode
 import com.github.traderjoe95.mls.protocol.types.tree.Node
-import com.github.traderjoe95.mls.protocol.types.tree.ParentNode
+import com.github.traderjoe95.mls.protocol.types.tree.UpdateLeafNode
 import com.github.traderjoe95.mls.protocol.util.get
 import com.github.traderjoe95.mls.protocol.util.log2
 import com.github.traderjoe95.mls.protocol.util.set
 import com.github.traderjoe95.mls.protocol.util.shl
-import com.github.traderjoe95.mls.protocol.util.shr
 import com.github.traderjoe95.mls.protocol.util.sliceArray
 import com.github.traderjoe95.mls.protocol.util.uSize
 
 @JvmInline
-value class RatchetTree private constructor(private val nodes: Array<NodeRecord<*>?>) {
+value class RatchetTree private constructor(private val nodes: Array<Node?>) {
   init {
     check(nodes.isEmpty() || (nodes.size - 1) % 2 == 0)
   }
 
   val size: UInt
     get() = nodes.uSize
-  inline val root: UInt
-    get() = (1U shl log2(size)) - 1U
-  internal inline val leafIndices: UIntProgression
-    get() = 0U..<nodes.uSize step 2
-  internal inline val parentIndices: UIntProgression
-    get() = 1U..<size step 2
+  inline val root: NodeIndex
+    get() = NodeIndex((1U shl log2(size)) - 1U)
+
+  internal inline val leafNodeIndices: NodeProgression
+    get() = NodeIndex(0U)..<size step 2
+  internal inline val parentNodeIndices: NodeProgression
+    get() = NodeIndex(1U)..<size step 2
 
   @Suppress("UNCHECKED_CAST", "kotlin:S6531")
-  val leaves: List<LeafNodeRecord?>
-    get() = nodes[leafIndices] as List<LeafNodeRecord?>
+  val leaves: List<LeafNode<*>?>
+    get() = this[leafNodeIndices] as List<LeafNode<*>?>
 
-  val firstBlankLeaf: UInt?
-    get() = leafIndices.find { it.isBlank }
+  val firstBlankLeaf: LeafIndex?
+    get() = leafNodeIndices.find { it.isBlank }?.leafIndex
 
-  operator fun plus(newLeaf: LeafNode<*>): RatchetTree = this + LeafNodeRecord(newLeaf to null)
+  fun insert(newLeaf: LeafNode<*>): Pair<RatchetTree, LeafIndex> =
+    firstBlankLeaf
+      ?.let { newLeaf.insertAt(it.nodeIndex) }
+      ?: extend().insert(newLeaf)
 
-  operator fun plus(newLeaf: LeafNodeRecord): RatchetTree = insert(newLeaf).first
+  private fun LeafNode<*>.insertAt(nodeIdx: NodeIndex): Pair<RatchetTree, LeafIndex> {
+    val leafIdx = nodeIdx.leafIndex
 
-  fun insert(newLeaf: LeafNode<*>): Pair<RatchetTree, UInt> = insert(LeafNodeRecord(newLeaf to null))
+    val updatedTree = this@RatchetTree.copy().apply { this[nodeIdx] = this@insertAt }
 
-  fun insert(newLeaf: LeafNodeRecord): Pair<RatchetTree, UInt> =
-    firstBlankLeaf.let { idx ->
-      if (idx != null) {
-        val leafIdx = idx / 2U
-
-        directPath(idx).dropLast(1).forEach { intermediateNode ->
-          this[intermediateNode] =
-            this[intermediateNode]?.asParent?.updateNode {
-              copy(unmergedLeaves = unmergedLeaves + leafIdx)
-            }
-        }
-
-        copy().apply { nodes[idx] = newLeaf } to leafIdx
-      } else {
-        extend().insert(newLeaf)
-      }
+    directPath(nodeIdx).dropLast(1).forEach { intermediateNode ->
+      updatedTree[intermediateNode] =
+        updatedTree[intermediateNode]?.asParent?.run { copy(unmergedLeaves = unmergedLeaves + leafIdx) }
     }
 
-  operator fun minus(leafIndex: UInt): RatchetTree =
-    copy().apply { nodes[leafIndex.leafNodeIndex] = null }
-      .blank(directPath(leafIndex.leafNodeIndex).dropLast(1))
+    return updatedTree to leafIdx
+  }
+
+  operator fun minus(leafIndex: LeafIndex): RatchetTree =
+    copy().apply { this[leafIndex] = null }
+      .blank(directPath(leafIndex).dropLast(1))
       .truncateIfRequired()
 
-  val UInt.level
-    get() = generateSequence(0) { it + 1 }.find { (this shr it) and 0x01U == 0U }!!.toUInt()
+  fun update(
+    leafIndex: LeafIndex,
+    leafNode: UpdateLeafNode,
+  ): RatchetTree =
+    copy().apply { this[leafIndex] = leafNode }
+      .blank(directPath(leafIndex).dropLast(1))
 
-  val UInt.leafNodeIndex: UInt
-    get() = this * 2U
+  val TreeIndex.filteredParent: NodeIndex
+    get() = filteredDirectPath(this).firstOrNull() ?: root
 
-  val UInt.sibling: UInt
-    get() =
-      parent.let { p ->
-        if (this < p) {
-          p.rightChild
-        } else {
-          p.leftChild
-        }
-      }
+  val TreeIndex.isBlank: Boolean
+    get() = nodeIndex >= nodes.size.toUInt() || nodes[nodeIndex.value] == null
 
-  val UInt.parent: UInt
-    get() =
-      level.let { k ->
-        val b = (this shr (k + 1U)) and 0x01U
-        (this or (1U shl k)) xor (b shl (k + 1U))
-      }
-  val UInt.filteredParent: UInt
-    get() = filteredDirectPath(this).firstOrNull() ?: 0U
-  val UInt.leftChild: UInt
-    get() = this xor (0x01U shl (level - 1U))
-  val UInt.rightChild: UInt
-    get() = this xor (0x03U shl (level - 1U))
+  operator fun get(nodeIndex: TreeIndex): Node? = nodes[nodeIndex.nodeIndex.value]
 
-  val UInt.isBlank: Boolean
-    get() = this >= nodes.size.toUInt() || nodes[this] == null
-
-  operator fun get(nodeIndex: UInt): NodeRecord<*>? = nodes[nodeIndex]
-
-  operator fun get(indices: Iterable<UInt>): List<NodeRecord<*>?> = nodes[indices]
+  operator fun get(indices: Iterable<TreeIndex>): List<Node?> = nodes[indices.map { it.nodeIndex.value }]
 
   operator fun set(
-    nodeIndex: UInt,
-    node: LeafNode<*>,
+    nodeIndex: TreeIndex,
+    node: Node?,
   ) {
-    this[nodeIndex] = LeafNodeRecord(node to null)
-  }
-
-  operator fun set(
-    nodeIndex: UInt,
-    node: ParentNode,
-  ) {
-    this[nodeIndex] = ParentNodeRecord(node to null)
-  }
-
-  operator fun set(
-    nodeIndex: UInt,
-    node: NodeRecord<*>?,
-  ) {
-    nodes[nodeIndex] = node
+    nodes[nodeIndex.nodeIndex.value] = node
   }
 
   private val leftSubtree: RatchetTree
-    get() = RatchetTree(nodes.sliceArray(0U..<root))
+    get() = RatchetTree(nodes.sliceArray(0U..<root.value))
 
   private fun extend(): RatchetTree {
     return RatchetTree(
-      Array<NodeRecord<*>?>(nodes.size * 2 + 1) { null }.also { nodes.copyInto(it, 0) },
+      Array<Node?>(nodes.size * 2 + 1) { null }.also { nodes.copyInto(it, 0) },
     )
   }
 
@@ -154,9 +114,9 @@ value class RatchetTree private constructor(private val nodes: Array<NodeRecord<
 
   internal fun copy(): RatchetTree = RatchetTree(nodes.copyOf())
 
-  companion object {
-    val T: DataType<RatchetTree> =
-      optional[Node.T][V].derive(
+  companion object : Encodable<RatchetTree> {
+    override val dataT: DataType<RatchetTree> =
+      optional[Node.dataT][V].derive(
         { nodes ->
           if (nodes.last().isNone()) {
             raise(DecoderError.UnexpectedError("Last node of an encoded ratchet tree must not be blank"))
@@ -166,22 +126,12 @@ value class RatchetTree private constructor(private val nodes: Array<NodeRecord<
           val synthesizeBlankNodes = (1U shl (d + 1U)) - nodes.uSize - 1U
 
           RatchetTree(
-            nodes.map {
-              when (it) {
-                is None -> null
-                is Some ->
-                  when (val node = it.value) {
-                    is ParentNode -> ParentNodeRecord(node to null)
-                    is LeafNode<*> -> LeafNodeRecord(node to null)
-                  }
-              }
-            }.toTypedArray() +
-              Array<NodeRecord<*>?>(synthesizeBlankNodes.toInt()) { null },
+            nodes.map { it.getOrNull() }.toTypedArray() + Array<Node?>(synthesizeBlankNodes.toInt()) { null },
           )
         },
-        { tree -> tree.nodes.map { Option.fromNullable(it?.node) }.dropLastWhile { it.isNone() } },
+        { tree -> tree.nodes.map(Option.Companion::fromNullable).dropLastWhile(Option<Node>::isNone) },
       )
 
-    fun LeafNodeRecord.newTree(): RatchetTree = RatchetTree(arrayOf(this))
+    fun LeafNode<*>.newTree(): RatchetTree = RatchetTree(arrayOf(this))
   }
 }

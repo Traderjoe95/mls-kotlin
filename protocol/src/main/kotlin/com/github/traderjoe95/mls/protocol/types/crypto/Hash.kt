@@ -1,5 +1,6 @@
 package com.github.traderjoe95.mls.protocol.types.crypto
 
+import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.type.DataType
 import com.github.traderjoe95.mls.codec.type.V
 import com.github.traderjoe95.mls.codec.type.derive
@@ -19,8 +20,8 @@ value class HashReference(val ref: ByteArray) {
   internal val hashCode: Int
     get() = ref.contentHashCode()
 
-  companion object {
-    val T: DataType<HashReference> = opaque[V].derive({ HashReference(it) }, { it.ref }, name = "HashReference")
+  companion object : Encodable<HashReference> {
+    override val dataT: DataType<HashReference> = opaque[V].derive({ HashReference(it) }, { it.ref }, name = "HashReference")
 
     val ByteArray.asHashReference: HashReference
       get() = HashReference(this)
@@ -28,8 +29,8 @@ value class HashReference(val ref: ByteArray) {
 }
 
 internal data class RefHashInput(val label: String, val value: ByteArray) : Struct2T.Shape<String, ByteArray> {
-  companion object {
-    val T = bytesAndLabel("RefHashInput", "value").lift(::RefHashInput)
+  companion object : Encodable<RefHashInput> {
+    override val dataT = bytesAndLabel("RefHashInput", "value").lift(::RefHashInput)
 
     fun keyPackage(value: ByteArray): RefHashInput = RefHashInput("MLS 1.0 KeyPackage Reference", value)
 

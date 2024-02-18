@@ -16,6 +16,7 @@ import com.github.traderjoe95.mls.protocol.error.UnknownGroup
 import com.github.traderjoe95.mls.protocol.error.UnknownUser
 import com.github.traderjoe95.mls.protocol.service.DeliveryService
 import com.github.traderjoe95.mls.protocol.types.framing.MlsMessage
+import com.github.traderjoe95.mls.protocol.types.framing.MlsMessage.Companion.encode
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
 import com.github.traderjoe95.mls.protocol.types.framing.message.GroupInfo
 import com.github.traderjoe95.mls.protocol.types.framing.message.KeyPackage
@@ -30,25 +31,35 @@ import com.github.traderjoe95.mls.codec.error.EncoderError as BaseEncoderError
 
 object DeliveryService : DeliveryService<String> {
   private val users: ConcurrentMap<String, Channel<Pair<ULID, ByteArray>>> = ConcurrentHashMap()
-  private val groups: ConcurrentMap<ULID, ConcurrentMap<String, Unit>> = ConcurrentHashMap()
+  private val groups: ConcurrentMap<ULID, GroupView> = ConcurrentHashMap()
 
   private val keyPackages: ConcurrentMap<Triple<String, ProtocolVersion, CipherSuite>, ConcurrentLinkedQueue<ByteArray>> =
     ConcurrentHashMap()
 
   fun registerUser(user: String): Channel<Pair<ULID, ByteArray>> = users.computeIfAbsent(user) { Channel(UNLIMITED) }
 
-  fun registerGroup(
+  fun registerForGroup(
     group: ULID,
     user: String,
   ) {
-    groups.computeIfAbsent(group) { ConcurrentHashMap() }[user] = Unit
+    groups.compute(group) { _, view ->
+      view?.copy(members = view.members + user) ?: GroupView(setOf(user))
+    }
   }
 
-  fun unregisterGroup(
+  fun unregisterFromGroup(
     group: ULID,
     user: String,
   ) {
-    groups.computeIfAbsent(group) { ConcurrentHashMap() }.remove(user)
+    groups.compute(group) { _, view ->
+      view?.copy(members = view.members - user) ?: view
+    }
+  }
+
+  fun storeGroupInfo(groupInfo: GroupInfo) {
+    groups.compute(groupInfo.groupContext.groupId) { _, view ->
+      view?.copy(info = groupInfo) ?: GroupView(info = groupInfo)
+    }
   }
 
   fun addKeyPackage(
@@ -57,7 +68,7 @@ object DeliveryService : DeliveryService<String> {
   ): Either<BaseEncoderError, Unit> =
     either {
       keyPackages.computeIfAbsent(Triple(user, keyPackage.version, keyPackage.cipherSuite)) { ConcurrentLinkedQueue() }
-        .offer(KeyPackage.T.encode(keyPackage))
+        .offer(KeyPackage.dataT.encode(keyPackage))
     }
 
   suspend fun sendMessageToGroup(
@@ -69,7 +80,7 @@ object DeliveryService : DeliveryService<String> {
       val encoded = EncoderError.wrap { message.encode() }
       val messageId = ULID.new()
 
-      groups[toGroup]?.keys?.toSet()?.forEach {
+      groups[toGroup]?.members?.forEach {
         if (it != fromUser) users[it]?.send(messageId to encoded)
       } ?: raise(UnknownGroup(toGroup))
 
@@ -113,9 +124,12 @@ object DeliveryService : DeliveryService<String> {
     }
   }
 
-  override suspend fun getPublicGroupInfo(groupId: ULID): Either<GetGroupInfoError, GroupInfo> {
-    TODO("Not yet implemented")
-  }
+  override suspend fun getPublicGroupInfo(groupId: ULID): Either<GetGroupInfoError, GroupInfo> =
+    either {
+      groups[groupId]
+        ?.run { info ?: raise(GetGroupInfoError.GroupNotPublic(groupId)) }
+        ?: raise(UnknownGroup(groupId))
+    }
 
   override suspend fun getKeyPackage(
     protocolVersion: ProtocolVersion,
@@ -126,7 +140,7 @@ object DeliveryService : DeliveryService<String> {
       DecoderError.wrap {
         keyPackages.computeIfAbsent(Triple(forUser, protocolVersion, cipherSuite)) { ConcurrentLinkedQueue() }
           .poll()
-          ?.decodeAs(KeyPackage.T)
+          ?.decodeAs(KeyPackage.dataT)
           ?: raise(KeyPackageRetrievalError.NoKeyPackage(protocolVersion, cipherSuite))
       }
     }
@@ -139,7 +153,7 @@ object DeliveryService : DeliveryService<String> {
     forUsers.associateWith { getKeyPackage(protocolVersion, cipherSuite, it) }
 
   data class GroupView(
-    val members: Set<String>,
-    val info: GroupInfo,
+    val members: Set<String> = setOf(),
+    val info: GroupInfo? = null,
   )
 }

@@ -8,9 +8,7 @@ fun <R> Either<*, R>.getOrThrow() = getOrElse { error("Unexpected error: $it") }
 
 suspend fun main() {
   val alice = Client("Alice")
-
   val bob = Client("Bob")
-
   val charlie = Client("Charlie")
 
   alice.generateKeyPackages(10U)
@@ -21,7 +19,7 @@ suspend fun main() {
   val aliceGroup1 = alice.createGroup().getOrThrow()
   println("ALICE EPOCH 0 (Only Alice):")
   println("================================================================")
-  println(aliceGroup1.debug)
+  println(aliceGroup1.state.debug)
   println()
 
   // Alice adds Bob and creates a Welcome message for him to join the group and bootstrap his shared cryptographic state
@@ -31,7 +29,7 @@ suspend fun main() {
 
   println("ALICE EPOCH 1 (Alice+Bob):")
   println("================================================================")
-  println(aliceGroup2.debug)
+  println(aliceGroup2.state.debug)
   println()
 
   // Bob processes the Welcome and bootstraps his state
@@ -40,7 +38,7 @@ suspend fun main() {
   println("BOB EPOCH 1 (Alice+Bob):")
   println("================================================================")
   println()
-  println(bobGroup1.debug)
+  println(bobGroup1.state.debug)
 
   println()
   println("Sending messages:")
@@ -83,17 +81,17 @@ suspend fun main() {
 
   println("ALICE EPOCH 2 (Alice+Bob+Charlie):")
   println("================================================================")
-  println(aliceGroup3.debug)
+  println(aliceGroup3.state.debug)
   println()
 
   println("BOB EPOCH 2 (Alice+Bob+Charlie):")
   println("================================================================")
-  println(bobGroup2.debug)
+  println(bobGroup2.state.debug)
   println()
 
   println("CHARLIE EPOCH 2 (Alice+Bob+Charlie):")
   println("================================================================")
-  println(charlieGroup1.debug)
+  println(charlieGroup1.state.debug)
   println()
 
   println()
@@ -148,13 +146,13 @@ suspend fun main() {
 
   println("ALICE EPOCH 3 (Alice+Bob):")
   println("================================================================")
-  println(aliceGroup4.debug)
+  println(aliceGroup4.state.debug)
   println()
 
   println("BOB EPOCH 3 (Alice+Bob):")
   println("================================================================")
   println()
-  println(bobGroup3.debug)
+  println(bobGroup3.state.debug)
 
   println("Alice: ")
   aliceGroup4.sendPrivateApplicationMessage("Hello, this is Alice!")

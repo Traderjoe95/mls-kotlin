@@ -1,7 +1,7 @@
 package com.github.traderjoe95.mls.protocol.types.framing
 
 import arrow.core.raise.Raise
-import com.github.traderjoe95.mls.codec.error.EncoderError
+import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.type.DataType
 import com.github.traderjoe95.mls.codec.type.struct.Struct3T
 import com.github.traderjoe95.mls.codec.type.struct.lift
@@ -37,10 +37,7 @@ data class MlsMessage<M : Message> internal constructor(
   val wireFormat: WireFormat,
   val message: M,
 ) : Struct3T.Shape<ProtocolVersion, WireFormat, M> {
-  context(Raise<EncoderError>)
-  fun encode(): ByteArray = T.encode(this)
-
-  companion object {
+  companion object : Encodable<MlsMessage<*>> {
     context(ICipherSuite, KeySchedule, Raise<PublicMessageSenderError>)
     fun <C : Content> public(
       authenticatedContent: AuthenticatedContent<C>,
@@ -57,17 +54,19 @@ data class MlsMessage<M : Message> internal constructor(
       applicationData: ApplicationData,
       authenticatedData: ByteArray = byteArrayOf(),
     ): MlsMessage<PublicMessage<ApplicationData>> =
-      createFramedContent(applicationData, authenticatedData).let { framedContent ->
-        public(
-          PublicMessage.create(
-            AuthenticatedContent(
-              WireFormat.MlsPublicMessage,
-              framedContent,
-              framedContent.sign(WireFormat.MlsPublicMessage, groupContext, signingKey),
-              null,
+      ensureActive {
+        createFramedContent(applicationData, authenticatedData).let { framedContent ->
+          public(
+            PublicMessage.create(
+              AuthenticatedContent(
+                WireFormat.MlsPublicMessage,
+                framedContent,
+                framedContent.sign(WireFormat.MlsPublicMessage, groupContext, signingKey),
+                null,
+              ),
             ),
-          ),
-        )
+          )
+        }
       }
 
     fun <C : Content> public(message: PublicMessage<C>): MlsMessage<PublicMessage<C>> =
@@ -94,18 +93,20 @@ data class MlsMessage<M : Message> internal constructor(
       applicationData: ApplicationData,
       authenticatedData: ByteArray = byteArrayOf(),
     ): MlsMessage<PrivateMessage> =
-      private(
-        createFramedContent(applicationData, authenticatedData).let { framedContent ->
-          PrivateMessage.create(
-            AuthenticatedContent(
-              WireFormat.MlsPrivateMessage,
-              framedContent,
-              framedContent.sign(WireFormat.MlsPrivateMessage, groupContext, signingKey),
-              null,
-            ),
-          )
-        },
-      )
+      ensureActive {
+        private(
+          createFramedContent(applicationData, authenticatedData).let { framedContent ->
+            PrivateMessage.create(
+              AuthenticatedContent(
+                WireFormat.MlsPrivateMessage,
+                framedContent,
+                framedContent.sign(WireFormat.MlsPrivateMessage, groupContext, signingKey),
+                null,
+              ),
+            )
+          },
+        )
+      }
 
     fun private(message: PrivateMessage): MlsMessage<PrivateMessage> = MlsMessage(MLS_1_0, WireFormat.MlsPrivateMessage, message)
 
@@ -121,17 +122,17 @@ data class MlsMessage<M : Message> internal constructor(
 
     fun keyPackage(message: KeyPackage): MlsMessage<KeyPackage> = MlsMessage(MLS_1_0, WireFormat.MlsKeyPackage, message)
 
-    val T: DataType<MlsMessage<*>> =
+    override val dataT: DataType<MlsMessage<*>> =
       throwAnyError {
         struct("MLSMessage") {
           it.field("version", ProtocolVersion.T, MLS_1_0)
             .field("wire_format", WireFormat.T)
             .select<Message, _>(WireFormat.T, "wire_format") {
-              case(WireFormat.MlsPublicMessage).then(PublicMessage.T, "public_message")
-                .case(WireFormat.MlsPrivateMessage).then(PrivateMessage.T, "private_message")
-                .case(WireFormat.MlsWelcome).then(Welcome.T, "welcome")
-                .case(WireFormat.MlsGroupInfo).then(GroupInfo.T, "group_info")
-                .case(WireFormat.MlsKeyPackage).then(KeyPackage.T, "key_package")
+              case(WireFormat.MlsPublicMessage).then(PublicMessage.dataT, "public_message")
+                .case(WireFormat.MlsPrivateMessage).then(PrivateMessage.dataT, "private_message")
+                .case(WireFormat.MlsWelcome).then(Welcome.dataT, "welcome")
+                .case(WireFormat.MlsGroupInfo).then(GroupInfo.dataT, "group_info")
+                .case(WireFormat.MlsKeyPackage).then(KeyPackage.dataT, "key_package")
             }
         }.lift(::MlsMessage)
       }

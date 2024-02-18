@@ -1,9 +1,9 @@
 package com.github.traderjoe95.mls.protocol.app
 
+import arrow.core.Tuple4
 import arrow.core.raise.Raise
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.error.BranchJoinError
-import com.github.traderjoe95.mls.protocol.error.EncoderError
 import com.github.traderjoe95.mls.protocol.error.ExternalPskError
 import com.github.traderjoe95.mls.protocol.error.ReInitJoinError
 import com.github.traderjoe95.mls.protocol.error.ResumptionPskError
@@ -18,10 +18,9 @@ import com.github.traderjoe95.mls.protocol.types.framing.message.KeyPackage
 import de.traderjoe.ulid.ULID
 
 interface ApplicationCtx<Identity : Any> : AuthenticationService<Identity>, DeliveryService<Identity> {
-  context(Raise<EncoderError>)
-  fun newKeyPackage(cipherSuite: CipherSuite): Triple<KeyPackage, HpkeKeyPair, SigningKey>
+  fun newKeyPackage(cipherSuite: CipherSuite): Tuple4<KeyPackage, HpkeKeyPair, HpkeKeyPair, SigningKey>
 
-  fun getKeyPackage(ref: KeyPackage.Ref): Triple<KeyPackage, HpkeKeyPair, SigningKey>?
+  fun getKeyPackage(ref: KeyPackage.Ref): Tuple4<KeyPackage, HpkeKeyPair, HpkeKeyPair, SigningKey>?
 
   context(Raise<ExternalPskError>)
   suspend fun getExternalPsk(id: ByteArray): Secret

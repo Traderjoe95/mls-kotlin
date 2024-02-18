@@ -1,7 +1,7 @@
 package com.github.traderjoe95.mls.protocol.types.framing.content
 
 import arrow.core.raise.Raise
-import com.github.traderjoe95.mls.codec.error.EncoderError
+import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.type.DataType
 import com.github.traderjoe95.mls.codec.type.struct.Struct3T
 import com.github.traderjoe95.mls.codec.type.struct.Struct4T
@@ -28,10 +28,8 @@ data class AuthenticatedContent<out C : Content>(
   val signature: Signature,
   val confirmationTag: Mac?,
 ) : Struct4T.Shape<WireFormat, FramedContent<C>, Signature, Mac?> {
-  context(GroupState, Raise<EncoderError>, Raise<SignatureError>, Raise<MacError>, Raise<EpochError>)
-  fun verify(
-    groupContext: GroupContext,
-  ) {
+  context(GroupState, Raise<SignatureError>, Raise<MacError>, Raise<EpochError>)
+  fun verify(groupContext: GroupContext) {
     content.verifySignature(FramedContent.AuthData(signature, confirmationTag), wireFormat, groupContext)
   }
 
@@ -78,14 +76,14 @@ data class AuthenticatedContent<out C : Content>(
     val signature: Signature,
     val confirmationTag: Mac?,
   ) : Struct3T.Shape<FramedContent.Tbs, Signature, Mac?> {
-    companion object {
-      val T: DataType<Tbm> =
+    companion object : Encodable<Tbm> {
+      override val dataT: DataType<Tbm> =
         throwAnyError {
           struct("AuthenticatedContentTBM") {
-            it.field("content_tbs", FramedContent.Tbs.T)
-              .field("signature", Signature.T)
+            it.field("content_tbs", FramedContent.Tbs.dataT)
+              .field("signature", Signature.dataT)
               .select<Mac?, _>(ContentType.T, "content_tbs", "content", "content_type") {
-                case(ContentType.Commit).then(Mac.T, "confirmation_tag")
+                case(ContentType.Commit).then(Mac.dataT, "confirmation_tag")
                   .orElseNothing()
               }
           }.lift(::Tbm)

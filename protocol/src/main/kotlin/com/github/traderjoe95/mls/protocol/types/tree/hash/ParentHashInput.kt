@@ -1,5 +1,6 @@
 package com.github.traderjoe95.mls.protocol.types.tree.hash
 
+import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.type.DataType
 import com.github.traderjoe95.mls.codec.type.V
 import com.github.traderjoe95.mls.codec.type.opaque
@@ -14,11 +15,11 @@ data class ParentHashInput(
   val parentHash: ParentHash,
   val originalSiblingTreeHash: ByteArray,
 ) : Struct3T.Shape<HpkePublicKey, ParentHash, ByteArray> {
-  companion object {
-    val T: DataType<ParentHashInput> =
+  companion object : Encodable<ParentHashInput> {
+    override val dataT: DataType<ParentHashInput> =
       struct("ParentHashInput") {
-        it.field("encryption_key", HpkePublicKey.T)
-          .field("parent_hash", ParentHash.T)
+        it.field("encryption_key", HpkePublicKey.dataT)
+          .field("parent_hash", ParentHash.dataT)
           .field("original_sibling_tree_hash", opaque[V])
       }.lift(::ParentHashInput)
   }

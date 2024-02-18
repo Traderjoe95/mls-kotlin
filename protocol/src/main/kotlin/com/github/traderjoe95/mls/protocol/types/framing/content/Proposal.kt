@@ -1,5 +1,6 @@
 package com.github.traderjoe95.mls.protocol.types.framing.content
 
+import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.Struct2
 import com.github.traderjoe95.mls.codec.type.DataType
 import com.github.traderjoe95.mls.codec.type.derive
@@ -8,8 +9,8 @@ import com.github.traderjoe95.mls.codec.type.struct.Struct4T
 import com.github.traderjoe95.mls.codec.type.struct.lift
 import com.github.traderjoe95.mls.codec.type.struct.member.then
 import com.github.traderjoe95.mls.codec.type.struct.struct
-import com.github.traderjoe95.mls.codec.type.uint32
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
+import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtension
 import com.github.traderjoe95.mls.protocol.types.ProposalType
 import com.github.traderjoe95.mls.protocol.types.T
@@ -45,8 +46,8 @@ sealed class Proposal(
       is ReInit -> 6
     }
 
-  companion object {
-    val T: DataType<Proposal> by lazy {
+  companion object : Encodable<Proposal> {
+    override val dataT: DataType<Proposal> by lazy {
       struct("Proposal") {
         it.field("proposal_type", ProposalType.T)
           .select<Proposal, _>(ProposalType.T, "proposal_type") {
@@ -72,7 +73,7 @@ sealed class Proposal(
 
     companion object {
       val T: DataType<Ref> =
-        HashReference.T.derive(
+        HashReference.dataT.derive(
           { it.asProposalRef },
           { HashReference(it.ref) },
           name = "ProposalRef",
@@ -90,7 +91,7 @@ data class Add(
   companion object {
     val T: DataType<Add> =
       struct("Add") {
-        it.field("key_package", KeyPackage.T)
+        it.field("key_package", KeyPackage.dataT)
       }.lift(::Add)
   }
 }
@@ -107,14 +108,14 @@ data class Update(
 }
 
 data class Remove(
-  val removed: UInt,
-) : Proposal(ProposalType.Remove), Struct1T.Shape<UInt> {
+  val removed: LeafIndex,
+) : Proposal(ProposalType.Remove), Struct1T.Shape<LeafIndex> {
   override val mayBeExternal: Boolean = true
 
   companion object {
     val T: DataType<Remove> =
       struct("Remove") {
-        it.field("removed", uint32.asUInt)
+        it.field("removed", LeafIndex.dataT)
       }.lift(::Remove)
   }
 }
@@ -128,7 +129,7 @@ data class PreSharedKey(
   companion object {
     val T: DataType<PreSharedKey> =
       struct("PreSharedKey") {
-        it.field("psk", PreSharedKeyId.T)
+        it.field("psk", PreSharedKeyId.dataT)
       }.lift(::PreSharedKey)
   }
 }
@@ -148,7 +149,7 @@ data class ReInit(
         it.field("group_id", ULID.T)
           .field("version", ProtocolVersion.T)
           .field("cipher_suite", CipherSuite.T)
-          .field("extensions", GroupContextExtension.T.extensionList())
+          .field("extensions", GroupContextExtension.dataT.extensionList())
       }.lift(::ReInit)
   }
 }
@@ -159,7 +160,7 @@ data class ExternalInit(
   companion object {
     val T: DataType<ExternalInit> =
       struct("ExternalInit") {
-        it.field("kem_output", KemOutput.T)
+        it.field("kem_output", KemOutput.dataT)
       }.lift(::ExternalInit)
   }
 }
@@ -175,7 +176,7 @@ data class GroupContextExtensions(
   companion object {
     val T: DataType<GroupContextExtensions> =
       struct("GroupContextExtensions") {
-        it.field("extensions", GroupContextExtension.T.extensionList())
+        it.field("extensions", GroupContextExtension.dataT.extensionList())
       }.lift(::GroupContextExtensions)
   }
 }

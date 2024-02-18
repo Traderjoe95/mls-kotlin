@@ -1,5 +1,6 @@
 package com.github.traderjoe95.mls.protocol.types
 
+import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.Struct1
 import com.github.traderjoe95.mls.codec.error.DecoderError
 import com.github.traderjoe95.mls.codec.type.DataType
@@ -96,8 +97,8 @@ sealed class Credential(
 
   override fun component2(): Credential = this
 
-  companion object {
-    val T: DataType<Credential> by lazy {
+  companion object : Encodable<Credential> {
+    override val dataT: DataType<Credential> by lazy {
       throwAnyError {
         struct("Credential") {
           it.field("credential_type", CredentialType.T)

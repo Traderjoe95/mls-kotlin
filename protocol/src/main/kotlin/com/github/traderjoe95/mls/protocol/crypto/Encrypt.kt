@@ -1,7 +1,6 @@
 package com.github.traderjoe95.mls.protocol.crypto
 
 import arrow.core.raise.Raise
-import com.github.traderjoe95.mls.codec.error.EncoderError
 import com.github.traderjoe95.mls.protocol.error.DecryptError
 import com.github.traderjoe95.mls.protocol.types.crypto.Aad
 import com.github.traderjoe95.mls.protocol.types.crypto.Ciphertext
@@ -14,7 +13,6 @@ import com.github.traderjoe95.mls.protocol.types.crypto.Nonce
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret
 
 interface Encrypt {
-  context(Raise<EncoderError>)
   fun encryptWithLabel(
     publicKey: HpkePublicKey,
     label: String,
@@ -22,7 +20,6 @@ interface Encrypt {
     plaintext: ByteArray,
   ): HpkeCiphertext
 
-  context(Raise<EncoderError>)
   fun decryptWithLabel(
     keyPair: HpkeKeyPair,
     label: String,
@@ -60,7 +57,6 @@ interface Encrypt {
   val nonceLen: UShort
 
   abstract class Provider : Encrypt {
-    context(Raise<EncoderError>)
     final override fun encryptWithLabel(
       publicKey: HpkePublicKey,
       label: String,
@@ -68,7 +64,6 @@ interface Encrypt {
       plaintext: ByteArray,
     ): HpkeCiphertext = sealBase(publicKey, EncryptContext.create(label, context), Aad.empty, plaintext)
 
-    context(Raise<EncoderError>)
     final override fun decryptWithLabel(
       keyPair: HpkeKeyPair,
       label: String,
@@ -83,7 +78,6 @@ interface Encrypt {
         ciphertext.ciphertext,
       )
 
-    context(Raise<EncoderError>)
     internal abstract fun sealBase(
       publicKey: HpkePublicKey,
       context: EncryptContext,
@@ -91,7 +85,6 @@ interface Encrypt {
       plaintext: ByteArray,
     ): HpkeCiphertext
 
-    context(Raise<EncoderError>)
     internal abstract fun openBase(
       kemOutput: KemOutput,
       keyPair: HpkeKeyPair,

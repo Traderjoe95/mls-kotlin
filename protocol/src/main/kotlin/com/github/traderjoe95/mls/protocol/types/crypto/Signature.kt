@@ -1,5 +1,6 @@
 package com.github.traderjoe95.mls.protocol.types.crypto
 
+import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.type.DataType
 import com.github.traderjoe95.mls.codec.type.V
 import com.github.traderjoe95.mls.codec.type.derive
@@ -14,15 +15,15 @@ value class SigningKey(val key: ByteArray)
 value class VerificationKey(val key: ByteArray) {
   fun eq(other: VerificationKey): Boolean = key.contentEquals(other.key)
 
-  companion object {
-    val T: DataType<VerificationKey> = opaque[V].derive({ VerificationKey(it) }, { it.key }, name = "SignaturePublicKey")
+  companion object : Encodable<VerificationKey> {
+    override val dataT: DataType<VerificationKey> = opaque[V].derive({ VerificationKey(it) }, { it.key }, name = "SignaturePublicKey")
   }
 }
 
 @JvmInline
 value class Signature(val value: ByteArray) {
-  companion object {
-    val T: DataType<Signature> = opaque[V].derive({ Signature(it) }, { it.value })
+  companion object : Encodable<Signature> {
+    override val dataT: DataType<Signature> = opaque[V].derive({ Signature(it) }, { it.value })
 
     val ByteArray.asSignature: Signature
       get() = Signature(this)
@@ -30,8 +31,8 @@ value class Signature(val value: ByteArray) {
 }
 
 internal data class SignContent(val label: String, val content: ByteArray) : Struct2T.Shape<String, ByteArray> {
-  companion object {
-    val T = bytesAndLabel("SignContent", "content").lift(::SignContent)
+  companion object : Encodable<SignContent> {
+    override val dataT: DataType<SignContent> = bytesAndLabel("SignContent", "content").lift(::SignContent)
 
     fun create(
       label: String,

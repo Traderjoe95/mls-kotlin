@@ -1,6 +1,7 @@
 package com.github.traderjoe95.mls.protocol.types.framing.content
 
 import arrow.core.raise.Raise
+import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.type.DataType
 import com.github.traderjoe95.mls.codec.type.V
 import com.github.traderjoe95.mls.codec.type.opaque
@@ -13,9 +14,9 @@ import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.codec.type.uint64
 import com.github.traderjoe95.mls.codec.util.throwAnyError
 import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
-import com.github.traderjoe95.mls.protocol.error.EncoderError
 import com.github.traderjoe95.mls.protocol.error.EpochError
 import com.github.traderjoe95.mls.protocol.error.MacError
+import com.github.traderjoe95.mls.protocol.error.SenderCommitError
 import com.github.traderjoe95.mls.protocol.error.SignatureError
 import com.github.traderjoe95.mls.protocol.group.GroupContext
 import com.github.traderjoe95.mls.protocol.group.GroupState
@@ -24,6 +25,7 @@ import com.github.traderjoe95.mls.protocol.types.crypto.Mac
 import com.github.traderjoe95.mls.protocol.types.crypto.Signature
 import com.github.traderjoe95.mls.protocol.types.crypto.SigningKey
 import com.github.traderjoe95.mls.protocol.types.framing.Sender
+import com.github.traderjoe95.mls.protocol.types.framing.content.FramedContent.Tbs.Companion.encodeUnsafe
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ContentType
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
 import com.github.traderjoe95.mls.protocol.types.framing.enums.SenderType
@@ -47,19 +49,19 @@ data class FramedContent<out T : Content>(
     content,
   )
 
-  companion object {
-    val T: DataType<FramedContent<*>> =
+  companion object : Encodable<FramedContent<*>> {
+    override val dataT: DataType<FramedContent<*>> =
       throwAnyError {
         struct("FramedContent") {
           it.field("group_id", ULID.T)
             .field("epoch", uint64.asULong)
-            .field("sender", Sender.T)
+            .field("sender", Sender.dataT)
             .field("authenticated_data", opaque[V])
             .field("content_type", ContentType.T)
             .select<Content, _>(ContentType.T, "content_type") {
-              case(ContentType.Application).then(ApplicationData.T, "application_data")
-                .case(ContentType.Proposal).then(Proposal.T, "proposal")
-                .case(ContentType.Commit).then(Commit.T, "commit")
+              case(ContentType.Application).then(ApplicationData.dataT, "application_data")
+                .case(ContentType.Proposal).then(Proposal.dataT, "proposal")
+                .case(ContentType.Commit).then(Commit.dataT, "commit")
             }
         }.lift(::FramedContent)
       }
@@ -76,40 +78,35 @@ data class FramedContent<out T : Content>(
       groupContext,
     )
 
-  context(GroupState, Raise<EncoderError>)
+  context(GroupState, Raise<SenderCommitError>)
   fun sign(
     wireFormat: WireFormat,
     groupContext: GroupContext,
-  ): Signature = sign(wireFormat, groupContext, signingKey)
+  ): Signature = ensureActive { sign(wireFormat, groupContext, signingKey) }
 
-  context(ICipherSuite, Raise<EncoderError>)
+  context(ICipherSuite)
   fun sign(
     wireFormat: WireFormat,
     groupContext: GroupContext,
     signingKey: SigningKey,
   ): Signature =
-    EncoderError.wrap {
-      signWithLabel(
-        signingKey,
-        "FramedContentTBS",
-        Tbs.T.encode(tbs(wireFormat, groupContext)),
-      )
-    }
+    signWithLabel(
+      signingKey,
+      "FramedContentTBS",
+      tbs(wireFormat, groupContext).encodeUnsafe(),
+    )
 
   context(GroupState, Raise<SignatureError>, Raise<MacError>, Raise<EpochError>)
   fun verifySignature(
     authData: AuthData,
     wireFormat: WireFormat,
     groupContext: GroupContext,
-  ) = EncoderError.wrap {
-    val tbs = tbs(wireFormat, groupContext)
-    verifyWithLabel(
-      getVerificationKey(this@FramedContent),
-      "FramedContentTBS",
-      Tbs.T.encode(tbs),
-      authData.signature,
-    )
-  }
+  ) = verifyWithLabel(
+    getVerificationKey(this@FramedContent),
+    "FramedContentTBS",
+    tbs(wireFormat, groupContext).encodeUnsafe(),
+    authData.signature,
+  )
 
   override fun equals(other: Any?): Boolean {
     if (this === other) return true
@@ -143,15 +140,15 @@ data class FramedContent<out T : Content>(
     val content: FramedContent<*>,
     val groupContext: GroupContext?,
   ) : Struct4T.Shape<ProtocolVersion, WireFormat, FramedContent<*>, GroupContext?> {
-    companion object {
-      val T: DataType<Tbs> =
+    companion object : Encodable<Tbs> {
+      override val dataT: DataType<Tbs> =
         throwAnyError {
           struct("FramedContentTBS") {
             it.field("version", ProtocolVersion.T, ProtocolVersion.MLS_1_0)
               .field("wire_format", WireFormat.T)
-              .field("content", FramedContent.T)
+              .field("content", FramedContent.dataT)
               .select<GroupContext?, _>(SenderType.T, "content", "sender", "sender_type") {
-                case(SenderType.Member, SenderType.NewMemberCommit).then(GroupContext.T, "context")
+                case(SenderType.Member, SenderType.NewMemberCommit).then(GroupContext.dataT, "context")
                   .orElseNothing()
               }
           }.lift(::Tbs)

@@ -13,15 +13,7 @@ inline fun <E, F, T> Raise<E>.wrapErrors(
 
 data class EncoderError(
   val encoderError: BaseEncoderError,
-) : TreeUpdateError,
-  GroupContextUpdateError,
-  GroupCreationError,
-  SignatureError,
-  CommitError,
-  MessageError,
-  JoinError,
-  TreeCheckError,
-  SendError {
+) : SendError {
   companion object {
     context(Raise<EncoderError>)
     inline fun <T> wrap(block: Raise<BaseEncoderError>.() -> T): T = wrapErrors(::EncoderError, block)
@@ -29,7 +21,7 @@ data class EncoderError(
 }
 
 data class DecoderError(
-  val encoderError: BaseDecoderError,
+  val decoderError: BaseDecoderError,
 ) : SignatureError, JoinError, MessageRecipientError, KeyPackageRetrievalError<Nothing> {
   companion object {
     context(Raise<DecoderError>)
@@ -44,3 +36,5 @@ data class UnknownGroup(val groupId: ULID) :
   ResumptionJoinError,
   SendToGroupError,
   GetGroupInfoError
+
+data class GroupSuspended(val groupId: ULID) : CommitError, PrivateMessageSenderError, PublicMessageSenderError, GroupInfoError

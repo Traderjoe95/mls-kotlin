@@ -5,6 +5,7 @@ import com.github.traderjoe95.mls.codec.error.DecoderError
 import com.github.traderjoe95.mls.codec.error.EncoderError
 import com.github.traderjoe95.mls.codec.util.Slice
 import com.github.traderjoe95.mls.codec.util.mapFirst
+import com.github.traderjoe95.mls.codec.util.throwAnyError
 
 inline fun <V, D> DataType<D>.derive(
   crossinline up: context(Raise<DecoderError>)
@@ -23,6 +24,8 @@ interface DataType<V> {
 
   context(Raise<EncoderError>)
   fun encode(value: V): ByteArray
+
+  fun encodeUnsafe(value: V): ByteArray = throwAnyError { encode(value) }
 
   context(Raise<DecoderError>)
   fun decode(bytes: Slice): Pair<V, Slice>

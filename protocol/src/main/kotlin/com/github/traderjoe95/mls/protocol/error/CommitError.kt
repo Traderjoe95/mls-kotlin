@@ -1,9 +1,11 @@
 package com.github.traderjoe95.mls.protocol.error
 
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
+import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.types.ProposalType
 import com.github.traderjoe95.mls.protocol.types.crypto.PreSharedKeyId
 import com.github.traderjoe95.mls.protocol.types.framing.content.Proposal
+import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
 import com.github.traderjoe95.mls.protocol.types.framing.enums.SenderType
 import com.github.traderjoe95.mls.protocol.types.framing.message.KeyPackage
 import de.traderjoe.ulid.ULID
@@ -25,19 +27,25 @@ sealed interface InvalidCommit : CommitError {
 
   data object CommitterRemoved : InvalidCommit
 
-  data class AmbiguousUpdateOrRemove(val leafIndex: UInt) : InvalidCommit
+  data class BlankLeafRemoved(val leafIndex: LeafIndex) : InvalidCommit
 
-  data class DoubleAdd(val keyPackage: KeyPackage) : InvalidCommit
+  data class AmbiguousUpdateOrRemove(val leafIndex: LeafIndex) : InvalidCommit
 
-  data class ReAdd(val keyPackage: KeyPackage) : InvalidCommit
+  data class AlreadyMember(val keyPackage: KeyPackage, val existingLeafIdx: LeafIndex) : InvalidCommit
 
-  data class KeyPackageInvalidCipherSuite(val cipherSuite: CipherSuite, val expected: CipherSuite) : InvalidCommit
+  data class IncompatibleCipherSuite(val keyPackage: CipherSuite, val group: CipherSuite) : InvalidCommit
+
+  data class IncompatibleProtocolVersion(val keyPackage: ProtocolVersion, val group: ProtocolVersion) : InvalidCommit
+
+  data class InitKeyReuseAsEncryptionKey(val keyPackage: KeyPackage) : InvalidCommit
 
   data class DoublePsk(val preSharedKeyId: PreSharedKeyId) : InvalidCommit
 
   data object AmbiguousGroupCtxExtensions : InvalidCommit
 
   data object ReInitMustBeSingle : InvalidCommit
+
+  data class ReInitDowngrade(val from: ProtocolVersion, val to: ProtocolVersion) : InvalidCommit
 
   data object ExternalInitFromMember : InvalidCommit
 
@@ -51,7 +59,7 @@ sealed interface InvalidCommit : CommitError {
 
   data object DoubleRemove : InvalidCommit
 
-  data class UnauthorizedExternalRemove(val leafIndex: UInt) : InvalidCommit
+  data class UnauthorizedExternalRemove(val leafIndex: LeafIndex) : InvalidCommit
 
   data class InvalidExternalProposal(val type: ProposalType) : InvalidCommit
 }

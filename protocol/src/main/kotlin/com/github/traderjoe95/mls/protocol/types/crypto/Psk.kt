@@ -1,6 +1,7 @@
 package com.github.traderjoe95.mls.protocol.types.crypto
 
 import arrow.core.raise.Raise
+import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.Struct2
 import com.github.traderjoe95.mls.codec.Struct4
 import com.github.traderjoe95.mls.codec.type.DataType
@@ -74,8 +75,8 @@ sealed interface PreSharedKeyId : Struct2T.Shape<PskType, PreSharedKeyId> {
       if (pskNonce.size != hashLen.toUInt()) raise(PskError.BadPskNonce(this, hashLen.toUInt(), pskNonce.size))
     }
 
-  companion object {
-    val T: DataType<PreSharedKeyId> =
+  companion object : Encodable<PreSharedKeyId> {
+    override val dataT: DataType<PreSharedKeyId> =
       throwAnyError {
         struct("PreSharedKeyID") {
           it.field("psktype", PskType.T)
@@ -120,7 +121,7 @@ class ExternalPskId(
     internal val T: DataType<ExternalPskId> =
       struct("ExternalPskId") {
         it.field("psk_id", opaque[V])
-          .field("psk_nonce", Nonce.T)
+          .field("psk_nonce", Nonce.dataT)
       }.lift(::ExternalPskId, ExternalPskId::asStruct)
   }
 }
@@ -177,7 +178,7 @@ class ResumptionPskId(
         it.field("usage", ResumptionPskUsage.T)
           .field("psk_group_id", ULID.T)
           .field("psk_epoch", uint64.asULong)
-          .field("psk_nonce", Nonce.T)
+          .field("psk_nonce", Nonce.dataT)
       }.lift(::ResumptionPskId, ResumptionPskId::asStruct)
 
     fun reInit(
@@ -208,10 +209,10 @@ data class PskLabel(
 ) : Struct3T.Shape<PreSharedKeyId, UShort, UShort> {
   constructor(pskId: PreSharedKeyId, index: Int, count: Int) : this(pskId, index.toUShort(), count.toUShort())
 
-  companion object {
-    val T: DataType<PskLabel> =
+  companion object : Encodable<PskLabel> {
+    override val dataT: DataType<PskLabel> =
       struct("PSKLabel") {
-        it.field("pskId", PreSharedKeyId.T)
+        it.field("pskId", PreSharedKeyId.dataT)
           .field("index", uint16.asUShort)
           .field("count", uint16.asUShort)
       }.lift(::PskLabel)

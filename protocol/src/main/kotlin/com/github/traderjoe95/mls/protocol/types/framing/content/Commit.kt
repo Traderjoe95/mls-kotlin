@@ -3,6 +3,7 @@ package com.github.traderjoe95.mls.protocol.types.framing.content
 import arrow.core.None
 import arrow.core.Option
 import arrow.core.some
+import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.Struct2
 import com.github.traderjoe95.mls.codec.type.DataType
 import com.github.traderjoe95.mls.codec.type.EnumT
@@ -28,11 +29,11 @@ data class Commit(
 
   override val contentType: ContentType = ContentType.Commit
 
-  companion object {
-    val T: DataType<Commit> =
+  companion object : Encodable<Commit> {
+    override val dataT: DataType<Commit> =
       struct("Commit") {
-        it.field("proposals", ProposalOrRef.T[V])
-          .field("update_path", optional[UpdatePath.T])
+        it.field("proposals", ProposalOrRef.dataT[V])
+          .field("update_path", optional[UpdatePath.dataT])
       }.lift(::Commit)
 
     val empty: Commit
@@ -43,12 +44,12 @@ data class Commit(
 sealed interface ProposalOrRef {
   val proposalOrRef: ProposalOrRefType
 
-  companion object {
-    val T: DataType<ProposalOrRef> =
+  companion object : Encodable<ProposalOrRef> {
+    override val dataT: DataType<ProposalOrRef> =
       struct("ProposalOrRef") {
         it.field("type", ProposalOrRefType.T)
           .select<ProposalOrRef, _>(ProposalOrRefType.T, "type") {
-            case(ProposalOrRefType.Proposal).then(Proposal.T)
+            case(ProposalOrRefType.Proposal).then(Proposal.dataT)
               .case(ProposalOrRefType.Reference).then(Proposal.Ref.T)
           }
       }.lift({ _, p -> p }, { Struct2(it.proposalOrRef, it) })

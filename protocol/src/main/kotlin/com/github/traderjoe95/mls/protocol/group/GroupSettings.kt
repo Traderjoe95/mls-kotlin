@@ -10,7 +10,6 @@ data class GroupSettings(
   val cipherSuite: CipherSuite,
   val groupId: ULID,
   val keepPastEpochs: UInt = 5U,
-  val public: Boolean = false,
 ) {
   companion object {
     suspend fun new(
@@ -18,14 +17,12 @@ data class GroupSettings(
       protocolVersion: ProtocolVersion = ProtocolVersion.MLS_1_0,
       groupId: ULID? = null,
       keepPastEpochs: UInt = 5U,
-      public: Boolean = false,
     ): GroupSettings =
       GroupSettings(
         protocolVersion,
         cipherSuite,
         groupId ?: ULID.new(),
         keepPastEpochs,
-        public,
       )
   }
 }

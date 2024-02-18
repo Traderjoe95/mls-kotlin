@@ -15,13 +15,13 @@ interface SecretTree {
   context(Raise<RatchetError>)
   suspend fun getNonceAndKey(
     epoch: ULong,
-    leafIndex: UInt,
+    leafIndex: LeafIndex,
     contentType: ContentType,
     generation: UInt,
   ): Pair<Nonce, Secret>
 
   suspend fun getNonceAndKey(
-    leafIndex: UInt,
+    leafIndex: LeafIndex,
     contentType: ContentType,
   ): Triple<Nonce, Secret, UInt>
 }

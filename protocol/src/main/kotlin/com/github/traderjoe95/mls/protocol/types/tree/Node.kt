@@ -1,5 +1,6 @@
 package com.github.traderjoe95.mls.protocol.types.tree
 
+import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.Struct2
 import com.github.traderjoe95.mls.codec.type.DataType
 import com.github.traderjoe95.mls.codec.type.struct.lift
@@ -15,13 +16,19 @@ sealed interface Node {
 
   fun withParentHash(parentHash: ParentHash): Node
 
-  companion object {
-    val T: DataType<Node> =
+  val asParent: ParentNode
+    get() = this as ParentNode
+
+  val asLeaf: LeafNode<*>
+    get() = this as LeafNode<*>
+
+  companion object : Encodable<Node> {
+    override val dataT: DataType<Node> =
       struct("Node") {
         it.field("node_type", NodeType.T)
           .select<Node, _>(NodeType.T, "node_type") {
-            case(NodeType.Leaf).then(LeafNode.T, "leaf_node")
-              .case(NodeType.Parent).then(ParentNode.T, "parent")
+            case(NodeType.Leaf).then(LeafNode.dataT, "leaf_node")
+              .case(NodeType.Parent).then(ParentNode.dataT, "parent")
           }
       }.lift({ _, node -> node }) {
         when (it) {

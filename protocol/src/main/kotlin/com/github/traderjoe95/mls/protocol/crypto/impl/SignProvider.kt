@@ -2,7 +2,6 @@ package com.github.traderjoe95.mls.protocol.crypto.impl
 
 import arrow.core.raise.Raise
 import com.github.traderjoe95.mls.codec.decodeAs
-import com.github.traderjoe95.mls.codec.error.EncoderError
 import com.github.traderjoe95.mls.protocol.crypto.Sign
 import com.github.traderjoe95.mls.protocol.error.DecoderError
 import com.github.traderjoe95.mls.protocol.error.SignatureError
@@ -66,11 +65,9 @@ internal class SignProvider(
     if (!valid) raise(SignatureError.BadSignature)
   }
 
-  context(Raise<EncoderError>)
   override fun generateSignatureKeyPair(): Pair<SigningKey, VerificationKey> =
     kpg().generateKeyPair().run { SigningKey(private.bytes) to VerificationKey(public.bytes) }
 
-  context(Raise<EncoderError>)
   override fun calculateVerificationKey(signingKey: SigningKey): VerificationKey =
     when (val p = signingKey.asParameter) {
       is Ed25519PrivateKeyParameters -> VerificationKey(p.generatePublicKey().bytes)
@@ -125,15 +122,14 @@ internal class SignProvider(
     }
   }
 
-  context(Raise<EncoderError>)
   private val AsymmetricKeyParameter.bytes: ByteArray
     get() =
       when (this) {
         is ECPublicKeyParameters ->
           when (parameters.curve) {
-            is SecP256R1Curve -> P256_POINT_T.encode(q)
-            is SecP384R1Curve -> P384_POINT_T.encode(q)
-            is SecP521R1Curve -> P521_POINT_T.encode(q)
+            is SecP256R1Curve -> P256_POINT_T.encodeUnsafe(q)
+            is SecP384R1Curve -> P384_POINT_T.encodeUnsafe(q)
+            is SecP521R1Curve -> P521_POINT_T.encodeUnsafe(q)
             else -> error("Unsupported")
           }
 
@@ -163,7 +159,7 @@ internal class SignProvider(
       when (dhKem) {
         DhKem.P256_SHA256 -> ECPublicKeyParameters(key.decodeAs(P256_POINT_T), secp256r1)
         DhKem.P384_SHA384 -> ECPublicKeyParameters(key.decodeAs(P384_POINT_T), secp384r1)
-        DhKem.P521_SHA512 -> ECPublicKeyParameters(key.decodeAs(P384_POINT_T), secp521r1)
+        DhKem.P521_SHA512 -> ECPublicKeyParameters(key.decodeAs(P521_POINT_T), secp521r1)
 
         DhKem.X25519_SHA256 -> Ed25519PublicKeyParameters(key)
         DhKem.X448_SHA512 -> Ed448PublicKeyParameters(key)

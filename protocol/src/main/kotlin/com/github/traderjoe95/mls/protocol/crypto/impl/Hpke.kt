@@ -2,7 +2,6 @@ package com.github.traderjoe95.mls.protocol.crypto.impl
 
 import arrow.core.raise.Raise
 import arrow.core.raise.catch
-import com.github.traderjoe95.mls.codec.error.EncoderError
 import com.github.traderjoe95.mls.protocol.crypto.Encrypt
 import com.github.traderjoe95.mls.protocol.crypto.Gen
 import com.github.traderjoe95.mls.protocol.crypto.Kem
@@ -11,6 +10,7 @@ import com.github.traderjoe95.mls.protocol.types.crypto.Aad
 import com.github.traderjoe95.mls.protocol.types.crypto.Ciphertext
 import com.github.traderjoe95.mls.protocol.types.crypto.Ciphertext.Companion.asCiphertext
 import com.github.traderjoe95.mls.protocol.types.crypto.EncryptContext
+import com.github.traderjoe95.mls.protocol.types.crypto.EncryptContext.Companion.encodeUnsafe
 import com.github.traderjoe95.mls.protocol.types.crypto.HpkeCiphertext
 import com.github.traderjoe95.mls.protocol.types.crypto.HpkeKeyPair
 import com.github.traderjoe95.mls.protocol.types.crypto.HpkePrivateKey
@@ -125,7 +125,6 @@ internal class Hpke(
       null,
     ).asSecret
 
-  context(Raise<EncoderError>)
   override fun sealBase(
     publicKey: HpkePublicKey,
     context: EncryptContext,
@@ -134,7 +133,7 @@ internal class Hpke(
   ): HpkeCiphertext =
     hpke.seal(
       publicKey.asParameter,
-      EncryptContext.T.encode(context),
+      context.encodeUnsafe(),
       aad.data,
       plaintext,
       null,
@@ -144,7 +143,6 @@ internal class Hpke(
       HpkeCiphertext(kemOutput.asKemOutput, ct.asCiphertext)
     }
 
-  context(Raise<EncoderError>)
   override fun openBase(
     kemOutput: KemOutput,
     keyPair: HpkeKeyPair,
@@ -155,7 +153,7 @@ internal class Hpke(
     hpke.open(
       kemOutput.value,
       keyPair.asParameter,
-      EncryptContext.T.encode(context),
+      context.encodeUnsafe(),
       aad.data,
       ciphertext.value,
       null,

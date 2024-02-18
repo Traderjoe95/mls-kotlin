@@ -1,6 +1,7 @@
 package com.github.traderjoe95.mls.protocol.group
 
 import arrow.core.raise.Raise
+import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.type.DataType
 import com.github.traderjoe95.mls.codec.type.V
 import com.github.traderjoe95.mls.codec.type.opaque
@@ -10,12 +11,11 @@ import com.github.traderjoe95.mls.codec.type.struct.Struct7T
 import com.github.traderjoe95.mls.codec.type.struct.lift
 import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.codec.type.uint64
-import com.github.traderjoe95.mls.codec.util.throwAnyError
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
 import com.github.traderjoe95.mls.protocol.crypto.KeySchedule
-import com.github.traderjoe95.mls.protocol.error.EncoderError
 import com.github.traderjoe95.mls.protocol.error.GroupCreationError
+import com.github.traderjoe95.mls.protocol.group.GroupContext.InterimTranscriptHashInput.Companion.encodeUnsafe
 import com.github.traderjoe95.mls.protocol.tree.RatchetTree
 import com.github.traderjoe95.mls.protocol.tree.treeHash
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtension
@@ -42,12 +42,10 @@ class GroupContext(
   val interimTranscriptHash: ByteArray = byteArrayOf(),
 ) : HasExtensions<GroupContextExtension<*>>(),
   Struct7T.Shape<ProtocolVersion, CipherSuite, ULID, ULong, ByteArray, ByteArray, GroupContextExtensions> {
-  val encoded: ByteArray = throwAnyError { T.encode(this@GroupContext) }
+  inline val encoded: ByteArray
+    get() = encodeUnsafe()
 
-  fun settings(
-    keepPastEpochs: UInt = 5U,
-    public: Boolean = false,
-  ): GroupSettings = GroupSettings(protocolVersion, cipherSuite, groupId, keepPastEpochs, public)
+  fun settings(keepPastEpochs: UInt = 5U): GroupSettings = GroupSettings(protocolVersion, cipherSuite, groupId, keepPastEpochs)
 
   override fun component1(): ProtocolVersion = protocolVersion
 
@@ -63,20 +61,20 @@ class GroupContext(
 
   override fun component7(): List<GroupContextExtension<*>> = extensions
 
-  context(ICipherSuite, Raise<EncoderError>)
+  context(ICipherSuite)
   internal fun provisional(tree: RatchetTree): GroupContext =
     GroupContext(
       protocolVersion,
       cipherSuite,
       groupId,
       epoch + 1U,
-      EncoderError.wrap { tree.treeHash },
+      tree.treeHash,
       confirmedTranscriptHash,
       extensions,
       interimTranscriptHash,
     )
 
-  fun withExtensions(extensions: List<GroupContextExtension<*>>): GroupContext =
+  fun withExtensions(extensions: List<GroupContextExtension<*>>?): GroupContext =
     GroupContext(
       protocolVersion,
       cipherSuite,
@@ -84,11 +82,11 @@ class GroupContext(
       epoch,
       treeHash,
       confirmedTranscriptHash,
-      extensions,
+      extensions ?: this.extensions,
       interimTranscriptHash,
     )
 
-  context(ICipherSuite, Raise<EncoderError>)
+  context(ICipherSuite)
   fun withInterimTranscriptHash(confirmationTag: Mac): GroupContext =
     GroupContext(
       protocolVersion,
@@ -98,17 +96,12 @@ class GroupContext(
       treeHash,
       confirmedTranscriptHash,
       extensions,
-      hash(
-        confirmedTranscriptHash +
-          EncoderError.wrap {
-            InterimTranscriptHashInput.T.encode(InterimTranscriptHashInput(confirmationTag))
-          },
-      ),
+      hash(confirmedTranscriptHash + InterimTranscriptHashInput(confirmationTag).encodeUnsafe()),
     )
 
-  companion object {
+  companion object : Encodable<GroupContext> {
     @Suppress("kotlin:S6531")
-    val T: DataType<GroupContext> =
+    override val dataT: DataType<GroupContext> =
       struct("GroupContext") {
         it.field("version", ProtocolVersion.T, ProtocolVersion.MLS_1_0)
           .field("cipher_suite", CipherSuite.T)
@@ -116,7 +109,7 @@ class GroupContext(
           .field("epoch", uint64.asULong)
           .field("tree_hash", opaque[V])
           .field("confirmed_transcript_hash", opaque[V])
-          .field("extensions", GroupContextExtension.T.extensionList())
+          .field("extensions", GroupContextExtension.dataT.extensionList())
       }.lift(::GroupContext)
 
     context(Raise<GroupCreationError>)
@@ -131,23 +124,17 @@ class GroupContext(
         cipherSuite,
         ULID.new(),
         0UL,
-        EncoderError.wrap {
-          with(cipherSuite) { tree.treeHash }
-        },
+        with(cipherSuite) { tree.treeHash },
         byteArrayOf(),
         extensions.toList(),
         cipherSuite.hash(
-          EncoderError.wrap {
-            InterimTranscriptHashInput.T.encode(
-              InterimTranscriptHashInput(
-                cipherSuite.mac(keySchedule.confirmationKey, byteArrayOf()),
-              ),
-            )
-          },
+          InterimTranscriptHashInput(
+            cipherSuite.mac(keySchedule.confirmationKey, byteArrayOf()),
+          ).encodeUnsafe(),
         ),
       )
 
-    fun create(
+    internal fun create(
       settings: GroupSettings,
       epoch: GroupEpoch,
     ): GroupContext =
@@ -168,12 +155,12 @@ class GroupContext(
     val framedContent: FramedContent<*>,
     val signature: Signature,
   ) : Struct3T.Shape<WireFormat, FramedContent<*>, Signature> {
-    companion object {
-      val T: DataType<ConfirmedTranscriptHashInput> =
+    companion object : Encodable<ConfirmedTranscriptHashInput> {
+      override val dataT: DataType<ConfirmedTranscriptHashInput> =
         struct("ConfirmedTranscriptHashInput") {
           it.field("wire_format", WireFormat.T)
-            .field("content", FramedContent.T)
-            .field("signature", Signature.T)
+            .field("content", FramedContent.dataT)
+            .field("signature", Signature.dataT)
         }.lift(::ConfirmedTranscriptHashInput)
     }
   }
@@ -181,10 +168,10 @@ class GroupContext(
   data class InterimTranscriptHashInput(
     val confirmationTag: Mac,
   ) : Struct1T.Shape<Mac> {
-    companion object {
-      val T: DataType<InterimTranscriptHashInput> =
+    companion object : Encodable<InterimTranscriptHashInput> {
+      override val dataT: DataType<InterimTranscriptHashInput> =
         struct("InterimTranscriptHashInput") {
-          it.field("confirmation_tag", Mac.T)
+          it.field("confirmation_tag", Mac.dataT)
         }.lift(::InterimTranscriptHashInput)
     }
   }

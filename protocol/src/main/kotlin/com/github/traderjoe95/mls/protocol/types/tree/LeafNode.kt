@@ -3,6 +3,7 @@
 package com.github.traderjoe95.mls.protocol.types.tree
 
 import arrow.core.raise.Raise
+import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.type.DataType
 import com.github.traderjoe95.mls.codec.type.struct.Struct2T
 import com.github.traderjoe95.mls.codec.type.struct.Struct8T
@@ -10,12 +11,11 @@ import com.github.traderjoe95.mls.codec.type.struct.lift
 import com.github.traderjoe95.mls.codec.type.struct.member.orElseNothing
 import com.github.traderjoe95.mls.codec.type.struct.member.then
 import com.github.traderjoe95.mls.codec.type.struct.struct
-import com.github.traderjoe95.mls.codec.type.uint32
 import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
-import com.github.traderjoe95.mls.protocol.error.EncoderError
 import com.github.traderjoe95.mls.protocol.error.SignatureError
+import com.github.traderjoe95.mls.protocol.group.ActiveGroupState
 import com.github.traderjoe95.mls.protocol.group.GroupContext
-import com.github.traderjoe95.mls.protocol.group.GroupState
+import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.types.Credential
 import com.github.traderjoe95.mls.protocol.types.Extension
 import com.github.traderjoe95.mls.protocol.types.HasExtensions
@@ -27,13 +27,13 @@ import com.github.traderjoe95.mls.protocol.types.crypto.Signature
 import com.github.traderjoe95.mls.protocol.types.crypto.SigningKey
 import com.github.traderjoe95.mls.protocol.types.crypto.VerificationKey
 import com.github.traderjoe95.mls.protocol.types.extensionList
+import com.github.traderjoe95.mls.protocol.types.tree.LeafNode.Tbs.Companion.encodeUnsafe
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.Capabilities
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.LeafNodeInfo
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.LeafNodeSource
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.Lifetime
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.ParentHash
 import de.traderjoe.ulid.ULID
-import com.github.traderjoe95.mls.codec.error.EncoderError as BaseEncoderError
 
 typealias KeyPackageLeafNode = LeafNode<LeafNodeSource.KeyPackage>
 typealias CommitLeafNode = LeafNode<LeafNodeSource.Commit>
@@ -64,73 +64,70 @@ data class LeafNode<S : LeafNodeSource>(
       this
     }
 
-  context(Raise<BaseEncoderError>)
   fun tbs(
     groupId: ULID,
-    leafIndex: UInt,
+    leafIndex: LeafIndex,
   ): ByteArray =
-    Tbs.T.encode(
-      Tbs(
-        encryptionKey,
-        verificationKey,
-        credential,
-        capabilities,
-        source,
-        info,
-        extensions,
-        if (source != LeafNodeSource.KeyPackage) LeafNodeLocation(groupId, leafIndex) else null,
-      ),
-    )
+    Tbs(
+      encryptionKey,
+      verificationKey,
+      credential,
+      capabilities,
+      source,
+      info,
+      extensions,
+      if (source != LeafNodeSource.KeyPackage) LeafNodeLocation(groupId, leafIndex) else null,
+    ).encodeUnsafe()
 
   context(ICipherSuite, Raise<SignatureError>)
   fun verifySignature(
     groupId: ULID,
-    leafIndex: UInt,
+    leafIndex: LeafIndex,
   ) {
     verifyWithLabel(
       verificationKey,
       "LeafNodeTBS",
-      EncoderError.wrap { tbs(groupId, leafIndex) },
+      tbs(groupId, leafIndex),
       signature,
     )
   }
 
-  companion object {
+  companion object : Encodable<LeafNode<*>> {
     @Suppress("kotlin:6531")
-    val T: DataType<LeafNode<*>> =
+    override val dataT: DataType<LeafNode<*>> =
       struct("LeafNode") {
-        it.field("encryption_key", HpkePublicKey.T)
-          .field("signature_key", VerificationKey.T)
-          .field("credential", Credential.T)
-          .field("capabilities", Capabilities.T)
+        it.field("encryption_key", HpkePublicKey.dataT)
+          .field("signature_key", VerificationKey.dataT)
+          .field("credential", Credential.dataT)
+          .field("capabilities", Capabilities.dataT)
           .field("leaf_node_source", LeafNodeSource.T)
           .select<LeafNodeInfo?, _>(LeafNodeSource.T, "leaf_node_source") {
-            case(LeafNodeSource.KeyPackage).then(Lifetime.T)
-              .case(LeafNodeSource.Commit).then(ParentHash.T)
+            case(LeafNodeSource.KeyPackage).then(Lifetime.dataT)
+              .case(LeafNodeSource.Commit).then(ParentHash.dataT)
               .orElseNothing()
           }
-          .field("extensions", LeafNodeExtension.T.extensionList())
-          .field("signature", Signature.T)
+          .field("extensions", LeafNodeExtension.dataT.extensionList())
+          .field("signature", Signature.dataT)
       }.lift(::LeafNode)
 
     @Suppress("UNCHECKED_CAST", "kotlin:6531")
     fun <S : LeafNodeSource> t(expectedSource: S): DataType<LeafNode<S>> =
       struct("LeafNode") {
-        it.field("encryption_key", HpkePublicKey.T)
-          .field("signature_key", VerificationKey.T)
-          .field("credential", Credential.T)
-          .field("capabilities", Capabilities.T)
+        it.field("encryption_key", HpkePublicKey.dataT)
+          .field("signature_key", VerificationKey.dataT)
+          .field("credential", Credential.dataT)
+          .field("capabilities", Capabilities.dataT)
           .field("leaf_node_source", LeafNodeSource.T as DataType<S>, expectedSource)
           .select<LeafNodeInfo?, _>(LeafNodeSource.T, "leaf_node_source") {
-            case(LeafNodeSource.KeyPackage).then(Lifetime.T)
-              .case(LeafNodeSource.Commit).then(ParentHash.T)
+            case(LeafNodeSource.KeyPackage).then(Lifetime.dataT)
+              .case(LeafNodeSource.Commit).then(ParentHash.dataT)
               .orElseNothing()
           }
-          .field("extensions", LeafNodeExtension.T.extensionList())
-          .field("signature", Signature.T)
+          .field("extensions", LeafNodeExtension.dataT.extensionList())
+          .field("signature", Signature.dataT)
       }.lift(::LeafNode)
 
-    context(ICipherSuite, Raise<BaseEncoderError>)
+    context(ICipherSuite)
     fun keyPackage(
       encryptionKey: HpkePublicKey,
       verificationKey: VerificationKey,
@@ -154,9 +151,8 @@ data class LeafNode<S : LeafNodeSource>(
         signWithLabel(
           signingKey,
           "LeafNodeTBS",
-          Tbs.T.encode(
-            Tbs.keyPackage(encryptionKey, verificationKey, credential, greasedCapabilities, lifetime, greasedExtensions),
-          ),
+          Tbs.keyPackage(encryptionKey, verificationKey, credential, greasedCapabilities, lifetime, greasedExtensions)
+            .encodeUnsafe(),
         )
 
       return LeafNode(
@@ -171,21 +167,19 @@ data class LeafNode<S : LeafNodeSource>(
       )
     }
 
-    context(ICipherSuite, Raise<BaseEncoderError>)
+    context(ICipherSuite)
     fun commit(
       encryptionKey: HpkePublicKey,
       oldLeafNode: LeafNode<*>,
       parentHash: ParentHash,
-      leafIndex: UInt,
+      leafIndex: LeafIndex,
       groupContext: GroupContext,
       signingKey: SigningKey,
     ): CommitLeafNode =
       signWithLabel(
         signingKey,
         "LeafNodeTBS",
-        Tbs.T.encode(
-          Tbs.commit(encryptionKey, oldLeafNode, parentHash, leafIndex, groupContext),
-        ),
+        Tbs.commit(encryptionKey, oldLeafNode, parentHash, leafIndex, groupContext).encodeUnsafe(),
       ).let { signature ->
         LeafNode(
           encryptionKey,
@@ -199,18 +193,16 @@ data class LeafNode<S : LeafNodeSource>(
         )
       }
 
-    context(GroupState, Raise<BaseEncoderError>)
-    fun update(
+    context(ActiveGroupState)
+    internal fun update(
       encryptionKey: HpkePublicKey,
       oldLeafNode: LeafNode<*>,
-      leafIndex: UInt,
+      leafIndex: LeafIndex,
     ): UpdateLeafNode =
       signWithLabel(
         signingKey,
         "LeafNodeTBS",
-        Tbs.T.encode(
-          Tbs.update(encryptionKey, oldLeafNode, leafIndex, groupContext),
-        ),
+        Tbs.update(encryptionKey, oldLeafNode, leafIndex, groupContext).encodeUnsafe(),
       ).let { signature ->
         LeafNode(
           encryptionKey,
@@ -245,23 +237,23 @@ data class LeafNode<S : LeafNodeSource>(
         LeafNodeExtensions,
         LeafNodeLocation?,
       > {
-    companion object {
+    companion object : Encodable<Tbs> {
       @Suppress("kotlin:6531")
-      val T: DataType<Tbs> =
+      override val dataT: DataType<Tbs> =
         struct("LeafNodeTBS") {
-          it.field("encryption_key", HpkePublicKey.T)
-            .field("signature_key", VerificationKey.T)
-            .field("credential", Credential.T)
-            .field("capabilities", Capabilities.T)
+          it.field("encryption_key", HpkePublicKey.dataT)
+            .field("signature_key", VerificationKey.dataT)
+            .field("credential", Credential.dataT)
+            .field("capabilities", Capabilities.dataT)
             .field("leaf_node_source", LeafNodeSource.T)
             .select<LeafNodeInfo?, _>(LeafNodeSource.T, "leaf_node_source") {
-              case(LeafNodeSource.KeyPackage).then(Lifetime.T)
-                .case(LeafNodeSource.Commit).then(ParentHash.T)
+              case(LeafNodeSource.KeyPackage).then(Lifetime.dataT)
+                .case(LeafNodeSource.Commit).then(ParentHash.dataT)
                 .orElseNothing()
             }
-            .field("extensions", LeafNodeExtension.T.extensionList())
+            .field("extensions", LeafNodeExtension.dataT.extensionList())
             .select<LeafNodeLocation?, _>(LeafNodeSource.T, "leaf_node_source") {
-              case(LeafNodeSource.Update, LeafNodeSource.Commit).then(LeafNodeLocation.T)
+              case(LeafNodeSource.Update, LeafNodeSource.Commit).then(LeafNodeLocation.dataT)
                 .orElseNothing()
             }
         }.lift(::Tbs)
@@ -289,7 +281,7 @@ data class LeafNode<S : LeafNodeSource>(
         encryptionKey: HpkePublicKey,
         oldLeafNode: LeafNode<*>,
         parentHash: ParentHash,
-        leafIndex: UInt,
+        leafIndex: LeafIndex,
         groupContext: GroupContext,
       ): Tbs =
         Tbs(
@@ -306,7 +298,7 @@ data class LeafNode<S : LeafNodeSource>(
       internal fun update(
         encryptionKey: HpkePublicKey,
         oldLeafNode: LeafNode<*>,
-        leafIndex: UInt,
+        leafIndex: LeafIndex,
         groupContext: GroupContext,
       ): Tbs =
         Tbs(
@@ -324,13 +316,13 @@ data class LeafNode<S : LeafNodeSource>(
 
   data class LeafNodeLocation(
     val groupId: ULID,
-    val leafIndex: UInt,
-  ) : Struct2T.Shape<ULID, UInt> {
-    companion object {
-      val T: DataType<LeafNodeLocation> =
+    val leafIndex: LeafIndex,
+  ) : Struct2T.Shape<ULID, LeafIndex> {
+    companion object : Encodable<LeafNodeLocation> {
+      override val dataT: DataType<LeafNodeLocation> =
         struct("LeafNodeLocation") {
           it.field("group_id", ULID.T)
-            .field("leaf_index", uint32.asUInt)
+            .field("leaf_index", LeafIndex.dataT)
         }.lift(::LeafNodeLocation)
     }
   }

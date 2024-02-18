@@ -1,5 +1,6 @@
 package com.github.traderjoe95.mls.protocol.types.tree.leaf
 
+import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.type.DataType
 import com.github.traderjoe95.mls.codec.type.struct.Struct2T
 import com.github.traderjoe95.mls.codec.type.struct.lift
@@ -21,8 +22,8 @@ data class Lifetime(
   val notAfterInstant: Instant
     get() = Instant.ofEpochSecond(notAfter.toLong())
 
-  companion object {
-    val T: DataType<Lifetime> =
+  companion object : Encodable<Lifetime> {
+    override val dataT: DataType<Lifetime> =
       struct("Lifetime") {
         it.field("not_before", uint64.asULong)
           .field("not_after", uint64.asULong)

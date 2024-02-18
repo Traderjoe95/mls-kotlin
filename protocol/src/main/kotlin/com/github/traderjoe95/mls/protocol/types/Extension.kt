@@ -1,6 +1,7 @@
 package com.github.traderjoe95.mls.protocol.types
 
 import arrow.core.raise.Raise
+import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.Struct2
 import com.github.traderjoe95.mls.codec.decodeAs
 import com.github.traderjoe95.mls.codec.error.DecoderError
@@ -195,32 +196,32 @@ fun <E : Extension<*>> DataType<E>.extensionList(): DataType<List<E>> =
   )
 
 sealed interface GroupContextExtension<V : GroupContextExtension<V>> : Extension<V> {
-  companion object {
-    val T: DataType<GroupContextExtension<*>> = Extension.T.asSubtype<GroupContextExtension<*>>()
+  companion object : Encodable<GroupContextExtension<*>> {
+    override val dataT: DataType<GroupContextExtension<*>> = Extension.T.asSubtype<GroupContextExtension<*>>()
   }
 }
 
 typealias GroupContextExtensions = List<GroupContextExtension<*>>
 
 sealed interface GroupInfoExtension<V : GroupInfoExtension<V>> : Extension<V> {
-  companion object {
-    val T: DataType<GroupInfoExtension<*>> = Extension.T.asSubtype<GroupInfoExtension<*>>()
+  companion object : Encodable<GroupInfoExtension<*>> {
+    override val dataT: DataType<GroupInfoExtension<*>> = Extension.T.asSubtype<GroupInfoExtension<*>>()
   }
 }
 
 typealias GroupInfoExtensions = List<GroupInfoExtension<*>>
 
 sealed interface KeyPackageExtension<V : KeyPackageExtension<V>> : Extension<V> {
-  companion object {
-    val T: DataType<KeyPackageExtension<*>> = Extension.T.asSubtype<KeyPackageExtension<*>>()
+  companion object : Encodable<KeyPackageExtension<*>> {
+    override val dataT: DataType<KeyPackageExtension<*>> = Extension.T.asSubtype<KeyPackageExtension<*>>()
   }
 }
 
 typealias KeyPackageExtensions = List<KeyPackageExtension<*>>
 
 sealed interface LeafNodeExtension<V : LeafNodeExtension<V>> : Extension<V> {
-  companion object {
-    val T: DataType<LeafNodeExtension<*>> = Extension.T.asSubtype<LeafNodeExtension<*>>()
+  companion object : Encodable<LeafNodeExtension<*>> {
+    override val dataT: DataType<LeafNodeExtension<*>> = Extension.T.asSubtype<LeafNodeExtension<*>>()
   }
 }
 
@@ -284,8 +285,8 @@ data class ExternalSenders(
     companion object {
       val T: DataType<ExternalSender> =
         struct("ExternalSender") {
-          it.field("signature_key", VerificationKey.T)
-            .field("credential", Credential.T)
+          it.field("signature_key", VerificationKey.dataT)
+            .field("credential", Credential.dataT)
         }.lift(::ExternalSender)
     }
   }
@@ -298,7 +299,7 @@ data class RatchetTreeExt(
   override val valueT: DataType<RatchetTreeExt> = T
 
   companion object {
-    val T: DataType<RatchetTreeExt> = RatchetTree.T.derive({ RatchetTreeExt(it) }, { it.tree })
+    val T: DataType<RatchetTreeExt> = RatchetTree.dataT.derive({ RatchetTreeExt(it) }, { it.tree })
   }
 }
 
@@ -311,7 +312,7 @@ data class ExternalPub(
   companion object {
     val T: DataType<ExternalPub> =
       struct("ExternalPub") {
-        it.field("external_pub", HpkePublicKey.T)
+        it.field("external_pub", HpkePublicKey.dataT)
       }.lift(::ExternalPub)
   }
 }

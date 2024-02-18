@@ -1,5 +1,6 @@
 package com.github.traderjoe95.mls.protocol.types.tree
 
+import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.type.DataType
 import com.github.traderjoe95.mls.codec.type.V
 import com.github.traderjoe95.mls.codec.type.get
@@ -15,11 +16,11 @@ data class UpdatePathNode(
   val encryptionKey: HpkePublicKey,
   val encryptedPathSecret: List<HpkeCiphertext>,
 ) : Struct2T.Shape<HpkePublicKey, List<HpkeCiphertext>> {
-  companion object {
-    val T: DataType<UpdatePathNode> =
+  companion object : Encodable<UpdatePathNode> {
+    override val dataT: DataType<UpdatePathNode> =
       struct("UpdatePathNode") {
-        it.field("encryption_key", HpkePublicKey.T)
-          .field("encrypted_path_secret", HpkeCiphertext.T[V])
+        it.field("encryption_key", HpkePublicKey.dataT)
+          .field("encrypted_path_secret", HpkeCiphertext.dataT[V])
       }.lift(::UpdatePathNode)
   }
 }
@@ -31,11 +32,11 @@ data class UpdatePath(
   val size: UInt
     get() = nodes.uSize
 
-  companion object {
-    val T: DataType<UpdatePath> =
+  companion object : Encodable<UpdatePath> {
+    override val dataT: DataType<UpdatePath> =
       struct("UpdatePath") {
         it.field("leaf_node", LeafNode.t(LeafNodeSource.Commit))
-          .field("nodes", UpdatePathNode.T[V])
+          .field("nodes", UpdatePathNode.dataT[V])
       }.lift(::UpdatePath)
   }
 }

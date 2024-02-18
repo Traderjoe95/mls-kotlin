@@ -77,7 +77,7 @@ kotlin {
 
   compilerOptions {
     allWarningsAsErrors.set(true)
-    freeCompilerArgs.add("-Xcontext-receivers")
+    freeCompilerArgs.addAll("-Xcontext-receivers", "-X")
   }
 }
 

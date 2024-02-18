@@ -1,6 +1,7 @@
 package com.github.traderjoe95.mls.protocol.types.framing.message
 
 import arrow.core.raise.Raise
+import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.Struct4
 import com.github.traderjoe95.mls.codec.type.DataType
 import com.github.traderjoe95.mls.codec.type.struct.Struct4T
@@ -11,7 +12,6 @@ import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.codec.util.throwAnyError
 import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
 import com.github.traderjoe95.mls.protocol.crypto.KeySchedule
-import com.github.traderjoe95.mls.protocol.error.EncoderError
 import com.github.traderjoe95.mls.protocol.error.MessageSenderError.InvalidSenderType
 import com.github.traderjoe95.mls.protocol.error.PublicMessageRecipientError
 import com.github.traderjoe95.mls.protocol.error.PublicMessageSenderError
@@ -21,6 +21,7 @@ import com.github.traderjoe95.mls.protocol.types.ProposalType
 import com.github.traderjoe95.mls.protocol.types.crypto.Mac
 import com.github.traderjoe95.mls.protocol.types.crypto.Signature
 import com.github.traderjoe95.mls.protocol.types.framing.content.AuthenticatedContent
+import com.github.traderjoe95.mls.protocol.types.framing.content.AuthenticatedContent.Tbm.Companion.encodeUnsafe
 import com.github.traderjoe95.mls.protocol.types.framing.content.Commit
 import com.github.traderjoe95.mls.protocol.types.framing.content.Content
 import com.github.traderjoe95.mls.protocol.types.framing.content.FramedContent
@@ -56,33 +57,32 @@ data class PublicMessage<C : Content>(
     get() = AuthenticatedContent(WireFormat.MlsPublicMessage, content, signature, confirmationTag)
 
   context(GroupState, Raise<PublicMessageRecipientError>)
-  override suspend fun getAuthenticatedContent(): AuthenticatedContent<*> =
-    EncoderError.wrap {
-      val groupContext = groupContext(content.epoch)
+  override suspend fun getAuthenticatedContent(): AuthenticatedContent<*> {
+    val groupContext = groupContext(content.epoch)
 
-      if (content.sender.type == SenderType.Member) {
-        verifyMac(
-          keySchedule(content.epoch).membershipKey,
-          AuthenticatedContent.Tbm.T.encode(authenticatedContent.tbm(groupContext)),
-          membershipTag!!,
-        )
-      }
-
-      authenticatedContent.apply { verify(groupContext) }
+    if (content.sender.type == SenderType.Member) {
+      verifyMac(
+        keySchedule(content.epoch).membershipKey,
+        authenticatedContent.tbm(groupContext).encodeUnsafe(),
+        membershipTag!!,
+      )
     }
 
-  companion object {
-    val T: DataType<PublicMessage<*>> =
+    return authenticatedContent.apply { verify(groupContext) }
+  }
+
+  companion object : Encodable<PublicMessage<*>> {
+    override val dataT: DataType<PublicMessage<*>> =
       throwAnyError {
         struct("PublicMessage") {
-          it.field("content", FramedContent.T)
-            .field("signature", Signature.T)
+          it.field("content", FramedContent.dataT)
+            .field("signature", Signature.dataT)
             .select<Mac?, _>(ContentType.T, "content", "content_type") {
-              case(ContentType.Commit).then(Mac.T, "confirmation_tag")
+              case(ContentType.Commit).then(Mac.dataT, "confirmation_tag")
                 .orElseNothing()
             }
             .select<Mac?, _>(SenderType.T, "content", "sender", "sender_type") {
-              case(SenderType.Member).then(Mac.T, "membership_tag")
+              case(SenderType.Member).then(Mac.dataT, "membership_tag")
                 .orElseNothing()
             }
         }.lift(
@@ -147,10 +147,7 @@ data class PublicMessage<C : Content>(
 
       val membershipTag: Mac? =
         if (content.content.sender.type == SenderType.Member) {
-          mac(
-            membershipKey,
-            EncoderError.wrap { AuthenticatedContent.Tbm.T.encode(content.tbm(groupContext)) },
-          )
+          mac(membershipKey, content.tbm(groupContext).encodeUnsafe())
         } else {
           null
         }

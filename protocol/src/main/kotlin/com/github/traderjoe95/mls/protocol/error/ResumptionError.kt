@@ -1,6 +1,7 @@
 package com.github.traderjoe95.mls.protocol.error
 
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
+import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtensions
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
 import de.traderjoe.ulid.ULID
@@ -8,7 +9,7 @@ import de.traderjoe.ulid.ULID
 sealed interface ReInitError
 
 sealed interface BranchError {
-  data class BlankLeavesIncluded(val blank: List<UInt>) : BranchError
+  data class BlankLeavesIncluded(val blank: List<LeafIndex>) : BranchError
 }
 
 sealed interface ResumptionError : ReInitError, BranchError

@@ -1,7 +1,6 @@
 package com.github.traderjoe95.mls.protocol.crypto
 
 import arrow.core.raise.Raise
-import com.github.traderjoe95.mls.codec.error.EncoderError
 import com.github.traderjoe95.mls.codec.type.EnumT
 import com.github.traderjoe95.mls.codec.type.ProtocolEnum
 import com.github.traderjoe95.mls.codec.type.enum
@@ -115,7 +114,6 @@ enum class CipherSuite(
 }
 
 internal object Dummy : ICipherSuite {
-  context(Raise<EncoderError>)
   override fun signWithLabel(
     signatureKey: SigningKey,
     label: String,
@@ -130,10 +128,8 @@ internal object Dummy : ICipherSuite {
     signature: Signature,
   ) = error("unsupported")
 
-  context(Raise<EncoderError>)
   override fun generateSignatureKeyPair(): Pair<SigningKey, VerificationKey> = error("unsupported")
 
-  context(Raise<EncoderError>)
   override fun calculateVerificationKey(signingKey: SigningKey): VerificationKey = error("unsupported")
 
   override fun encryptWithLabel(
@@ -196,7 +192,6 @@ internal object Dummy : ICipherSuite {
     content: ByteArray,
   ): Mac = error("unsupported")
 
-  context(Raise<EncoderError>)
   override fun expandWithLabel(
     secret: Secret,
     label: String,
@@ -204,7 +199,6 @@ internal object Dummy : ICipherSuite {
     length: UShort,
   ): Secret = error("unsupported")
 
-  context(Raise<EncoderError>)
   override fun expandWithLabel(
     secret: Secret,
     label: String,
@@ -212,7 +206,6 @@ internal object Dummy : ICipherSuite {
     length: UShort,
   ): Secret = error("unsupported")
 
-  context(Raise<EncoderError>)
   override fun deriveSecret(
     secret: Secret,
     label: String,

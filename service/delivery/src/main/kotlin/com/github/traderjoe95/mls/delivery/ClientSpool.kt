@@ -69,7 +69,7 @@ internal class FileBackedSpool(
 
       writeBuffer.clear()
 
-      val encoded = throwAnyError { MlsMessage.T.encode(message) }
+      val encoded = throwAnyError { MlsMessage.dataT.encode(message) }
       var remaining = encoded.size
 
       writeBuffer.putInt(MAGIC_NUMBER)

@@ -1,12 +1,10 @@
 package com.github.traderjoe95.mls.protocol.crypto
 
-import arrow.core.raise.Raise
-import com.github.traderjoe95.mls.codec.error.EncoderError
 import com.github.traderjoe95.mls.protocol.types.crypto.KdfLabel
+import com.github.traderjoe95.mls.protocol.types.crypto.KdfLabel.Companion.encodeUnsafe
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret
 
 interface Kdf {
-  context(Raise<EncoderError>)
   fun expandWithLabel(
     secret: Secret,
     label: String,
@@ -14,7 +12,6 @@ interface Kdf {
     length: UShort = hashLen,
   ): Secret
 
-  context(Raise<EncoderError>)
   fun expandWithLabel(
     secret: Secret,
     label: String,
@@ -22,7 +19,6 @@ interface Kdf {
     length: UShort = hashLen,
   ): Secret
 
-  context(Raise<EncoderError>)
   fun deriveSecret(
     secret: Secret,
     label: String,
@@ -41,7 +37,6 @@ interface Kdf {
   val hashLen: UShort
 
   abstract class Provider : Kdf {
-    context(Raise<EncoderError>)
     final override fun expandWithLabel(
       secret: Secret,
       label: String,
@@ -49,7 +44,6 @@ interface Kdf {
       length: UShort,
     ): Secret = expand(secret, KdfLabel.create(length, label, context), length)
 
-    context(Raise<EncoderError>)
     final override fun expandWithLabel(
       secret: Secret,
       label: String,
@@ -57,18 +51,16 @@ interface Kdf {
       length: UShort,
     ): Secret = expandWithLabel(secret, label, context.encodeToByteArray(), length)
 
-    context(Raise<EncoderError>)
     final override fun deriveSecret(
       secret: Secret,
       label: String,
     ): Secret = expandWithLabel(secret, label, byteArrayOf())
 
-    context(Raise<EncoderError>)
     private fun expand(
       secret: Secret,
       kdfLabel: KdfLabel,
       length: UShort,
-    ): Secret = expand(secret, KdfLabel.T.encode(kdfLabel), length)
+    ): Secret = expand(secret, kdfLabel.encodeUnsafe(), length)
 
     internal abstract fun expand(
       prk: Secret,

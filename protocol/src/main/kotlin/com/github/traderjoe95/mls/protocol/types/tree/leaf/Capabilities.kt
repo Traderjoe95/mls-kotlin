@@ -1,5 +1,6 @@
 package com.github.traderjoe95.mls.protocol.types.tree.leaf
 
+import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.type.DataType
 import com.github.traderjoe95.mls.codec.type.V
 import com.github.traderjoe95.mls.codec.type.get
@@ -51,8 +52,8 @@ data class Capabilities(
       "proposals=${proposals.map { ProposalType(it) ?: it }}, " +
       "credentials=${credentials.map { CredentialType(it) ?: it }}"
 
-  companion object {
-    val T: DataType<Capabilities> =
+  companion object : Encodable<Capabilities> {
+    override val dataT: DataType<Capabilities> =
       struct("Capabilities") {
         it.field("versions", ProtocolVersion.T[V])
           .field("cipher_suites", uint16.asUShort[V])

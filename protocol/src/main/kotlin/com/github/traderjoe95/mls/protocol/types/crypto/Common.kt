@@ -1,5 +1,6 @@
 package com.github.traderjoe95.mls.protocol.types.crypto
 
+import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.type.DataType
 import com.github.traderjoe95.mls.codec.type.V
 import com.github.traderjoe95.mls.codec.type.asUtf8String
@@ -17,8 +18,8 @@ value class Secret(val key: ByteArray) {
 
   fun wipe(): Unit = key.wipe()
 
-  companion object {
-    val T: DataType<Secret> = opaque[V].derive({ it.asSecret }, { it.key })
+  companion object : Encodable<Secret> {
+    override val dataT: DataType<Secret> = opaque[V].derive({ it.asSecret }, { it.key })
     val ByteArray.asSecret: Secret
       get() = Secret(this)
 

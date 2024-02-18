@@ -2,17 +2,16 @@ package com.github.traderjoe95.mls.protocol.crypto
 
 import arrow.core.raise.Raise
 import com.github.traderjoe95.mls.codec.util.throwAnyError
-import com.github.traderjoe95.mls.protocol.error.EncoderError
 import com.github.traderjoe95.mls.protocol.error.JoinError
 import com.github.traderjoe95.mls.protocol.error.RatchetError
 import com.github.traderjoe95.mls.protocol.group.GroupContext
+import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.tree.SecretTreeLeaf
 import com.github.traderjoe95.mls.protocol.types.crypto.Nonce
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ContentType
 import com.github.traderjoe95.mls.protocol.util.get
 import com.github.traderjoe95.mls.protocol.util.log2
-import com.github.traderjoe95.mls.codec.error.EncoderError as BaseEncoderError
 
 interface KeySchedule {
   val epochSecret: Secret
@@ -34,17 +33,16 @@ interface KeySchedule {
 
   context(Raise<RatchetError>)
   suspend fun getNonceAndKey(
-    leafIndex: UInt,
+    leafIndex: LeafIndex,
     contentType: ContentType,
     generation: UInt,
   ): Pair<Nonce, Secret>
 
   suspend fun getNonceAndKey(
-    leafIndex: UInt,
+    leafIndex: LeafIndex,
     contentType: ContentType,
   ): Triple<Nonce, Secret, UInt>
 
-  context(Raise<BaseEncoderError>)
   fun next(
     commitSecret: Secret,
     groupContext: GroupContext,
@@ -66,13 +64,11 @@ interface KeySchedule {
       KeyScheduleImpl(
         cipherSuite,
         epoch,
-        EncoderError.wrap {
-          cipherSuite.expandWithLabel(
-            cipherSuite.extract(joinerSecret, pskSecret),
-            "epoch",
-            groupContext.encoded,
-          )
-        },
+        cipherSuite.expandWithLabel(
+          cipherSuite.extract(joinerSecret, pskSecret),
+          "epoch",
+          groupContext.encoded,
+        ),
         leaves = leaves,
       )
 
@@ -88,13 +84,11 @@ interface KeySchedule {
     ): KeySchedule =
       join(
         cipherSuite,
-        EncoderError.wrap {
-          cipherSuite.expandWithLabel(
-            cipherSuite.extract(externalInitSecret, commitSecret),
-            "joiner",
-            groupContext.encoded,
-          )
-        },
+        cipherSuite.expandWithLabel(
+          cipherSuite.extract(externalInitSecret, commitSecret),
+          "joiner",
+          groupContext.encoded,
+        ),
         pskSecret,
         epoch,
         leaves,
@@ -171,14 +165,14 @@ internal class KeyScheduleImpl(
 
   context(Raise<RatchetError>)
   override suspend fun getNonceAndKey(
-    leafIndex: UInt,
+    leafIndex: LeafIndex,
     contentType: ContentType,
     generation: UInt,
   ): Pair<Nonce, Secret> =
     when (contentType) {
-      ContentType.Application -> secretTreeLeaves[leafIndex].consumeApplicationRatchet(generation)
+      ContentType.Application -> secretTreeLeaves[leafIndex.value].consumeApplicationRatchet(generation)
       ContentType.Proposal, ContentType.Commit ->
-        secretTreeLeaves[leafIndex].consumeHandshakeRatchet(
+        secretTreeLeaves[leafIndex.value].consumeHandshakeRatchet(
           generation,
         )
 
@@ -186,16 +180,15 @@ internal class KeyScheduleImpl(
     }
 
   override suspend fun getNonceAndKey(
-    leafIndex: UInt,
+    leafIndex: LeafIndex,
     contentType: ContentType,
   ): Triple<Nonce, Secret, UInt> =
     when (contentType) {
-      ContentType.Application -> secretTreeLeaves[leafIndex].consumeApplicationRatchet()
-      ContentType.Proposal, ContentType.Commit -> secretTreeLeaves[leafIndex].consumeHandshakeRatchet()
+      ContentType.Application -> secretTreeLeaves[leafIndex.value].consumeApplicationRatchet()
+      ContentType.Proposal, ContentType.Commit -> secretTreeLeaves[leafIndex.value].consumeHandshakeRatchet()
       else -> error("Unreachable")
     }
 
-  context(Raise<BaseEncoderError>)
   override fun next(
     commitSecret: Secret,
     groupContext: GroupContext,
