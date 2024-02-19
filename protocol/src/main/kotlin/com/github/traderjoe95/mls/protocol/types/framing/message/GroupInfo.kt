@@ -9,16 +9,15 @@ import com.github.traderjoe95.mls.codec.type.struct.lift
 import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
 import com.github.traderjoe95.mls.protocol.error.SignatureError
-import com.github.traderjoe95.mls.protocol.group.ActiveGroupState
 import com.github.traderjoe95.mls.protocol.group.GroupContext
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
-import com.github.traderjoe95.mls.protocol.tree.RatchetTree
-import com.github.traderjoe95.mls.protocol.tree.leafNode
+import com.github.traderjoe95.mls.protocol.tree.RatchetTreeOps
 import com.github.traderjoe95.mls.protocol.types.GroupInfoExtension
 import com.github.traderjoe95.mls.protocol.types.GroupInfoExtensions
 import com.github.traderjoe95.mls.protocol.types.HasExtensions
 import com.github.traderjoe95.mls.protocol.types.crypto.Mac
 import com.github.traderjoe95.mls.protocol.types.crypto.Signature
+import com.github.traderjoe95.mls.protocol.types.crypto.SigningKey
 import com.github.traderjoe95.mls.protocol.types.extensionList
 import com.github.traderjoe95.mls.protocol.types.framing.message.GroupInfo.Tbs.Companion.encodeUnsafe
 
@@ -32,7 +31,7 @@ data class GroupInfo(
   Message,
   Struct5T.Shape<GroupContext, GroupInfoExtensions, Mac, LeafIndex, Signature> {
   context(ICipherSuite, Raise<SignatureError>)
-  fun verifySignature(tree: RatchetTree) {
+  fun verifySignature(tree: RatchetTreeOps) {
     val verificationKey = tree.leafNode(signer).verificationKey
 
     verifyWithLabel(
@@ -54,8 +53,9 @@ data class GroupInfo(
           .field("signature", Signature.dataT)
       }.lift(::GroupInfo)
 
-    context(ActiveGroupState)
-    internal fun create(
+    fun create(
+      ownLeafIndex: LeafIndex,
+      signingKey: SigningKey,
       groupContext: GroupContext,
       extensions: List<GroupInfoExtension<*>>,
       confirmationTag: Mac,
@@ -65,7 +65,7 @@ data class GroupInfo(
         extensions,
         confirmationTag,
         ownLeafIndex,
-        signWithLabel(
+        groupContext.cipherSuite.signWithLabel(
           signingKey,
           "GroupInfoTBS",
           Tbs(groupContext, extensions, confirmationTag, ownLeafIndex).encodeUnsafe(),

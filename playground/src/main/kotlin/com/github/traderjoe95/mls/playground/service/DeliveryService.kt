@@ -77,7 +77,7 @@ object DeliveryService : DeliveryService<String> {
     fromUser: String,
   ): Either<SendToGroupError, ULID> =
     either {
-      val encoded = EncoderError.wrap { message.encode() }
+      val encoded = EncoderError.wrap { message.encode().bind() }
       val messageId = ULID.new()
 
       groups[toGroup]?.members?.forEach {
@@ -97,7 +97,7 @@ object DeliveryService : DeliveryService<String> {
     toUser: String,
   ): Either<SendToUserError<String>, ULID> =
     either {
-      val encoded = EncoderError.wrap { message.encode() }
+      val encoded = EncoderError.wrap { message.encode().bind() }
       val messageId = ULID.new()
 
       users[toUser]?.send(messageId to encoded) ?: raise(UnknownUser(toUser))
@@ -111,7 +111,7 @@ object DeliveryService : DeliveryService<String> {
   ): Map<String, Either<SendToUserError<String>, ULID>> {
     val encoded =
       either {
-        EncoderError.wrap { message.encode() }
+        EncoderError.wrap { message.encode().bind() }
       }
 
     return toUsers.associateWith { toUser ->

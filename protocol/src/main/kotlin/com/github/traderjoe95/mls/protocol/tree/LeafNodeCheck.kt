@@ -13,7 +13,7 @@ import java.time.Instant
 
 context(AuthenticationService<Identity>, ICipherSuite, Raise<LeafNodeCheckError>)
 suspend fun <Identity : Any> LeafNode<*>.validate(
-  underTree: RatchetTree,
+  underTree: RatchetTreeOps,
   groupContext: GroupContext,
   leafIdx: LeafIndex,
   expectedSource: LeafNodeSource? = null,
@@ -67,7 +67,7 @@ suspend fun <Identity : Any> LeafNode<*>.validate(
   checkDuplicateKeys(leafIdx)
 }
 
-context(RatchetTree, ICipherSuite, Raise<LeafNodeCheckError>)
+context(RatchetTreeOps, ICipherSuite, Raise<LeafNodeCheckError>)
 private fun LeafNode<*>.checkCredentialSupport() {
   // Check that the credentials of all members are supported by the leaf node
   nonBlankLeafIndices.filter {
@@ -84,7 +84,7 @@ private fun LeafNode<*>.checkCredentialSupport() {
   }
 }
 
-context(RatchetTree, ICipherSuite, Raise<LeafNodeCheckError>)
+context(RatchetTreeOps, ICipherSuite, Raise<LeafNodeCheckError>)
 private fun LeafNode<*>.checkDuplicateKeys(leafIdx: LeafIndex) {
   // Check for duplicated encryption keys
   nonBlankLeafIndices.filter {

@@ -19,16 +19,16 @@ import com.github.traderjoe95.mls.protocol.error.WelcomeJoinError
 import com.github.traderjoe95.mls.protocol.group.resumption.isProtocolResumption
 import com.github.traderjoe95.mls.protocol.group.resumption.validateResumption
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
-import com.github.traderjoe95.mls.protocol.tree.TreePrivateKeyStore
+import com.github.traderjoe95.mls.protocol.tree.RatchetTree.Companion.insert
+import com.github.traderjoe95.mls.protocol.tree.RatchetTree.Companion.join
 import com.github.traderjoe95.mls.protocol.tree.check
+import com.github.traderjoe95.mls.protocol.tree.createUpdatePath
 import com.github.traderjoe95.mls.protocol.tree.findEquivalentLeaf
-import com.github.traderjoe95.mls.protocol.tree.leafNode
 import com.github.traderjoe95.mls.protocol.tree.updateOnJoin
-import com.github.traderjoe95.mls.protocol.tree.updatePath
 import com.github.traderjoe95.mls.protocol.types.ExternalPub
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtension
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtensions
-import com.github.traderjoe95.mls.protocol.types.RatchetTreeExt
+import com.github.traderjoe95.mls.protocol.types.RatchetTree
 import com.github.traderjoe95.mls.protocol.types.RequiredCapabilities
 import com.github.traderjoe95.mls.protocol.types.crypto.Aad
 import com.github.traderjoe95.mls.protocol.types.crypto.ExternalPskId
@@ -68,7 +68,6 @@ suspend fun <Identity : Any> ApplicationCtx<Identity>.newGroup(
     GroupSettings.new(cipherSuite, protocolVersion, groupId, keepPastEpochs),
     nonEmptyListOf(GroupEpoch.init(keyPackage, encryptionKeyPair, *extensions)),
     signingKey,
-    ownLeaf,
   )
 }
 
@@ -85,7 +84,6 @@ suspend fun <Identity : Any> ApplicationCtx<Identity>.joinGroup(
         encryptedSecrets to getKeyPackage(encryptedSecrets.newMember)
       }.find { it.second != null } ?: raise(WelcomeJoinError.NoMatchingKeyPackage)
     val (keyPackage, ownInitKeyPair, ownEncKeyPair, ownSigningKey) = ownKeyPackage!!
-    val privateKeyStore = TreePrivateKeyStore.init(ownEncKeyPair)
 
     if (keyPackage.cipherSuite != cipherSuite) {
       raise(WelcomeJoinError.WrongCipherSuite(keyPackage.cipherSuite, cipherSuite))
@@ -129,23 +127,25 @@ suspend fun <Identity : Any> ApplicationCtx<Identity>.joinGroup(
     val groupInfo =
       cipherSuite.decryptAead(welcomeKey, welcomeNonce, Aad.empty, welcome.encryptedGroupInfo)
         .decodeAs(GroupInfo.dataT)
-    var tree = groupInfo.extension<RatchetTreeExt>()?.tree ?: raise(JoinError.MissingRatchetTree)
-    with(cipherSuite) { groupInfo.verifySignature(tree) }
 
     if (groupIdExists(groupInfo.groupContext.groupId)) raise(JoinError.AlreadyMember)
-    with(cipherSuite) { tree.check(groupInfo.groupContext) }
 
-    val ownLeaf = tree.findEquivalentLeaf(keyPackage) ?: raise(WelcomeJoinError.OwnLeafNotFound)
+    val publicTree = groupInfo.extension<RatchetTree>()?.tree ?: raise(JoinError.MissingRatchetTree)
+    with(cipherSuite) {
+      groupInfo.verifySignature(publicTree)
+      publicTree.check(groupInfo.groupContext)
+    }
+
+    val ownLeaf = publicTree.findEquivalentLeaf(keyPackage) ?: raise(WelcomeJoinError.OwnLeafNotFound)
+    var tree = publicTree.join(welcome.cipherSuite, ownLeaf, ownEncKeyPair.private)
 
     var groupContext = groupInfo.groupContext
 
     keyPackage.leafNode.checkSupport(groupContext.extensions, ownLeaf)
 
-    tree[ownLeaf] = tree.leafNode(ownLeaf)
-
     tree =
       groupSecrets.pathSecret.map {
-        with(cipherSuite) { tree.updateOnJoin(ownLeaf, groupInfo.signer, it, privateKeyStore) }
+        with(cipherSuite) { tree.updateOnJoin(ownLeaf, groupInfo.signer, it) }
       }.getOrElse { tree }
 
     val keySchedule =
@@ -183,11 +183,9 @@ suspend fun <Identity : Any> ApplicationCtx<Identity>.joinGroup(
           groupContext.interimTranscriptHash,
           Commit.empty,
           cipherSuite.mac(keySchedule.confirmationKey, groupContext.confirmedTranscriptHash),
-          privateKeyStore,
         ),
       ),
       ownSigningKey,
-      ownLeaf,
     )
   }
 
@@ -201,29 +199,28 @@ suspend fun <Identity : Any> ApplicationCtx<Identity>.joinGroupExternal(
   val cipherSuite = groupInfo.groupContext.cipherSuite
 
   val (keyPackage, _, ownEncryptionKeyPair, ownSigningKey) = newKeyPackage(cipherSuite)
-  val privateKeyStore = TreePrivateKeyStore.init(ownEncryptionKeyPair)
 
   val externalPub = groupInfo.extension<ExternalPub>()?.externalPub ?: raise(ExternalJoinError.MissingExternalPub)
   val (kemOutput, externalInitSecret) = cipherSuite.export(externalPub, "")
 
   if (groupIdExists(groupInfo.groupContext.groupId)) raise(JoinError.AlreadyMember)
 
-  var tree = groupInfo.extension<RatchetTreeExt>()?.tree ?: raise(JoinError.MissingRatchetTree)
-  with(cipherSuite) { groupInfo.verifySignature(tree) }
-  with(cipherSuite) { tree.check(groupInfo.groupContext) }
+  var publicTree = groupInfo.extension<RatchetTree>()?.tree ?: raise(JoinError.MissingRatchetTree)
+  with(cipherSuite) { groupInfo.verifySignature(publicTree) }
+  with(cipherSuite) { publicTree.check(groupInfo.groupContext) }
 
-  val oldLeafIdx = if (resync) tree.findEquivalentLeaf(keyPackage.leafNode) else null
-  if (oldLeafIdx != null) tree -= oldLeafIdx
+  val oldLeafIdx = if (resync) publicTree.findEquivalentLeaf(keyPackage.leafNode) else null
+  if (oldLeafIdx != null) publicTree -= oldLeafIdx
 
-  val (newTree, ownLeaf) = tree.insert(keyPackage.leafNode)
+  val newTree = publicTree.insert(cipherSuite, keyPackage.leafNode, ownEncryptionKeyPair.private)
 
-  keyPackage.leafNode.checkSupport(groupInfo.groupContext.extensions, ownLeaf)
+  keyPackage.leafNode.checkSupport(groupInfo.groupContext.extensions, newTree.leafIndex)
 
   var groupContext = with(cipherSuite) { groupInfo.groupContext.withInterimTranscriptHash(groupInfo.confirmationTag) }
 
   val (updatedTree, updatePath, pathSecrets) =
     with(cipherSuite) {
-      newTree.updatePath(setOf(), ownLeaf, groupContext, ownSigningKey, privateKeyStore)
+      createUpdatePath(newTree, setOf(), groupContext, ownSigningKey)
     }
 
   val commitSecret = cipherSuite.deriveSecret(pathSecrets.last(), "path")
@@ -277,11 +274,9 @@ suspend fun <Identity : Any> ApplicationCtx<Identity>.joinGroupExternal(
         groupContext.interimTranscriptHash,
         Commit.empty,
         cipherSuite.mac(keySchedule.confirmationKey, groupContext.confirmedTranscriptHash),
-        privateKeyStore,
       ),
     ),
     ownSigningKey,
-    ownLeaf,
   ) to
     with(cipherSuite) {
       with(keySchedule) {

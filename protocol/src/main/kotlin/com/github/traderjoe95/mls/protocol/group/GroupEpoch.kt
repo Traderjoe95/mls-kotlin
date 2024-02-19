@@ -7,8 +7,6 @@ import com.github.traderjoe95.mls.protocol.crypto.KeyScheduleImpl
 import com.github.traderjoe95.mls.protocol.group.GroupContext.InterimTranscriptHashInput.Companion.encodeUnsafe
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.tree.RatchetTree
-import com.github.traderjoe95.mls.protocol.tree.RatchetTree.Companion.newTree
-import com.github.traderjoe95.mls.protocol.tree.TreePrivateKeyStore
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtension
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtensions
 import com.github.traderjoe95.mls.protocol.types.crypto.HpkeKeyPair
@@ -28,7 +26,6 @@ internal data class GroupEpoch(
   val interimTranscriptHash: ByteArray,
   val initiatingCommit: Commit,
   val confirmationTag: Mac,
-  val treePrivateKeyStore: TreePrivateKeyStore,
   internal val proposals: MutableMap<Int, Pair<Proposal, LeafIndex?>> = mutableMapOf(),
 ) {
   companion object {
@@ -54,7 +51,7 @@ internal data class GroupEpoch(
 
       return GroupEpoch(
         0UL,
-        leafNode.newTree(),
+        RatchetTree.new(cipherSuite, leafNode, decryptionKey),
         keySchedule,
         byteArrayOf(),
         extensions.toList(),
@@ -65,7 +62,6 @@ internal data class GroupEpoch(
         ),
         Commit.empty,
         cipherSuite.mac(keySchedule.confirmationKey, byteArrayOf()),
-        TreePrivateKeyStore.init(leafNode.encryptionKey, decryptionKey),
       )
     }
 
@@ -75,7 +71,6 @@ internal data class GroupEpoch(
       tree: RatchetTree,
       keySchedule: KeySchedule,
       commit: Commit,
-      privateKeyStore: TreePrivateKeyStore,
     ): GroupEpoch =
       GroupEpoch(
         groupContext.epoch,
@@ -86,7 +81,6 @@ internal data class GroupEpoch(
         groupContext.interimTranscriptHash,
         commit,
         mac(keySchedule.confirmationKey, groupContext.confirmedTranscriptHash),
-        privateKeyStore,
       )
   }
 }

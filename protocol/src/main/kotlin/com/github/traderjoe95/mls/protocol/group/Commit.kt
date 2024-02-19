@@ -19,13 +19,10 @@ import com.github.traderjoe95.mls.protocol.error.RemovedFromGroup
 import com.github.traderjoe95.mls.protocol.error.SenderCommitError
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.tree.RatchetTree
-import com.github.traderjoe95.mls.protocol.tree.TreePrivateKeyStore
 import com.github.traderjoe95.mls.protocol.tree.applyUpdatePath
 import com.github.traderjoe95.mls.protocol.tree.applyUpdatePathExternalJoin
-import com.github.traderjoe95.mls.protocol.tree.filteredDirectPath
+import com.github.traderjoe95.mls.protocol.tree.createUpdatePath
 import com.github.traderjoe95.mls.protocol.tree.lowestCommonAncestor
-import com.github.traderjoe95.mls.protocol.tree.nonBlankNodeIndices
-import com.github.traderjoe95.mls.protocol.tree.updatePath
 import com.github.traderjoe95.mls.protocol.tree.validate
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtension
 import com.github.traderjoe95.mls.protocol.types.ProposalType
@@ -75,16 +72,13 @@ suspend fun <Identity : Any> GroupState.prepareCommit(
   ensureActive {
     val proposalResult = processProposals(proposals, None, ownLeafIndex, inReInit, inBranch)
 
-    val newPrivateKeyStore = privateKeyStore().copy()
-
     val (updatedTree, updatePath, pathSecrets) =
       if (proposalResult.updatePathRequired) {
-        (proposalResult.updatedTree ?: tree).updatePath(
+        createUpdatePath(
+          (proposalResult.updatedTree ?: tree),
           proposalResult.newMemberLeafIndices(),
-          ownLeafIndex,
           groupContext.withExtensions((proposalResult as? ProcessProposalsResult.CommitByMember)?.extensions),
           signingKey,
-          newPrivateKeyStore,
         )
       } else {
         Triple((proposalResult.updatedTree ?: tree), null, listOf())
@@ -128,9 +122,6 @@ suspend fun <Identity : Any> GroupState.prepareCommit(
         updatedGroupContext.withInterimTranscriptHash(confirmationTag),
         updatedTree,
         newKeySchedule,
-        newPrivateKeyStore.apply {
-          wipeUnused(updatedTree[updatedTree.nonBlankNodeIndices].mapNotNull { it?.encryptionKey })
-        },
       )
     val groupInfo = updatedGroupState.groupInfo(createPublicGroupInfo)
 
@@ -156,7 +147,6 @@ suspend fun <Identity : Any> GroupState.processCommit(authenticatedCommit: Authe
     val proposalResult = commit.content.validateAndApply(commit.sender)
     val updatePath = commit.content.updatePath
 
-    val newPrivateKeyStore = privateKeyStore().copy()
     val preTree = proposalResult.updatedTree ?: tree
 
     with(preTree) {
@@ -170,7 +160,6 @@ suspend fun <Identity : Any> GroupState.processCommit(authenticatedCommit: Authe
           path,
           commit.sender,
           proposalResult.newMemberLeafIndices(),
-          newPrivateKeyStore,
         )
       }.getOrElse { preTree to zeroesNh }
 
@@ -202,9 +191,6 @@ suspend fun <Identity : Any> GroupState.processCommit(authenticatedCommit: Authe
       updatedGroupContext.withInterimTranscriptHash(authenticatedCommit.confirmationTag),
       updatedTree,
       newKeySchedule,
-      newPrivateKeyStore.apply {
-        wipeUnused(updatedTree[updatedTree.nonBlankNodeIndices].mapNotNull { it?.encryptionKey })
-      },
     )
   }
 
@@ -249,12 +235,11 @@ private fun RatchetTree.applyCommitUpdatePath(
   updatePath: UpdatePath,
   sender: Sender,
   excludeNewLeaves: Set<LeafIndex>,
-  newPrivateKeyStore: TreePrivateKeyStore,
 ): Pair<RatchetTree, Secret> =
   if (sender.type == SenderType.Member) {
-    applyUpdatePath(ownLeafIndex, groupContext, sender.index!!, updatePath, excludeNewLeaves, newPrivateKeyStore)
+    applyUpdatePath(this, groupContext, sender.index!!, updatePath, excludeNewLeaves)
   } else {
-    applyUpdatePathExternalJoin(ownLeafIndex, groupContext, updatePath, excludeNewLeaves, newPrivateKeyStore)
+    applyUpdatePathExternalJoin(groupContext, updatePath, excludeNewLeaves)
   }
 
 context(ActiveGroupState, Raise<SenderCommitError>)
@@ -278,7 +263,7 @@ private fun List<Pair<LeafIndex, KeyPackage>>.createWelcome(
 
     val encryptedGroupSecrets =
       map { (newLeaf, keyPackage) ->
-        val commonAncestor = newTree.lowestCommonAncestor(ownLeafIndex, newLeaf)
+        val commonAncestor = lowestCommonAncestor(ownLeafIndex, newLeaf)
         val pathSecret = pathSecrets.getOrNull(filteredPath.indexOf(commonAncestor)).toOption().map(::PathSecret)
 
         val groupSecrets = GroupSecrets(joinerSecret, pathSecret, pskIds)
@@ -366,7 +351,7 @@ private suspend fun <Identity : Any> ActiveGroupState.processProposals(
             updatePath.getOrNull()?.leafNode?.credential?.takeIf { committerLeafIdx == null },
           )
 
-          updatedTree -= proposal.removed
+          updatedTree = updatedTree.remove(proposal.removed)
           requiresUpdatePath = true
         }
 
@@ -443,8 +428,7 @@ internal sealed interface ProcessProposalsResult {
     groupContext: GroupContext,
     tree: RatchetTree,
     keySchedule: KeySchedule,
-    privateKeyStore: TreePrivateKeyStore,
-  ): GroupState = nextEpoch(commit, groupContext, tree, keySchedule, privateKeyStore)
+  ): GroupState = nextEpoch(commit, groupContext, tree, keySchedule)
 
   data class CommitByMember(
     override val updatePathRequired: Boolean,
@@ -479,7 +463,6 @@ internal sealed interface ProcessProposalsResult {
       groupContext: GroupContext,
       tree: RatchetTree,
       keySchedule: KeySchedule,
-      privateKeyStore: TreePrivateKeyStore,
-    ): GroupState = suspend(commit, groupContext, tree, keySchedule, privateKeyStore)
+    ): GroupState = suspend(commit, groupContext, tree, keySchedule)
   }
 }

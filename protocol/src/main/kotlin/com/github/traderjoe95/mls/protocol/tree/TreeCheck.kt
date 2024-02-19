@@ -11,7 +11,7 @@ import com.github.traderjoe95.mls.protocol.types.tree.Node
 import com.github.traderjoe95.mls.protocol.types.tree.ParentNode
 
 context(ApplicationCtx<Identity>, ICipherSuite, Raise<TreeCheckError>)
-suspend fun <Identity : Any> RatchetTree.check(groupContext: GroupContext) {
+suspend fun <Identity : Any> RatchetTreeOps.check(groupContext: GroupContext) {
   treeHash.let { th ->
     if (th.contentEquals(groupContext.treeHash).not()) {
       raise(TreeCheckError.BadTreeHash(groupContext.treeHash, th))
@@ -38,7 +38,7 @@ suspend fun <Identity : Any> RatchetTree.check(groupContext: GroupContext) {
 }
 
 context(ICipherSuite, Raise<TreeCheckError>)
-private fun RatchetTree.checkParentHashCoverage() {
+private fun RatchetTreeOps.checkParentHashCoverage() {
   val phCoverage = mutableMapOf<NodeIndex, UInt>()
 
   leaves.zipWithLeafIndex().mapNotNull { (l, leafIdx) ->
@@ -75,7 +75,7 @@ private fun RatchetTree.checkParentHashCoverage() {
   }
 }
 
-context(ICipherSuite, RatchetTree, Raise<TreeCheckError>)
+context(ICipherSuite, RatchetTreeOps, Raise<TreeCheckError>)
 private fun ParentNode.checkUnmergedLeaves(parentIdx: NodeIndex) {
   unmergedLeaves.forEach { leafIdx ->
     if (leafIdx.isBlank) raise(TreeCheckError.BadUnmergedLeaf(parentIdx, leafIdx, "Leaf node is blank"))

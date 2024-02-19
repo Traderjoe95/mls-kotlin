@@ -10,7 +10,6 @@ import com.github.traderjoe95.mls.protocol.service.AuthenticationService
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.tree.RatchetTree
 import com.github.traderjoe95.mls.protocol.tree.findEquivalentLeaf
-import com.github.traderjoe95.mls.protocol.tree.leafNode
 import com.github.traderjoe95.mls.protocol.tree.validate
 import com.github.traderjoe95.mls.protocol.tree.zipWithLeafIndex
 import com.github.traderjoe95.mls.protocol.types.Credential
@@ -105,8 +104,8 @@ private fun List<Pair<PreSharedKey, LeafIndex?>>.checkDuplicates() {
     ?.also { (psk, _) -> raise(InvalidCommit.DoublePsk(psk.pskId)) }
 }
 
-context(Raise<CommitError>, ActiveGroupState, AuthenticationService<Identity>)
-internal suspend fun <Identity : Any> Add.validate(currentTree: RatchetTree) {
+context(Raise<CommitError>, GroupState, AuthenticationService<Identity>)
+suspend fun <Identity : Any> Add.validate(currentTree: RatchetTree) {
   if (keyPackage.version != protocolVersion) {
     raise(InvalidCommit.IncompatibleProtocolVersion(keyPackage.version, protocolVersion))
   }
@@ -132,7 +131,7 @@ internal suspend fun <Identity : Any> Add.validate(currentTree: RatchetTree) {
 }
 
 context(Raise<CommitError>, ActiveGroupState, AuthenticationService<Identity>)
-internal suspend fun <Identity : Any> Update.validate(
+suspend fun <Identity : Any> Update.validate(
   currentTree: RatchetTree,
   generatedBy: LeafIndex,
 ) {
@@ -153,8 +152,8 @@ internal suspend fun <Identity : Any> Remove.validate(
   }
 }
 
-context(Raise<CommitError>, ActiveGroupState, ApplicationCtx<Identity>)
-internal suspend fun <Identity : Any> PreSharedKey.validateAndLoad(
+context(Raise<CommitError>, GroupState, ApplicationCtx<Identity>)
+suspend fun <Identity : Any> PreSharedKey.validateAndLoad(
   inReInit: Boolean,
   inBranch: Boolean,
 ): Secret {

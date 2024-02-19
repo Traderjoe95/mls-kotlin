@@ -1,6 +1,6 @@
 package com.github.traderjoe95.mls.protocol.group.resumption
 
-import arrow.core.Tuple5
+import arrow.core.Tuple4
 import arrow.core.raise.Raise
 import com.github.traderjoe95.mls.protocol.app.ApplicationCtx
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
@@ -16,7 +16,6 @@ import com.github.traderjoe95.mls.protocol.group.newGroup
 import com.github.traderjoe95.mls.protocol.group.prepareCommit
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.tree.RatchetTree
-import com.github.traderjoe95.mls.protocol.tree.leafNodeOrNull
 import com.github.traderjoe95.mls.protocol.tree.nonBlankLeafNodeIndices
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtensions
 import com.github.traderjoe95.mls.protocol.types.crypto.PreSharedKeyId
@@ -27,7 +26,6 @@ import com.github.traderjoe95.mls.protocol.types.framing.content.Add
 import com.github.traderjoe95.mls.protocol.types.framing.content.PreSharedKey
 import com.github.traderjoe95.mls.protocol.types.framing.content.ReInit
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
-import com.github.traderjoe95.mls.protocol.types.framing.message.GroupInfo
 import com.github.traderjoe95.mls.protocol.types.framing.message.PrivateMessage
 import com.github.traderjoe95.mls.protocol.types.framing.message.Welcome
 import de.traderjoe.ulid.ULID
@@ -41,11 +39,11 @@ suspend fun <Identity : Any> GroupState.reInitGroup(
   extensions: GroupContextExtensions = this.extensions,
   authenticatedData: ByteArray = byteArrayOf(),
   keepPastEpochs: UInt = 5U,
-): Tuple5<GroupState, MlsMessage<PrivateMessage>, GroupInfo, MlsMessage<Welcome>, GroupState> =
+): Tuple4<GroupState, MlsMessage<PrivateMessage>, MlsMessage<Welcome>, GroupState> =
   ensureActive {
     val newGroupId = groupId ?: ULID.new()
 
-    val (oldGroupAfterCommit, commitMsg, _, _) =
+    val (oldGroupAfterCommit, commitMsg, _) =
       prepareCommit(
         listOf(ReInit(newGroupId, protocolVersion, cipherSuite, extensions)),
         authenticatedData = authenticatedData,
@@ -67,13 +65,13 @@ suspend fun <Identity : Any> GroupState.reInitGroup(
         authenticateCredentials(tree.leaves.filterNotNull()).bindAll(),
       ).values.bindAll()
 
-    val (newGroupAfterCommit, _, newGroupInfo, welcome) =
+    val (newGroupAfterCommit, _, welcome) =
       newGroupInitial.prepareCommit(
         keyPackages.map(::Add) + PreSharedKey(ResumptionPskId.reInit(oldGroupAfterCommit, cipherSuite)),
         inReInit = true,
       )
 
-    return Tuple5(oldGroupAfterCommit, commitMsg, newGroupInfo, welcome!!, newGroupAfterCommit)
+    return Tuple4(oldGroupAfterCommit, commitMsg, welcome!!, newGroupAfterCommit)
   }
 
 context(Raise<BranchError>, ApplicationCtx<Identity>)
@@ -82,7 +80,7 @@ suspend fun <Identity : Any> GroupState.branchGroup(
   groupId: ULID? = null,
   extensions: GroupContextExtensions = this.extensions,
   keepPastEpochs: UInt = 5U,
-): Triple<GroupState, GroupInfo, MlsMessage<Welcome>> =
+): Pair<GroupState, MlsMessage<Welcome>> =
   ensureActive {
     val newGroupId = groupId ?: ULID.new()
 
@@ -113,13 +111,13 @@ suspend fun <Identity : Any> GroupState.branchGroup(
         authenticateCredentials(leafNodes).bindAll(),
       ).values.bindAll()
 
-    val (newGroupAfterCommit, _, newGroupInfo, welcome) =
+    val (newGroupAfterCommit, _, welcome) =
       newGroupInitial.prepareCommit(
         keyPackages.map(::Add) + PreSharedKey(ResumptionPskId.branch(this)),
         inBranch = true,
       )
 
-    return Triple(newGroupAfterCommit, newGroupInfo, welcome!!)
+    return newGroupAfterCommit to welcome!!
   }
 
 internal val PreSharedKeyId.isProtocolResumption: Boolean

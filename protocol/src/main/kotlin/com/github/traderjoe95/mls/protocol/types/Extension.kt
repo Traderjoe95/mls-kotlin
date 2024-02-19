@@ -22,7 +22,7 @@ import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.codec.type.uint16
 import com.github.traderjoe95.mls.codec.util.Slice
 import com.github.traderjoe95.mls.codec.util.throwAnyError
-import com.github.traderjoe95.mls.protocol.tree.RatchetTree
+import com.github.traderjoe95.mls.protocol.tree.PublicRatchetTree
 import com.github.traderjoe95.mls.protocol.types.crypto.HpkePublicKey
 import com.github.traderjoe95.mls.protocol.types.crypto.VerificationKey
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.Capabilities
@@ -126,7 +126,7 @@ sealed interface Extension<V : Extension<V>> {
               extensionValue.decodeAs(ApplicationId.T)
 
             in ExtensionType.RatchetTree.ord ->
-              extensionValue.decodeAs(RatchetTreeExt.T)
+              extensionValue.decodeAs(RatchetTree.T)
 
             in ExtensionType.RequiredCapabilities.ord ->
               extensionValue.decodeAs(RequiredCapabilities.T)
@@ -292,14 +292,16 @@ data class ExternalSenders(
   }
 }
 
-data class RatchetTreeExt(
-  val tree: RatchetTree,
-) : GroupInfoExtension<RatchetTreeExt> {
+data class RatchetTree(
+  val tree: PublicRatchetTree,
+) : GroupInfoExtension<RatchetTree> {
+  constructor(tree: com.github.traderjoe95.mls.protocol.tree.RatchetTree) : this(tree.public)
+
   override val type: UShort = ExtensionType.RatchetTree.asUShort
-  override val valueT: DataType<RatchetTreeExt> = T
+  override val valueT: DataType<RatchetTree> = T
 
   companion object {
-    val T: DataType<RatchetTreeExt> = RatchetTree.dataT.derive({ RatchetTreeExt(it) }, { it.tree })
+    val T: DataType<RatchetTree> = PublicRatchetTree.dataT.derive({ RatchetTree(it) }, { it.tree })
   }
 }
 

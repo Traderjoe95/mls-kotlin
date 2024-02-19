@@ -45,7 +45,7 @@ interface Sign {
     private fun sign(
       signatureKey: SigningKey,
       content: SignContent,
-    ): Signature = sign(signatureKey, content)
+    ): Signature = sign(signatureKey, content.encodeUnsafe())
 
     internal abstract fun sign(
       signatureKey: SigningKey,

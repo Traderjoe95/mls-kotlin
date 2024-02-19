@@ -18,13 +18,10 @@ import com.github.traderjoe95.mls.protocol.psk.PskLookup
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.tree.RatchetTree
 import com.github.traderjoe95.mls.protocol.tree.SecretTree
-import com.github.traderjoe95.mls.protocol.tree.TreePrivateKeyStore
-import com.github.traderjoe95.mls.protocol.tree.leafNodeOrNull
 import com.github.traderjoe95.mls.protocol.types.Extension
 import com.github.traderjoe95.mls.protocol.types.ExternalPub
 import com.github.traderjoe95.mls.protocol.types.ExternalSenders
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtensions
-import com.github.traderjoe95.mls.protocol.types.RatchetTreeExt
 import com.github.traderjoe95.mls.protocol.types.crypto.ExternalPskId
 import com.github.traderjoe95.mls.protocol.types.crypto.Nonce
 import com.github.traderjoe95.mls.protocol.types.crypto.PreSharedKeyId
@@ -42,8 +39,9 @@ import com.github.traderjoe95.mls.protocol.types.framing.enums.SenderType
 import com.github.traderjoe95.mls.protocol.types.framing.message.GroupInfo
 import com.github.traderjoe95.mls.protocol.util.get
 import de.traderjoe.ulid.ULID
+import com.github.traderjoe95.mls.protocol.types.RatchetTree as RatchetTreeExt
 
-sealed class GroupState : PskLookup, ICipherSuite, SecretTree {
+sealed class GroupState : PskLookup, ICipherSuite, SecretTree.Lookup {
   abstract val settings: GroupSettings
 
   val protocolVersion: ProtocolVersion by lazy {
@@ -124,6 +122,9 @@ sealed class BaseGroupState(
   final override val settings: GroupSettings,
   internal val epochs: Nel<GroupEpoch>,
 ) : GroupState(), ICipherSuite by settings.cipherSuite {
+  override val ownLeafIndex: LeafIndex
+    get() = tree.leafIndex
+
   final override val currentEpoch: ULong by lazy {
     epochs.head.epoch
   }
@@ -157,6 +158,8 @@ sealed class BaseGroupState(
   final override fun groupInfo(public: Boolean): GroupInfo =
     ensureActive {
       GroupInfo.create(
+        ownLeafIndex,
+        signingKey,
         groupContext,
         listOfNotNull(
           RatchetTreeExt(tree),
@@ -224,18 +227,13 @@ sealed class BaseGroupState(
         }
     }
 
-  context(Raise<RatchetError>)
+  context(Raise<RatchetError>, Raise<EpochError>)
   final override suspend fun getNonceAndKey(
     epoch: ULong,
     leafIndex: LeafIndex,
     contentType: ContentType,
     generation: UInt,
-  ): Pair<Nonce, Secret> = keySchedule(epoch).getNonceAndKey(leafIndex, contentType, generation)
-
-  final override suspend fun getNonceAndKey(
-    leafIndex: LeafIndex,
-    contentType: ContentType,
-  ): Triple<Nonce, Secret, UInt> = keySchedule.getNonceAndKey(leafIndex, contentType)
+  ): Pair<Nonce, Secret> = keySchedule(epoch).secretTree.getNonceAndKey(leafIndex, contentType, generation)
 
   context(Raise<GroupSuspended>)
   final override fun storeProposal(
@@ -253,8 +251,7 @@ internal class ActiveGroupState internal constructor(
   settings: GroupSettings,
   epochs: Nel<GroupEpoch>,
   val signingKey: SigningKey,
-  override val ownLeafIndex: LeafIndex,
-) : BaseGroupState(settings, epochs), SecretTree {
+) : BaseGroupState(settings, epochs) {
   context(Raise<InvalidCommit.UnknownProposal>)
   fun getProposal(proposalRef: Proposal.Ref): Pair<Proposal, LeafIndex?> =
     epochs.head.proposals[proposalRef.hashCode]
@@ -266,14 +263,11 @@ internal class ActiveGroupState internal constructor(
         ),
       )
 
-  fun privateKeyStore(): TreePrivateKeyStore = epochs.head.treePrivateKeyStore
-
   fun nextEpoch(
     commit: Commit,
     groupContext: GroupContext,
     tree: RatchetTree,
     keySchedule: KeySchedule,
-    privateKeyStore: TreePrivateKeyStore,
   ): ActiveGroupState =
     ActiveGroupState(
       settings,
@@ -283,12 +277,10 @@ internal class ActiveGroupState internal constructor(
           tree,
           keySchedule,
           commit,
-          privateKeyStore,
         ),
         *epochs.take(settings.keepPastEpochs.toInt() - 1).toTypedArray(),
       ),
       signingKey,
-      ownLeafIndex,
     )
 
   fun suspend(
@@ -296,7 +288,6 @@ internal class ActiveGroupState internal constructor(
     groupContext: GroupContext,
     tree: RatchetTree,
     keySchedule: KeySchedule,
-    privateKeyStore: TreePrivateKeyStore,
   ): SuspendedGroupState =
     SuspendedGroupState(
       settings,
@@ -306,16 +297,13 @@ internal class ActiveGroupState internal constructor(
           tree,
           keySchedule,
           commit,
-          privateKeyStore,
         ),
         *epochs.take(settings.keepPastEpochs.toInt() - 1).toTypedArray(),
       ),
-      ownLeafIndex,
     )
 }
 
 internal class SuspendedGroupState internal constructor(
   settings: GroupSettings,
   epochs: Nel<GroupEpoch>,
-  override val ownLeafIndex: LeafIndex,
 ) : BaseGroupState(settings, epochs)

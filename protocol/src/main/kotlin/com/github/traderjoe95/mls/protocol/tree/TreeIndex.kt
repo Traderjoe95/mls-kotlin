@@ -8,6 +8,29 @@ import com.github.traderjoe95.mls.protocol.types.tree.LeafNode
 import com.github.traderjoe95.mls.protocol.util.shl
 import com.github.traderjoe95.mls.protocol.util.shr
 
+fun lowestCommonAncestor(
+  node1: TreeIndex,
+  node2: TreeIndex,
+): NodeIndex {
+  var n1 = node1.nodeIndex
+  var n2 = node2.nodeIndex
+
+  while (n1.level != n2.level) {
+    if (n1.level < n2.level) {
+      n1 = n1.parent
+    } else {
+      n2 = n2.parent
+    }
+  }
+
+  while (n1 != n2) {
+    n1 = n1.parent
+    n2 = n2.parent
+  }
+
+  return n1
+}
+
 sealed interface TreeIndex {
   val leafIndex: LeafIndex
   val nodeIndex: NodeIndex
@@ -17,6 +40,10 @@ sealed interface TreeIndex {
   val level: UInt
   val parent: NodeIndex
   val sibling: NodeIndex
+
+  val subtreeRange: NodeRange
+
+  fun isInSubtreeOf(node: TreeIndex): Boolean = node in subtreeRange
 }
 
 @JvmInline
@@ -37,6 +64,9 @@ value class LeafIndex(val value: UInt) : TreeIndex, Comparable<LeafIndex> {
 
   override val sibling: NodeIndex
     get() = if (value % 2U == 0U) nodeIndex + 2U else nodeIndex - 2U
+
+  override val subtreeRange: NodeRange
+    get() = nodeIndex..nodeIndex
 
   override fun compareTo(other: LeafIndex): Int = value.compareTo(other.value)
 
@@ -85,11 +115,8 @@ value class NodeIndex(val value: UInt) : TreeIndex, Comparable<NodeIndex> {
   val rightChild: NodeIndex
     get() = this xor (0x03U shl (level - 1U))
 
-  infix fun shr(bits: UInt): NodeIndex = NodeIndex(value shr bits)
-
-  infix fun shl(bits: UInt): NodeIndex = NodeIndex(value shl bits)
-
-  infix fun and(other: UInt): NodeIndex = NodeIndex(value and other)
+  override val subtreeRange: NodeRange
+    get() = if (isLeaf) this..this else ((1U shl level) - 1U).let { width -> (nodeIndex - width)..(nodeIndex + width) }
 
   infix fun or(other: UInt): NodeIndex = NodeIndex(value or other)
 
@@ -126,6 +153,8 @@ class NodeRange internal constructor(private val indices: UIntRange) :
       get() = NodeIndex(indices.last + 1U)
 
     override fun contains(value: NodeIndex): Boolean = value.value in indices
+
+    operator fun contains(node: TreeIndex): Boolean = node.nodeIndex in this
 
     override fun isEmpty(): Boolean = indices.isEmpty()
 

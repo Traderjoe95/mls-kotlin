@@ -171,7 +171,7 @@ data class PrivateMessage(
       }
 
       val leafIndex = authContent.sender.index!!
-      val (nonce, key, generation) = getNonceAndKey(leafIndex, authContent.contentType)
+      val (nonce, key, generation) = keySchedule.secretTree.getNonceAndKey(leafIndex, authContent.contentType)
       val reuseGuard = ReuseGuard.random()
       val guardedNonce = nonce xor reuseGuard
 

@@ -16,32 +16,17 @@ import com.github.traderjoe95.mls.protocol.types.tree.hash.TreeHashInput.Compani
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.ParentHash
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.ParentHash.Companion.asParentHash
 
-fun RatchetTree.blank(indices: Iterable<TreeIndex>): RatchetTree =
-  copy().apply {
-    indices.forEach {
-      this[it] = null
-    }
-  }
-
-fun RatchetTree.removeLeaves(leaves: Set<LeafIndex>): RatchetTree =
-  if (leaves.isNotEmpty()) {
-    blank(leaves.map { it.nodeIndex }).apply {
-      if (size > 1U) {
-        parentNodeIndices.forEach {
-          this[it] = this[it]?.asParent?.run { copy(unmergedLeaves = unmergedLeaves.filterNot(leaves::contains)) }
-        }
-      }
-    }
-  } else {
-    this
-  }
-
-context(ICipherSuite)
 val RatchetTree.treeHash: ByteArray
   get() = treeHash(root)
 
 context(ICipherSuite)
-fun RatchetTree.treeHash(subtreeRoot: TreeIndex): ByteArray =
+val RatchetTreeOps.treeHash: ByteArray
+  get() = treeHash(root)
+
+fun RatchetTree.treeHash(subtreeRoot: TreeIndex): ByteArray = with(cipherSuite) { treeHash(subtreeRoot) }
+
+context(ICipherSuite)
+fun RatchetTreeOps.treeHash(subtreeRoot: TreeIndex): ByteArray =
   hash(
     if (subtreeRoot.isLeaf) {
       TreeHashInput.forLeaf(subtreeRoot.leafIndex, this@treeHash[subtreeRoot]?.asLeaf).encodeUnsafe()
@@ -56,7 +41,7 @@ fun RatchetTree.treeHash(subtreeRoot: TreeIndex): ByteArray =
   )
 
 context(ICipherSuite)
-fun RatchetTree.parentHash(
+fun RatchetTreeOps.parentHash(
   parentNode: NodeIndex,
   leafNode: TreeIndex,
 ): ParentHash =
@@ -80,32 +65,38 @@ fun RatchetTree.parentHash(
     ).asParentHash
   }
 
-context(AuthenticationService<Identity>, Raise<IsSameClientError>)
-suspend fun <Identity : Any> RatchetTree.findEquivalentLeaf(keyPackage: KeyPackage): LeafIndex? = findEquivalentLeaf(keyPackage.leafNode)
+private fun RatchetTreeOps.removeLeaves(leaves: Set<LeafIndex>): RatchetTreeOps =
+  when (this) {
+    is RatchetTree -> removeLeaves(leaves)
+    is PublicRatchetTree -> removeLeaves(leaves)
+  }
 
 context(AuthenticationService<Identity>, Raise<IsSameClientError>)
-suspend fun <Identity : Any> RatchetTree.findEquivalentLeaf(leafNode: LeafNode<*>): LeafIndex? =
+suspend fun <Identity : Any> RatchetTreeOps.findEquivalentLeaf(keyPackage: KeyPackage): LeafIndex? = findEquivalentLeaf(keyPackage.leafNode)
+
+context(AuthenticationService<Identity>, Raise<IsSameClientError>)
+suspend fun <Identity : Any> RatchetTreeOps.findEquivalentLeaf(leafNode: LeafNode<*>): LeafIndex? =
   leaves.zipWithLeafIndex().find { (n, _) ->
     n?.credential?.let { cred ->
       isSameClient(cred, leafNode.credential).bind()
     } ?: false
   }?.second
 
-inline fun RatchetTree.findLeaf(predicate: LeafNode<*>.() -> Boolean): Pair<LeafNode<*>, LeafIndex>? =
+inline fun RatchetTreeOps.findLeaf(predicate: LeafNode<*>.() -> Boolean): Pair<LeafNode<*>, LeafIndex>? =
   leaves.zipWithLeafIndex()
     .mapNotNull { (maybeNode, idx) ->
       nullable { maybeNode.bind() to idx }
     }
     .find { (n, _) -> n.predicate() }
 
-val RatchetTree.nonBlankParentNodeIndices: List<NodeIndex>
+val RatchetTreeOps.nonBlankParentNodeIndices: List<NodeIndex>
   get() = parentNodeIndices.filterNot { it.isBlank }
 
-val RatchetTree.nonBlankLeafNodeIndices: List<NodeIndex>
+val RatchetTreeOps.nonBlankLeafNodeIndices: List<NodeIndex>
   get() = leafNodeIndices.filterNot { it.isBlank }
 
-val RatchetTree.nonBlankLeafIndices: List<LeafIndex>
+val RatchetTreeOps.nonBlankLeafIndices: List<LeafIndex>
   get() = leafNodeIndices.filterNot { it.isBlank }.map { it.leafIndex }
 
-val RatchetTree.nonBlankNodeIndices: List<NodeIndex>
+val RatchetTreeOps.nonBlankNodeIndices: List<NodeIndex>
   get() = nonBlankParentNodeIndices + nonBlankLeafNodeIndices
