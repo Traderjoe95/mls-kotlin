@@ -96,7 +96,7 @@ data class FramedContent<out T : Content>(
       tbs(wireFormat, groupContext).encodeUnsafe(),
     )
 
-  context(GroupState, Raise<SignatureError>, Raise<MacError>, Raise<EpochError>)
+  context(GroupState.Active, Raise<SignatureError>, Raise<MacError>, Raise<EpochError>)
   fun verifySignature(
     authData: AuthData,
     wireFormat: WireFormat,

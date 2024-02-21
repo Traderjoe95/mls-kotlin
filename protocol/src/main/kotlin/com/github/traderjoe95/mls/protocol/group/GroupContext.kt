@@ -45,8 +45,6 @@ class GroupContext(
   inline val encoded: ByteArray
     get() = encodeUnsafe()
 
-  fun settings(keepPastEpochs: UInt = 5U): GroupSettings = GroupSettings(protocolVersion, cipherSuite, groupId, keepPastEpochs)
-
   override fun component1(): ProtocolVersion = protocolVersion
 
   override fun component2(): CipherSuite = cipherSuite
@@ -114,15 +112,17 @@ class GroupContext(
 
     context(Raise<GroupCreationError>)
     suspend fun new(
+      protocolVersion: ProtocolVersion,
       cipherSuite: CipherSuite,
       keySchedule: KeySchedule,
       tree: RatchetTree,
       vararg extensions: GroupContextExtension<*>,
+      groupId: ULID? = null,
     ): GroupContext =
       GroupContext(
-        ProtocolVersion.MLS_1_0,
+        protocolVersion,
         cipherSuite,
-        ULID.new(),
+        groupId ?: ULID.new(),
         0UL,
         with(cipherSuite) { tree.treeHash },
         byteArrayOf(),
@@ -132,21 +132,6 @@ class GroupContext(
             cipherSuite.mac(keySchedule.confirmationKey, byteArrayOf()),
           ).encodeUnsafe(),
         ),
-      )
-
-    internal fun create(
-      settings: GroupSettings,
-      epoch: GroupEpoch,
-    ): GroupContext =
-      GroupContext(
-        settings.protocolVersion,
-        settings.cipherSuite,
-        settings.groupId,
-        epoch.epoch,
-        with(settings.cipherSuite) { epoch.tree.treeHash },
-        epoch.confirmedTranscriptHash,
-        epoch.extensions,
-        epoch.interimTranscriptHash,
       )
   }
 

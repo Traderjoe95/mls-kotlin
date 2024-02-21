@@ -1,7 +1,6 @@
 package com.github.traderjoe95.mls.playground
 
 import arrow.core.Either
-import arrow.core.Tuple4
 import arrow.core.getOrElse
 import arrow.core.raise.Raise
 import arrow.core.raise.either
@@ -12,25 +11,20 @@ import com.github.traderjoe95.mls.playground.service.DeliveryService
 import com.github.traderjoe95.mls.playground.util.plus
 import com.github.traderjoe95.mls.protocol.app.ApplicationCtx
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
-import com.github.traderjoe95.mls.protocol.error.BranchJoinError
 import com.github.traderjoe95.mls.protocol.error.ExternalJoinError
 import com.github.traderjoe95.mls.protocol.error.ExternalPskError
 import com.github.traderjoe95.mls.protocol.error.GroupCreationError
 import com.github.traderjoe95.mls.protocol.error.PskError
-import com.github.traderjoe95.mls.protocol.error.ReInitJoinError
 import com.github.traderjoe95.mls.protocol.error.SendToGroupError
 import com.github.traderjoe95.mls.protocol.error.UnknownGroup
 import com.github.traderjoe95.mls.protocol.group.joinGroup
 import com.github.traderjoe95.mls.protocol.group.joinGroupExternal
 import com.github.traderjoe95.mls.protocol.group.newGroup
-import com.github.traderjoe95.mls.protocol.group.resumption.BranchEvidence
-import com.github.traderjoe95.mls.protocol.group.resumption.ReInitEvidence
 import com.github.traderjoe95.mls.protocol.types.ApplicationId
 import com.github.traderjoe95.mls.protocol.types.BasicCredential
 import com.github.traderjoe95.mls.protocol.types.Credential
 import com.github.traderjoe95.mls.protocol.types.CredentialType
 import com.github.traderjoe95.mls.protocol.types.RequiredCapabilities
-import com.github.traderjoe95.mls.protocol.types.crypto.HpkeKeyPair
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret
 import com.github.traderjoe95.mls.protocol.types.crypto.SigningKey
 import com.github.traderjoe95.mls.protocol.types.crypto.VerificationKey
@@ -56,25 +50,27 @@ class Client(
   com.github.traderjoe95.mls.protocol.service.DeliveryService<String> by DeliveryService {
   private val messages: Channel<Pair<ULID, ByteArray>> = DeliveryService.registerUser(userName)
 
-  private val keyPackages: MutableMap<Int, Tuple4<KeyPackage, HpkeKeyPair, HpkeKeyPair, SigningKey>> = mutableMapOf()
-  private lateinit var signingKeyPair: Pair<SigningKey, VerificationKey>
+  private val keyPackages: MutableMap<Int, KeyPackage.Private> = mutableMapOf()
+  private val signingKeyPairs: MutableMap<CipherSuite, Pair<SigningKey, VerificationKey>> = mutableMapOf()
 
   private val groups: MutableMap<ULID, GroupChat> = mutableMapOf()
   private val suspended: MutableSet<ULID> = mutableSetOf()
 
-  fun generateKeyPackages(amount: UInt) =
-    repeat(amount.toInt()) {
-      DeliveryService.addKeyPackage(
-        userName,
-        newKeyPackage(Config.cipherSuite).first,
-      )
-    }
+  fun generateKeyPackages(
+    amount: UInt,
+    cipherSuite: CipherSuite = Config.cipherSuite,
+  ) = repeat(amount.toInt()) {
+    DeliveryService.addKeyPackage(
+      userName,
+      newKeyPackage(cipherSuite).public,
+    )
+  }
 
   suspend fun createGroup(public: Boolean = false): Either<GroupCreationError, GroupChat> =
     either {
       GroupChat(
         newGroup(
-          Config.cipherSuite,
+          newKeyPackage(Config.cipherSuite),
           RequiredCapabilities(credentialTypes = listOf(CredentialType.Basic)),
         ),
         this@Client,
@@ -85,10 +81,8 @@ class Client(
 
   suspend fun joinPublicGroup(groupId: ULID): Either<ExternalJoinError, GroupChat> =
     either {
-      val (group, commit) =
-        joinGroupExternal(
-          DeliveryService.getPublicGroupInfo(groupId).getOrThrow(),
-        )
+      val groupInfo = DeliveryService.getPublicGroupInfo(groupId).getOrThrow()
+      val (group, commit) = groupInfo.joinGroupExternal(newKeyPackage(groupInfo.groupContext.cipherSuite))
 
       sendMessageToGroup(commit, groupId)
 
@@ -116,9 +110,9 @@ class Client(
         when (val group = groups[body.groupId]) {
           null -> error("[$userName] Unknown group ${body.groupId}")
           else ->
-            if (body.groupId in suspended && body.epoch >= group.state.currentEpoch) {
+            if (body.groupId in suspended && body.epoch >= group.state.epoch) {
               println(
-                "[$userName] Group ${body.groupId} is suspended since epoch ${group.state.currentEpoch}, " +
+                "[$userName] Group ${body.groupId} is suspended since epoch ${group.state.epoch}, " +
                   "dropping message for epoch ${body.epoch}",
               )
               group
@@ -130,7 +124,13 @@ class Client(
       is Welcome ->
         either {
           println("[$userName] Welcome: Joining Group")
-          GroupChat(joinGroup(body), this@Client).register()
+
+          val keyPackage = body.secrets.firstNotNullOf { getKeyPackage(it.newMember) }
+
+          GroupChat(
+            body.joinGroup(keyPackage),
+            this@Client,
+          ).register()
         }.getOrElse { error("[$userName] Failed to join group: $it") }
 
       else -> error("Unexpected message")
@@ -141,17 +141,12 @@ class Client(
       groups[groupChat.state.groupId] = groupChat
     }
 
-  override fun getKeyPackage(ref: KeyPackage.Ref): Tuple4<KeyPackage, HpkeKeyPair, HpkeKeyPair, SigningKey>? = keyPackages[ref.hashCode]
+  override fun getKeyPackage(ref: KeyPackage.Ref): KeyPackage.Private? = keyPackages[ref.hashCode]
 
-  override fun newKeyPackage(cipherSuite: CipherSuite): Tuple4<KeyPackage, HpkeKeyPair, HpkeKeyPair, SigningKey> {
-    require(cipherSuite == Config.cipherSuite) { "Cipher Suite is invalid: $cipherSuite" }
-
+  override fun newKeyPackage(cipherSuite: CipherSuite): KeyPackage.Private {
     val initKeyPair = cipherSuite.generateHpkeKeyPair()
     val encryptionKeyPair = cipherSuite.generateHpkeKeyPair()
-
-    if (!::signingKeyPair.isInitialized) {
-      signingKeyPair = cipherSuite.generateSignatureKeyPair()
-    }
+    val signingKeyPair = signingKeyPairs.computeIfAbsent(cipherSuite, CipherSuite::generateSignatureKeyPair)
 
     val (signingKey, verificationKey) = signingKeyPair
 
@@ -181,7 +176,7 @@ class Client(
         )
       }
 
-    return Tuple4(keyPackage, initKeyPair, encryptionKeyPair, signingKey).also {
+    return KeyPackage.Private(keyPackage, initKeyPair.private, encryptionKeyPair.private, signingKey).also {
       keyPackages[cipherSuite.makeKeyPackageRef(keyPackage).hashCode] = it
     }
   }
@@ -198,7 +193,7 @@ class Client(
   override suspend fun getResumptionPsk(
     groupId: ULID,
     epoch: ULong,
-  ): Secret = groups[groupId]?.state?.keySchedule(epoch)?.resumptionPsk ?: raise(UnknownGroup(groupId))
+  ): Secret = groups[groupId]?.state?.keySchedule?.resumptionPsk ?: raise(UnknownGroup(groupId))
 
   override fun groupIdExists(id: ULID): Boolean = id in groups
 
@@ -208,24 +203,4 @@ class Client(
       suspended.add(groupId)
     }
   }
-
-  context(Raise<ReInitJoinError>)
-  override fun getReInitEvidence(groupId: ULID): ReInitEvidence =
-    groups[groupId]?.run {
-      ReInitEvidence(
-        state.currentEpoch,
-        state.lastCommitProposals,
-        state.tree.leaves.filterNotNull().map { it.credential },
-      )
-    } ?: raise(UnknownGroup(groupId))
-
-  context(Raise<BranchJoinError>)
-  override fun getBranchEvidence(groupId: ULID): BranchEvidence =
-    groups[groupId]?.run {
-      BranchEvidence(
-        state.settings.protocolVersion,
-        state.settings.cipherSuite,
-        state.tree.leaves.filterNotNull().map { it.credential },
-      )
-    } ?: raise(UnknownGroup(groupId))
 }

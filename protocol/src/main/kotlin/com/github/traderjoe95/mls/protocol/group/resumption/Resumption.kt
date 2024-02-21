@@ -1,8 +1,6 @@
 package com.github.traderjoe95.mls.protocol.group.resumption
 
-import arrow.core.Tuple4
 import arrow.core.raise.Raise
-import com.github.traderjoe95.mls.protocol.app.ApplicationCtx
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.error.BranchError
 import com.github.traderjoe95.mls.protocol.error.BranchJoinError
@@ -12,10 +10,14 @@ import com.github.traderjoe95.mls.protocol.error.ResumptionJoinError
 import com.github.traderjoe95.mls.protocol.error.WelcomeJoinError
 import com.github.traderjoe95.mls.protocol.group.GroupContext
 import com.github.traderjoe95.mls.protocol.group.GroupState
+import com.github.traderjoe95.mls.protocol.group.PrepareCommitResult
 import com.github.traderjoe95.mls.protocol.group.newGroup
 import com.github.traderjoe95.mls.protocol.group.prepareCommit
+import com.github.traderjoe95.mls.protocol.service.AuthenticationService
+import com.github.traderjoe95.mls.protocol.service.DeliveryService
+import com.github.traderjoe95.mls.protocol.service.authenticateCredentials
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
-import com.github.traderjoe95.mls.protocol.tree.RatchetTree
+import com.github.traderjoe95.mls.protocol.tree.RatchetTreeOps
 import com.github.traderjoe95.mls.protocol.tree.nonBlankLeafNodeIndices
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtensions
 import com.github.traderjoe95.mls.protocol.types.crypto.PreSharedKeyId
@@ -26,177 +28,226 @@ import com.github.traderjoe95.mls.protocol.types.framing.content.Add
 import com.github.traderjoe95.mls.protocol.types.framing.content.PreSharedKey
 import com.github.traderjoe95.mls.protocol.types.framing.content.ReInit
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
-import com.github.traderjoe95.mls.protocol.types.framing.message.PrivateMessage
-import com.github.traderjoe95.mls.protocol.types.framing.message.Welcome
+import com.github.traderjoe95.mls.protocol.types.framing.message.GroupMessage
+import com.github.traderjoe95.mls.protocol.types.framing.message.KeyPackage
 import de.traderjoe.ulid.ULID
 import de.traderjoe.ulid.suspending.new
 
-context(Raise<ReInitError>, ApplicationCtx<Identity>)
-suspend fun <Identity : Any> GroupState.reInitGroup(
+context(Raise<ReInitError>, AuthenticationService<Identity>)
+suspend fun <Identity : Any> GroupState.Active.reInitGroup(
   groupId: ULID? = null,
-  protocolVersion: ProtocolVersion = this.settings.protocolVersion,
+  protocolVersion: ProtocolVersion = this.protocolVersion,
   cipherSuite: CipherSuite = this.cipherSuite,
   extensions: GroupContextExtensions = this.extensions,
   authenticatedData: ByteArray = byteArrayOf(),
-  keepPastEpochs: UInt = 5U,
-): Tuple4<GroupState, MlsMessage<PrivateMessage>, MlsMessage<Welcome>, GroupState> =
-  ensureActive {
-    val newGroupId = groupId ?: ULID.new()
+  usePrivateMessage: Boolean = false,
+): Pair<GroupState.Suspended, MlsMessage<GroupMessage<*>>> {
+  val newGroupId = groupId ?: ULID.new()
 
-    val (oldGroupAfterCommit, commitMsg, _) =
-      prepareCommit(
-        listOf(ReInit(newGroupId, protocolVersion, cipherSuite, extensions)),
-        authenticatedData = authenticatedData,
-      )
+  val oldGroupResult =
+    prepareCommit(
+      listOf(ReInit(newGroupId, protocolVersion, cipherSuite, extensions)),
+      authenticatedData = authenticatedData,
+      usePrivateMessage = usePrivateMessage,
+    )
+  val suspended = oldGroupResult.newGroupState as GroupState.Suspended
 
-    val newGroupInitial =
-      newGroup(
-        cipherSuite,
-        *extensions.toTypedArray(),
-        protocolVersion = protocolVersion,
-        groupId = newGroupId,
-        keepPastEpochs = keepPastEpochs,
-      )
+  return suspended to oldGroupResult.commit
+}
 
-    val keyPackages =
-      getKeyPackages(
-        protocolVersion,
-        cipherSuite,
-        authenticateCredentials(tree.leaves.filterNotNull()).bindAll(),
-      ).values.bindAll()
+context(Raise<ReInitError>, AuthenticationService<Identity>, DeliveryService<Identity>)
+suspend fun <Identity : Any> GroupState.Suspended.createWelcome(
+  ownKeyPackage: KeyPackage.Private,
+): Pair<GroupState, List<PrepareCommitResult.WelcomeMessage>> =
+  createWelcome(
+    ownKeyPackage,
+    getKeyPackages(
+      protocolVersion,
+      cipherSuite,
+      authenticateCredentials(
+        tree.leaves
+          .filterIndexed { idx, _ -> idx != leafIndex.value.toInt() }
+          .filterNotNull(),
+      ).bindAll(),
+    ).values.bindAll(),
+  )
 
-    val (newGroupAfterCommit, _, welcome) =
-      newGroupInitial.prepareCommit(
-        keyPackages.map(::Add) + PreSharedKey(ResumptionPskId.reInit(oldGroupAfterCommit, cipherSuite)),
-        inReInit = true,
-      )
+context(Raise<ReInitError>, AuthenticationService<Identity>)
+suspend fun <Identity : Any> GroupState.Suspended.createWelcome(
+  ownKeyPackage: KeyPackage.Private,
+  otherKeyPackages: List<KeyPackage>,
+): Pair<GroupState, List<PrepareCommitResult.WelcomeMessage>> {
+  val newGroupInitial =
+    newGroup(
+      ownKeyPackage,
+      *reInit.extensions.toTypedArray(),
+      protocolVersion = reInit.protocolVersion,
+      cipherSuite = reInit.cipherSuite,
+      groupId = reInit.groupId,
+    )
 
-    return Tuple4(oldGroupAfterCommit, commitMsg, welcome!!, newGroupAfterCommit)
-  }
+  val (newGroup, _, newMemberWelcome) =
+    newGroupInitial.prepareCommit(
+      otherKeyPackages.map(::Add) + PreSharedKey(ResumptionPskId.reInit(this, cipherSuite)),
+      inReInit = true,
+    )
 
-context(Raise<BranchError>, ApplicationCtx<Identity>)
-suspend fun <Identity : Any> GroupState.branchGroup(
-  leafIndices: List<LeafIndex>,
+  return newGroup to newMemberWelcome
+}
+
+context(Raise<BranchError>, AuthenticationService<Identity>, DeliveryService<Identity>)
+suspend fun <Identity : Any> GroupState.Active.branchGroup(
+  ownKeyPackage: KeyPackage.Private,
+  otherMemberLeafIndices: List<LeafIndex>,
   groupId: ULID? = null,
   extensions: GroupContextExtensions = this.extensions,
-  keepPastEpochs: UInt = 5U,
-): Pair<GroupState, MlsMessage<Welcome>> =
-  ensureActive {
-    val newGroupId = groupId ?: ULID.new()
+): BranchResult {
+  val leafNodes =
+    tree.leafNodeIndices
+      .filter { it.leafIndex in (otherMemberLeafIndices - leafIndex) }
+      .map { it to tree.leafNodeOrNull(it) }
+      .partition { it.second != null }
+      .let { (nonBlank, blank) ->
+        if (blank.isNotEmpty()) raise(BranchError.BlankLeavesIncluded(blank.map { it.first.leafIndex }))
 
-    val newGroupInitial =
-      newGroup(
-        cipherSuite,
-        *extensions.toTypedArray(),
-        protocolVersion = settings.protocolVersion,
-        groupId = newGroupId,
-        keepPastEpochs = keepPastEpochs,
-      )
+        nonBlank.map { it.second!! }
+      }
 
-    val leafNodes =
-      tree.leafNodeIndices
-        .filter { it.leafIndex in leafIndices }
-        .map { it to tree.leafNodeOrNull(it) }
-        .partition { it.second != null }
-        .let { (nonBlank, blank) ->
-          if (blank.isNotEmpty()) raise(BranchError.BlankLeavesIncluded(blank.map { it.first.leafIndex }))
+  val keyPackages =
+    getKeyPackages(
+      protocolVersion,
+      cipherSuite,
+      authenticateCredentials(leafNodes).bindAll(),
+    ).values.bindAll()
 
-          nonBlank.map { it.second!! }
-        }
+  return branchGroup(
+    ownKeyPackage,
+    keyPackages,
+    groupId,
+    extensions,
+  )
+}
 
-    val keyPackages =
-      getKeyPackages(
-        settings.protocolVersion,
-        cipherSuite,
-        authenticateCredentials(leafNodes).bindAll(),
-      ).values.bindAll()
+context(Raise<BranchError>, AuthenticationService<Identity>)
+suspend fun <Identity : Any> GroupState.Active.branchGroup(
+  ownKeyPackage: KeyPackage.Private,
+  otherMemberKeyPackages: List<KeyPackage>,
+  groupId: ULID? = null,
+  extensions: GroupContextExtensions = this.extensions,
+): BranchResult {
+  val newGroupInitial =
+    newGroup(
+      ownKeyPackage,
+      *extensions.toTypedArray(),
+      groupId = groupId,
+    )
 
-    val (newGroupAfterCommit, _, welcome) =
-      newGroupInitial.prepareCommit(
-        keyPackages.map(::Add) + PreSharedKey(ResumptionPskId.branch(this)),
-        inBranch = true,
-      )
+  val (newGroupAfterCommit, _, welcome) =
+    newGroupInitial.prepareCommit(
+      otherMemberKeyPackages.map(::Add) + PreSharedKey(ResumptionPskId.branch(this)),
+      inBranch = true,
+    )
 
-    return newGroupAfterCommit to welcome!!
-  }
+  return BranchResult(newGroupAfterCommit, welcome)
+}
 
 internal val PreSharedKeyId.isProtocolResumption: Boolean
   get() = this is ResumptionPskId && usage in ResumptionPskUsage.PROTOCOL_RESUMPTION
 
-context(Raise<WelcomeJoinError>)
-internal suspend fun <Identity : Any> ApplicationCtx<Identity>.validateResumption(
+context(Raise<WelcomeJoinError>, AuthenticationService<Identity>)
+internal suspend fun <Identity : Any> validateResumption(
   groupContext: GroupContext,
-  tree: RatchetTree,
+  tree: RatchetTreeOps,
   resumptionPsk: ResumptionPskId,
+  resumptionGroup: GroupState,
 ) = when (resumptionPsk.usage) {
-  ResumptionPskUsage.ReInit -> validateReInit(groupContext, tree, resumptionPsk)
-  ResumptionPskUsage.Branch -> validateBranch(groupContext, tree, resumptionPsk)
+  ResumptionPskUsage.ReInit ->
+    validateReInit(
+      (resumptionGroup as GroupState.Suspended),
+      groupContext,
+      tree,
+      resumptionPsk,
+    )
+
+  ResumptionPskUsage.Branch -> validateBranch(resumptionGroup, groupContext, tree)
   else -> { // Nothing to validate
   }
 }
 
-context(Raise<ReInitJoinError>)
-internal suspend fun <Identity : Any> ApplicationCtx<Identity>.validateReInit(
+context(Raise<ReInitJoinError>, AuthenticationService<Identity>)
+internal suspend fun <Identity : Any> validateReInit(
+  suspended: GroupState.Suspended,
   groupContext: GroupContext,
-  tree: RatchetTree,
+  tree: RatchetTreeOps,
   resumptionPsk: ResumptionPskId,
 ) {
-  val evidence = getReInitEvidence(resumptionPsk.pskGroupId)
-
-  if (evidence.currentEpoch != resumptionPsk.pskEpoch) {
-    raise(ReInitJoinError.UnexpectedEpoch(evidence.currentEpoch, resumptionPsk.pskEpoch))
+  if (suspended.epoch != resumptionPsk.pskEpoch) {
+    raise(ReInitJoinError.UnexpectedEpoch(suspended.epoch, resumptionPsk.pskEpoch))
   }
 
-  val reInit =
-    evidence.lastCommitProposals
-      .filterIsInstance<ReInit>()
-      .firstOrNull()
-      ?: raise(ReInitJoinError.NoReInitProposal)
-
   when {
-    groupContext.groupId != reInit.groupId ->
-      raise(ReInitJoinError.GroupIdMismatch(groupContext.groupId, reInit.groupId))
+    groupContext.groupId != suspended.reInit.groupId ->
+      raise(ReInitJoinError.GroupIdMismatch(groupContext.groupId, suspended.reInit.groupId))
 
-    groupContext.protocolVersion != reInit.protocolVersion ->
-      raise(ResumptionJoinError.ProtocolVersionMismatch(groupContext.protocolVersion, reInit.protocolVersion))
+    groupContext.protocolVersion != suspended.reInit.protocolVersion ->
+      raise(
+        ResumptionJoinError.ProtocolVersionMismatch(
+          groupContext.protocolVersion,
+          suspended.reInit.protocolVersion,
+        ),
+      )
 
-    groupContext.cipherSuite != reInit.cipherSuite ->
-      raise(ResumptionJoinError.CipherSuiteMismatch(groupContext.cipherSuite, reInit.cipherSuite))
+    groupContext.cipherSuite != suspended.reInit.cipherSuite ->
+      raise(
+        ResumptionJoinError.CipherSuiteMismatch(
+          groupContext.cipherSuite,
+          suspended.reInit.cipherSuite,
+        ),
+      )
 
-    groupContext.extensions != reInit.extensions ->
-      raise(ReInitJoinError.ExtensionsMismatch(groupContext.extensions, reInit.extensions))
+    groupContext.extensions != suspended.reInit.extensions ->
+      raise(
+        ReInitJoinError.ExtensionsMismatch(
+          groupContext.extensions,
+          suspended.reInit.extensions,
+        ),
+      )
   }
 
   tree.nonBlankLeafNodeIndices.forEach { leafNodeIdx ->
     val leafNode = tree[leafNodeIdx]!!.asLeaf
 
-    evidence.members.find { isSameClient(leafNode.credential, it).bind() } ?: raise(ResumptionJoinError.NewMembersAdded)
+    suspended.tree.leaves
+      .filterNotNull()
+      .find { isSameClient(leafNode.credential, it.credential).bind() }
+      ?: raise(ResumptionJoinError.NewMembersAdded)
   }
 
-  if (tree.nonBlankLeafNodeIndices.size < evidence.members.size) {
+  if (tree.nonBlankLeafNodeIndices.size < suspended.tree.nonBlankLeafNodeIndices.size) {
     raise(ReInitJoinError.MembersMissing)
   }
 }
 
-context(Raise<BranchJoinError>)
-internal suspend fun <Identity : Any> ApplicationCtx<Identity>.validateBranch(
+context(Raise<BranchJoinError>, AuthenticationService<Identity>)
+internal suspend fun <Identity : Any> validateBranch(
+  originalGroup: GroupState,
   groupContext: GroupContext,
-  tree: RatchetTree,
-  resumptionPsk: ResumptionPskId,
+  tree: RatchetTreeOps,
 ) {
-  val evidence = getBranchEvidence(resumptionPsk.pskGroupId)
-
   when {
-    groupContext.protocolVersion != evidence.protocolVersion ->
-      raise(ResumptionJoinError.ProtocolVersionMismatch(groupContext.protocolVersion, evidence.protocolVersion))
+    groupContext.protocolVersion != originalGroup.protocolVersion ->
+      raise(ResumptionJoinError.ProtocolVersionMismatch(groupContext.protocolVersion, originalGroup.protocolVersion))
 
-    groupContext.cipherSuite != evidence.cipherSuite ->
-      raise(ResumptionJoinError.CipherSuiteMismatch(groupContext.cipherSuite, evidence.cipherSuite))
+    groupContext.cipherSuite != originalGroup.cipherSuite ->
+      raise(ResumptionJoinError.CipherSuiteMismatch(groupContext.cipherSuite, originalGroup.cipherSuite))
   }
 
   tree.nonBlankLeafNodeIndices.forEach { leafNodeIdx ->
     val leafNode = tree[leafNodeIdx]!!.asLeaf
 
-    evidence.members.find { isSameClient(leafNode.credential, it).bind() } ?: raise(ResumptionJoinError.NewMembersAdded)
+    originalGroup.tree.leaves
+      .filterNotNull()
+      .find { isSameClient(leafNode.credential, it.credential).bind() }
+      ?: raise(ResumptionJoinError.NewMembersAdded)
   }
 }

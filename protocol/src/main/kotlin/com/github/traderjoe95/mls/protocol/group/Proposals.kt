@@ -2,10 +2,10 @@ package com.github.traderjoe95.mls.protocol.group
 
 import arrow.core.raise.Raise
 import arrow.core.raise.nullable
-import com.github.traderjoe95.mls.protocol.app.ApplicationCtx
 import com.github.traderjoe95.mls.protocol.error.CommitError
 import com.github.traderjoe95.mls.protocol.error.InvalidCommit
 import com.github.traderjoe95.mls.protocol.error.LeafNodeCheckError
+import com.github.traderjoe95.mls.protocol.psk.PskLookup
 import com.github.traderjoe95.mls.protocol.service.AuthenticationService
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.tree.RatchetTree
@@ -114,7 +114,7 @@ suspend fun <Identity : Any> Add.validate(currentTree: RatchetTree) {
     raise(InvalidCommit.IncompatibleCipherSuite(keyPackage.cipherSuite, cipherSuite))
   }
 
-  currentTree.findEquivalentLeaf(keyPackage)?.also { raise(InvalidCommit.AlreadyMember(keyPackage, it)) }
+  currentTree.findEquivalentLeaf(keyPackage.leafNode)?.also { raise(InvalidCommit.AlreadyMember(keyPackage, it)) }
 
   keyPackage.leafNode.validate(
     currentTree,
@@ -130,8 +130,8 @@ suspend fun <Identity : Any> Add.validate(currentTree: RatchetTree) {
   }
 }
 
-context(Raise<CommitError>, ActiveGroupState, AuthenticationService<Identity>)
-suspend fun <Identity : Any> Update.validate(
+context(Raise<CommitError>, GroupState.Active, AuthenticationService<Identity>)
+internal suspend fun <Identity : Any> Update.validate(
   currentTree: RatchetTree,
   generatedBy: LeafIndex,
 ) {
@@ -152,13 +152,14 @@ internal suspend fun <Identity : Any> Remove.validate(
   }
 }
 
-context(Raise<CommitError>, GroupState, ApplicationCtx<Identity>)
-suspend fun <Identity : Any> PreSharedKey.validateAndLoad(
+context(Raise<CommitError>, GroupState)
+suspend fun PreSharedKey.validateAndLoad(
   inReInit: Boolean,
   inBranch: Boolean,
+  psks: PskLookup,
 ): Secret {
   pskId.validate(inReInit, inBranch)
-  return getPreSharedKey(pskId)
+  return psks.getPreSharedKey(pskId)
 }
 
 context(Raise<CommitError>, GroupState)

@@ -17,7 +17,7 @@ import com.github.traderjoe95.mls.protocol.types.tree.leaf.ParentHash
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.ParentHash.Companion.asParentHash
 
 val RatchetTree.treeHash: ByteArray
-  get() = treeHash(root)
+  get() = with(cipherSuite) { treeHash(root) }
 
 context(ICipherSuite)
 val RatchetTreeOps.treeHash: ByteArray
@@ -71,8 +71,13 @@ private fun RatchetTreeOps.removeLeaves(leaves: Set<LeafIndex>): RatchetTreeOps 
     is PublicRatchetTree -> removeLeaves(leaves)
   }
 
-context(AuthenticationService<Identity>, Raise<IsSameClientError>)
-suspend fun <Identity : Any> RatchetTreeOps.findEquivalentLeaf(keyPackage: KeyPackage): LeafIndex? = findEquivalentLeaf(keyPackage.leafNode)
+context(Raise<IsSameClientError>)
+fun RatchetTreeOps.findEquivalentLeaf(keyPackage: KeyPackage.Private): LeafIndex? =
+  findEquivalentLeaf(keyPackage.public)
+
+context(Raise<IsSameClientError>)
+fun RatchetTreeOps.findEquivalentLeaf(keyPackage: KeyPackage): LeafIndex? =
+  findLeaf { this == keyPackage.leafNode }?.second
 
 context(AuthenticationService<Identity>, Raise<IsSameClientError>)
 suspend fun <Identity : Any> RatchetTreeOps.findEquivalentLeaf(leafNode: LeafNode<*>): LeafIndex? =

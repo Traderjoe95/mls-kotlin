@@ -13,8 +13,8 @@ import com.github.traderjoe95.mls.codec.type.struct.member.then
 import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
 import com.github.traderjoe95.mls.protocol.error.SignatureError
-import com.github.traderjoe95.mls.protocol.group.ActiveGroupState
 import com.github.traderjoe95.mls.protocol.group.GroupContext
+import com.github.traderjoe95.mls.protocol.group.GroupState
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.types.Credential
 import com.github.traderjoe95.mls.protocol.types.Extension
@@ -33,6 +33,7 @@ import com.github.traderjoe95.mls.protocol.types.tree.leaf.LeafNodeInfo
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.LeafNodeSource
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.Lifetime
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.ParentHash
+import com.github.traderjoe95.mls.protocol.types.tree.leaf.ParentHash.Companion.eqNullable
 import de.traderjoe.ulid.ULID
 
 typealias KeyPackageLeafNode = LeafNode<LeafNodeSource.KeyPackage>
@@ -64,7 +65,7 @@ data class LeafNode<S : LeafNodeSource>(
       this
     }
 
-  fun tbs(
+  private fun tbs(
     groupId: ULID,
     leafIndex: LeafIndex,
   ): ByteArray =
@@ -79,17 +80,51 @@ data class LeafNode<S : LeafNodeSource>(
       if (source != LeafNodeSource.KeyPackage) LeafNodeLocation(groupId, leafIndex) else null,
     ).encodeUnsafe()
 
-  context(ICipherSuite, Raise<SignatureError>)
+  context(Raise<SignatureError>)
   fun verifySignature(
-    groupId: ULID,
+    groupContext: GroupContext,
     leafIndex: LeafIndex,
   ) {
-    verifyWithLabel(
+    groupContext.cipherSuite.verifyWithLabel(
       verificationKey,
       "LeafNodeTBS",
-      tbs(groupId, leafIndex),
+      tbs(groupContext.groupId, leafIndex),
       signature,
     )
+  }
+
+  override fun equals(other: Any?): Boolean {
+    if (this === other) return true
+    if (javaClass != other?.javaClass) return false
+
+    other as LeafNode<*>
+
+    if (!encryptionKey.eq(other.encryptionKey)) return false
+    if (!verificationKey.eq(other.verificationKey)) return false
+    if (credential != other.credential) return false
+    if (capabilities != other.capabilities) return false
+    if (source != other.source) return false
+    if (info != other.info) return false
+    if (extensions != other.extensions) return false
+    if (!signature.eq(other.signature)) return false
+    if (!parentHash.eqNullable(other.parentHash)) return false
+    if (lifetime != other.lifetime) return false
+
+    return true
+  }
+
+  override fun hashCode(): Int {
+    var result = encryptionKey.hashCode
+    result = 31 * result + verificationKey.hashCode
+    result = 31 * result + credential.hashCode()
+    result = 31 * result + capabilities.hashCode()
+    result = 31 * result + source.hashCode()
+    result = 31 * result + (info?.hashCode() ?: 0)
+    result = 31 * result + extensions.hashCode()
+    result = 31 * result + signature.hashCode
+    result = 31 * result + (parentHash?.hashCode ?: 0)
+    result = 31 * result + (lifetime?.hashCode() ?: 0)
+    return result
   }
 
   companion object : Encodable<LeafNode<*>> {
@@ -193,7 +228,7 @@ data class LeafNode<S : LeafNodeSource>(
         )
       }
 
-    context(ActiveGroupState)
+    context(GroupState.Active)
     internal fun update(
       encryptionKey: HpkePublicKey,
       oldLeafNode: LeafNode<*>,

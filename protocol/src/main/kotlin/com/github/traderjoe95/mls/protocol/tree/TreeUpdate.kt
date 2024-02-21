@@ -19,6 +19,7 @@ import com.github.traderjoe95.mls.protocol.types.tree.LeafNode
 import com.github.traderjoe95.mls.protocol.types.tree.ParentNode
 import com.github.traderjoe95.mls.protocol.types.tree.UpdatePath
 import com.github.traderjoe95.mls.protocol.types.tree.UpdatePathNode
+import com.github.traderjoe95.mls.protocol.types.tree.leaf.ParentHash.Companion.eqNullable
 import com.github.traderjoe95.mls.protocol.util.foldWith
 import com.github.traderjoe95.mls.protocol.util.zipWithIndex
 
@@ -128,7 +129,7 @@ internal fun applyUpdatePath(
         }
 
     val computedParentHash = updatedTreeWithoutLeaf.parentHash(filteredDirectPath.first(), fromLeafIndex)
-    if (updatePath.leafNode.parentHash != computedParentHash) {
+    if (!updatePath.leafNode.parentHash.eqNullable(computedParentHash)) {
       raise(WrongParentHash(computedParentHash.value, updatePath.leafNode.parentHash!!.value))
     }
 

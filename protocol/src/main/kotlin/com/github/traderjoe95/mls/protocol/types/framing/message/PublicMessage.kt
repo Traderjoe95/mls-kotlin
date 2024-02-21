@@ -33,7 +33,7 @@ import com.github.traderjoe95.mls.protocol.types.framing.enums.SenderType.NewMem
 import com.github.traderjoe95.mls.protocol.types.framing.enums.WireFormat
 import de.traderjoe.ulid.ULID
 
-data class PublicMessage<C : Content>(
+data class PublicMessage<out C : Content>(
   private val content: FramedContent<C>,
   val signature: Signature,
   val confirmationTag: Mac?,
@@ -53,16 +53,16 @@ data class PublicMessage<C : Content>(
   override val contentType: ContentType
     get() = content.contentType
 
-  val authenticatedContent: AuthenticatedContent<C>
+  private val authenticatedContent: AuthenticatedContent<C>
     get() = AuthenticatedContent(WireFormat.MlsPublicMessage, content, signature, confirmationTag)
 
-  context(GroupState, Raise<PublicMessageRecipientError>)
-  override suspend fun getAuthenticatedContent(): AuthenticatedContent<*> {
-    val groupContext = groupContext(content.epoch)
+  context(GroupState.Active, Raise<PublicMessageRecipientError>)
+  override suspend fun getAuthenticatedContent(): AuthenticatedContent<C> {
+    val groupContext = groupContext
 
     if (content.sender.type == SenderType.Member) {
       verifyMac(
-        keySchedule(content.epoch).membershipKey,
+        keySchedule.membershipKey,
         authenticatedContent.tbm(groupContext).encodeUnsafe(),
         membershipTag!!,
       )

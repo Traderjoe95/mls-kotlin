@@ -7,9 +7,9 @@ suspend fun main() {
   val bob = Client("Bob")
   val charlie = Client("Charlie")
 
-  alice.generateKeyPackages(10U)
-  bob.generateKeyPackages(10U)
-  charlie.generateKeyPackages(10U)
+  alice.generateKeyPackages(10U, Config.cipherSuite2)
+  bob.generateKeyPackages(10U, Config.cipherSuite2)
+  charlie.generateKeyPackages(10U, Config.cipherSuite2)
 
   // Alice creates the group. At this point, she is the only member
   val aliceGroup1 = alice.createGroup(public = true).getOrThrow()
@@ -37,7 +37,7 @@ suspend fun main() {
   val aliceGroup3 = alice.processNextMessage()!!
   val bobGroup2 = bob.processNextMessage()!!
 
-  println("ALICE EPOCH 2 (Alice+Charlie):")
+  println("ALICE EPOCH 2 (Alice+Bob+Charlie):")
   println("================================================================")
   println(aliceGroup3.state.debug)
   println()
@@ -51,4 +51,31 @@ suspend fun main() {
   println("================================================================")
   println(charlieGroup1.state.debug)
   println()
+
+  val aliceGroup4 = aliceGroup3.reInit(Config.cipherSuite2).getOrThrow()
+
+  println("ALICE EPOCH 3 (Alice+Bob+Charlie) // SUSPENDED:")
+  println("================================================================")
+  println(aliceGroup4.state.debug)
+  println()
+
+  val bobGroup3 = bob.processNextMessage()!!
+  val charlieGroup2 = charlie.processNextMessage()!!
+
+  println("Bob EPOCH 3 (Alice+Bob+Charlie) // SUSPENDED:")
+  println("================================================================")
+  println(bobGroup3.state.debug)
+  println()
+
+  println("Charlie EPOCH 3 (Alice+Bob+Charlie) // SUSPENDED:")
+  println("================================================================")
+  println(charlieGroup2.state.debug)
+  println()
+
+  println("#####################################################################################################")
+
+//  println("ALICE EPOCH 1 (Alice+Bob+Charlie) // RE-INIT:")
+//  println("================================================================")
+//  println(aliceNewGroup1.state.debug)
+//  println()
 }

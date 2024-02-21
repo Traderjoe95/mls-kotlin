@@ -28,7 +28,7 @@ data class AuthenticatedContent<out C : Content>(
   val signature: Signature,
   val confirmationTag: Mac?,
 ) : Struct4T.Shape<WireFormat, FramedContent<C>, Signature, Mac?> {
-  context(GroupState, Raise<SignatureError>, Raise<MacError>, Raise<EpochError>)
+  context(GroupState.Active, Raise<SignatureError>, Raise<MacError>, Raise<EpochError>)
   fun verify(groupContext: GroupContext) {
     content.verifySignature(FramedContent.AuthData(signature, confirmationTag), wireFormat, groupContext)
   }

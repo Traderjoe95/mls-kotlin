@@ -182,22 +182,22 @@ class ResumptionPskId(
       }.lift(::ResumptionPskId, ResumptionPskId::asStruct)
 
     fun reInit(
-      resumptionEpoch: GroupState,
+      resumptionEpoch: GroupState.Suspended,
       cipherSuite: CipherSuite,
     ): ResumptionPskId =
       ResumptionPskId(
         ResumptionPskUsage.ReInit,
-        resumptionEpoch.settings.groupId,
-        resumptionEpoch.currentEpoch,
+        resumptionEpoch.groupId,
+        resumptionEpoch.epoch,
         cipherSuite.generateSecret(cipherSuite.hashLen).asNonce,
       )
 
-    fun branch(resumptionEpoch: GroupState): ResumptionPskId =
+    fun branch(resumptionEpoch: GroupState.Active): ResumptionPskId =
       ResumptionPskId(
         ResumptionPskUsage.Branch,
-        resumptionEpoch.settings.groupId,
-        resumptionEpoch.currentEpoch,
-        resumptionEpoch.cipherSuite.generateSecret(resumptionEpoch.cipherSuite.hashLen).asNonce,
+        resumptionEpoch.groupId,
+        resumptionEpoch.epoch,
+        resumptionEpoch.generateSecret(resumptionEpoch.cipherSuite.hashLen).asNonce,
       )
   }
 }

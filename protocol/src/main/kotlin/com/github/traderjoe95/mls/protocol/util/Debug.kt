@@ -57,13 +57,14 @@ val HpkeCiphertext.debug: String
 val GroupState.debug: String
   get() =
     """MEMBER
-      |Leaf Index: $ownLeafIndex
+      |Leaf Index: $leafIndex
+      |Group Active: ${isActive()}
       |
       |GROUP CONTEXT
       |${groupContext.debug.prependIndent("  ")}
       |
       |KEY SCHEDULE
-      |${(this.keySchedule).debug.prependIndent("  ")}
+      |${keySchedule.debug.prependIndent("  ")}
     """.trimMargin()
 
 val GroupContext.debug: String

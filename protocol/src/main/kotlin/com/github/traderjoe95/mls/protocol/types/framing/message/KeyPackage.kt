@@ -9,14 +9,15 @@ import com.github.traderjoe95.mls.codec.type.struct.Struct6T
 import com.github.traderjoe95.mls.codec.type.struct.lift
 import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
-import com.github.traderjoe95.mls.protocol.error.IsSameClientError
+import com.github.traderjoe95.mls.protocol.error.KeyPackageMismatchError
 import com.github.traderjoe95.mls.protocol.error.SignatureError
-import com.github.traderjoe95.mls.protocol.service.AuthenticationService
 import com.github.traderjoe95.mls.protocol.types.Extension
 import com.github.traderjoe95.mls.protocol.types.HasExtensions
 import com.github.traderjoe95.mls.protocol.types.KeyPackageExtension
 import com.github.traderjoe95.mls.protocol.types.KeyPackageExtensions
 import com.github.traderjoe95.mls.protocol.types.crypto.HashReference
+import com.github.traderjoe95.mls.protocol.types.crypto.HpkeKeyPair
+import com.github.traderjoe95.mls.protocol.types.crypto.HpkePrivateKey
 import com.github.traderjoe95.mls.protocol.types.crypto.HpkePublicKey
 import com.github.traderjoe95.mls.protocol.types.crypto.Signature
 import com.github.traderjoe95.mls.protocol.types.crypto.SigningKey
@@ -37,8 +38,9 @@ data class KeyPackage(
 ) : HasExtensions<KeyPackageExtension<*>>(),
   Message,
   Struct6T.Shape<ProtocolVersion, CipherSuite, HpkePublicKey, KeyPackageLeafNode, KeyPackageExtensions, Signature> {
-  context(AuthenticationService<*>, Raise<IsSameClientError>)
-  suspend infix fun isSameClientAs(other: KeyPackage): Boolean = isSameClient(leafNode.credential, other.leafNode.credential).bind()
+  val ref: Ref by lazy {
+    cipherSuite.makeKeyPackageRef(this)
+  }
 
   context(Raise<SignatureError>)
   fun verifySignature() {
@@ -48,6 +50,32 @@ data class KeyPackage(
       Tbs(version, cipherSuite, initKey, leafNode, extensions).encodeUnsafe(),
       signature,
     )
+  }
+
+  override fun equals(other: Any?): Boolean {
+    if (this === other) return true
+    if (javaClass != other?.javaClass) return false
+
+    other as KeyPackage
+
+    if (version != other.version) return false
+    if (cipherSuite != other.cipherSuite) return false
+    if (!initKey.eq(other.initKey)) return false
+    if (leafNode != other.leafNode) return false
+    if (extensions != other.extensions) return false
+    if (signature.eq(other.signature)) return false
+
+    return true
+  }
+
+  override fun hashCode(): Int {
+    var result = version.hashCode()
+    result = 31 * result + cipherSuite.hashCode()
+    result = 31 * result + initKey.hashCode
+    result = 31 * result + leafNode.hashCode()
+    result = 31 * result + extensions.hashCode()
+    result = 31 * result + signature.hashCode
+    return result
   }
 
   companion object : Encodable<KeyPackage> {
@@ -111,6 +139,8 @@ data class KeyPackage(
     val hashCode: Int
       get() = ref.contentHashCode()
 
+    fun eq(other: Ref): Boolean = ref.contentEquals(other.ref)
+
     companion object : Encodable<Ref> {
       override val dataT: DataType<Ref> =
         HashReference.dataT.derive(
@@ -118,6 +148,50 @@ data class KeyPackage(
           { HashReference(it.ref) },
           name = "KeyPackageRef",
         )
+    }
+  }
+
+  data class Private(
+    val public: KeyPackage,
+    val initPrivateKey: HpkePrivateKey,
+    val encPrivateKey: HpkePrivateKey,
+    val signingKey: SigningKey,
+  ) {
+    val cipherSuite
+      get() = public.cipherSuite
+    val version
+      get() = public.version
+    val leafNode: KeyPackageLeafNode
+      get() = public.leafNode
+
+    val initKeyPair: HpkeKeyPair
+      get() = HpkeKeyPair(initPrivateKey to public.initKey)
+
+    val ref: Ref
+      get() = public.ref
+
+    context(Raise<KeyPackageMismatchError>)
+    fun checkParametersCompatible(welcome: Welcome) =
+      checkParametersCompatible(version, welcome.cipherSuite)
+
+    context(Raise<KeyPackageMismatchError>)
+    fun checkParametersCompatible(groupInfo: GroupInfo) =
+      checkParametersCompatible(groupInfo.groupContext.protocolVersion, groupInfo.groupContext.cipherSuite)
+
+    context(Raise<KeyPackageMismatchError>)
+    fun checkParametersCompatible(
+      protocolVersion: ProtocolVersion,
+      cipherSuite: CipherSuite,
+    ) {
+      if (protocolVersion != version) raise(KeyPackageMismatchError.ProtocolVersionMismatch(protocolVersion, version))
+      if (cipherSuite != this.cipherSuite) {
+        raise(
+          KeyPackageMismatchError.CipherSuiteMismatch(
+            cipherSuite,
+            this.cipherSuite,
+          ),
+        )
+      }
     }
   }
 }

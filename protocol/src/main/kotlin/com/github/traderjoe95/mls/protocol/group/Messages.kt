@@ -10,8 +10,8 @@ fun <C : Content> GroupState.createFramedContent(
 ): FramedContent<C> =
   FramedContent(
     groupId,
-    currentEpoch,
-    Sender.member(ownLeafIndex),
+    epoch,
+    Sender.member(leafIndex),
     authenticatedData,
     content,
   )

@@ -92,29 +92,29 @@ object DeliveryService : DeliveryService<String> {
     toGroup: ULID,
   ): Either<SendToGroupError, ULID> = UnexpectedError("This implementation should not be called").left()
 
-  override suspend fun sendMessageToUser(
+  override suspend fun sendMessageToIdentity(
     message: MlsMessage<*>,
-    toUser: String,
+    to: String,
   ): Either<SendToUserError<String>, ULID> =
     either {
       val encoded = EncoderError.wrap { message.encode().bind() }
       val messageId = ULID.new()
 
-      users[toUser]?.send(messageId to encoded) ?: raise(UnknownUser(toUser))
+      users[to]?.send(messageId to encoded) ?: raise(UnknownUser(to))
 
       messageId
     }
 
-  override suspend fun sendMessageToUsers(
+  override suspend fun sendMessageToIdentities(
     message: MlsMessage<*>,
-    toUsers: List<String>,
+    to: List<String>,
   ): Map<String, Either<SendToUserError<String>, ULID>> {
     val encoded =
       either {
         EncoderError.wrap { message.encode().bind() }
       }
 
-    return toUsers.associateWith { toUser ->
+    return to.associateWith { toUser ->
       val messageId = ULID.new()
 
       either {

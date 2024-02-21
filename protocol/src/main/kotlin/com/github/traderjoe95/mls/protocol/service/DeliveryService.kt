@@ -18,19 +18,19 @@ interface DeliveryService<Identity : Any> {
     toGroup: ULID,
   ): Either<SendToGroupError, ULID>
 
-  suspend fun sendMessageToUser(
+  suspend fun sendMessageToIdentity(
     message: MlsMessage<*>,
-    toUser: Identity,
+    to: Identity,
   ): Either<SendToUserError<Identity>, ULID>
 
-  suspend fun sendMessageToUsers(
+  suspend fun sendMessageToIdentities(
     message: MlsMessage<*>,
-    vararg toUsers: Identity,
-  ): Map<Identity, Either<SendToUserError<Identity>, ULID>> = sendMessageToUsers(message, toUsers.asList())
+    vararg to: Identity,
+  ): Map<Identity, Either<SendToUserError<Identity>, ULID>> = sendMessageToIdentities(message, to.asList())
 
-  suspend fun sendMessageToUsers(
+  suspend fun sendMessageToIdentities(
     message: MlsMessage<*>,
-    toUsers: List<Identity>,
+    to: List<Identity>,
   ): Map<Identity, Either<SendToUserError<Identity>, ULID>>
 
   suspend fun getPublicGroupInfo(groupId: ULID): Either<GetGroupInfoError, GroupInfo>

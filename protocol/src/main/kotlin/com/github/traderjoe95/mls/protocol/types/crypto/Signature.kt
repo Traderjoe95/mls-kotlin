@@ -13,6 +13,9 @@ value class SigningKey(val key: ByteArray)
 
 @JvmInline
 value class VerificationKey(val key: ByteArray) {
+  val hashCode: Int
+    get() = key.contentHashCode()
+
   fun eq(other: VerificationKey): Boolean = key.contentEquals(other.key)
 
   companion object : Encodable<VerificationKey> {
@@ -22,6 +25,11 @@ value class VerificationKey(val key: ByteArray) {
 
 @JvmInline
 value class Signature(val value: ByteArray) {
+  val hashCode: Int
+    get() = value.contentHashCode()
+
+  fun eq(other: Signature): Boolean = value.contentEquals(other.value)
+
   companion object : Encodable<Signature> {
     override val dataT: DataType<Signature> = opaque[V].derive({ Signature(it) }, { it.value })
 

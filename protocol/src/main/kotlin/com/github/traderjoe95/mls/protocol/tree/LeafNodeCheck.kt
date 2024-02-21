@@ -1,28 +1,28 @@
 package com.github.traderjoe95.mls.protocol.tree
 
 import arrow.core.raise.Raise
-import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
 import com.github.traderjoe95.mls.protocol.error.LeafNodeCheckError
 import com.github.traderjoe95.mls.protocol.group.GroupContext
 import com.github.traderjoe95.mls.protocol.service.AuthenticationService
+import com.github.traderjoe95.mls.protocol.service.authenticateCredential
 import com.github.traderjoe95.mls.protocol.types.ExtensionType
 import com.github.traderjoe95.mls.protocol.types.RequiredCapabilities
 import com.github.traderjoe95.mls.protocol.types.tree.LeafNode
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.LeafNodeSource
 import java.time.Instant
 
-context(AuthenticationService<Identity>, ICipherSuite, Raise<LeafNodeCheckError>)
+context(Raise<LeafNodeCheckError>, AuthenticationService<Identity>)
 suspend fun <Identity : Any> LeafNode<*>.validate(
-  underTree: RatchetTreeOps,
+  tree: RatchetTreeOps,
   groupContext: GroupContext,
   leafIdx: LeafIndex,
   expectedSource: LeafNodeSource? = null,
-) = with(underTree) {
+) {
   // Authenticate Credential with AS
   authenticateCredential(this@validate)
 
   // Verify leaf node signature
-  verifySignature(groupContext.groupId, leafIdx)
+  verifySignature(groupContext, leafIdx)
 
   // Check that leaf node is compatible with group requirements
   groupContext.extension<RequiredCapabilities>()?.let { requiredCapabilities ->
@@ -31,7 +31,7 @@ suspend fun <Identity : Any> LeafNode<*>.validate(
     }
   }
 
-  checkCredentialSupport()
+  checkCredentialSupport(tree)
 
   // Check lifetime
   lifetime?.let { lt ->
@@ -55,40 +55,45 @@ suspend fun <Identity : Any> LeafNode<*>.validate(
     is LeafNodeSource.Commit,
     ->
       if (source != expectedSource) raise(LeafNodeCheckError.WrongSource(expectedSource, source))
+
     is LeafNodeSource.Update ->
       if (source != LeafNodeSource.Update) {
         raise(LeafNodeCheckError.WrongSource(LeafNodeSource.Update, source))
-      } else if (encryptionKey.eq(underTree.leafNode(leafIdx).encryptionKey)) {
+      } else if (encryptionKey.eq(tree.leafNode(leafIdx).encryptionKey)) {
         raise(LeafNodeCheckError.UpdateShouldChangeEncryptionKey(leafIdx))
       }
+
     else -> {}
   }
 
-  checkDuplicateKeys(leafIdx)
+  checkDuplicateKeys(tree, leafIdx)
 }
 
-context(RatchetTreeOps, ICipherSuite, Raise<LeafNodeCheckError>)
-private fun LeafNode<*>.checkCredentialSupport() {
+context(Raise<LeafNodeCheckError>)
+private fun LeafNode<*>.checkCredentialSupport(tree: RatchetTreeOps) {
   // Check that the credentials of all members are supported by the leaf node
-  nonBlankLeafIndices.filter {
-    leafNode(it).credential.credentialType !in capabilities
+  tree.nonBlankLeafIndices.filter {
+    tree.leafNode(it).credential.credentialType !in capabilities
   }.let {
     if (it.isNotEmpty()) raise(LeafNodeCheckError.UnsupportedMemberCredential(it))
   }
 
   // Check that all members support the credential of this leaf node
-  nonBlankLeafIndices.filter {
-    credential.credentialType !in leafNode(it).capabilities
+  tree.nonBlankLeafIndices.filter {
+    credential.credentialType !in tree.leafNode(it).capabilities
   }.let {
     if (it.isNotEmpty()) raise(LeafNodeCheckError.MemberDoesNotSupportCredential(it))
   }
 }
 
-context(RatchetTreeOps, ICipherSuite, Raise<LeafNodeCheckError>)
-private fun LeafNode<*>.checkDuplicateKeys(leafIdx: LeafIndex) {
+context(Raise<LeafNodeCheckError>)
+private fun LeafNode<*>.checkDuplicateKeys(
+  tree: RatchetTreeOps,
+  leafIdx: LeafIndex,
+) {
   // Check for duplicated encryption keys
-  nonBlankLeafIndices.filter {
-    it != leafIdx && leafNode(it).encryptionKey.eq(encryptionKey)
+  tree.nonBlankLeafIndices.filter {
+    it != leafIdx && tree.leafNode(it).encryptionKey.eq(encryptionKey)
   }.let { duplicates ->
     if (duplicates.isNotEmpty()) {
       raise(
@@ -98,8 +103,8 @@ private fun LeafNode<*>.checkDuplicateKeys(leafIdx: LeafIndex) {
   }
 
   // Check for duplicated signature keys
-  nonBlankLeafIndices.filter {
-    it != leafIdx && leafNode(it).verificationKey.eq(verificationKey)
+  tree.nonBlankLeafIndices.filter {
+    it != leafIdx && tree.leafNode(it).verificationKey.eq(verificationKey)
   }.let { duplicates ->
     if (duplicates.isNotEmpty()) raise(LeafNodeCheckError.DuplicateSignatureKey(duplicates + leafIdx))
   }

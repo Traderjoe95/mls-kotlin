@@ -13,4 +13,6 @@ sealed interface PskError : InvalidCommit, WelcomeJoinError {
   data class BadPskNonce(val pskId: PreSharedKeyId, val expected: UInt, val length: UInt) : PskError
 
   data class InvalidPskUsage(val pskId: ResumptionPskId) : PskError
+
+  data class PskNotFound(val pskId: PreSharedKeyId) : PskError
 }

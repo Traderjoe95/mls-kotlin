@@ -6,7 +6,8 @@ import com.github.traderjoe95.mls.codec.type.V
 import com.github.traderjoe95.mls.codec.type.derive
 import com.github.traderjoe95.mls.codec.type.opaque
 
-data class ParentHash(val value: ByteArray) : LeafNodeInfo {
+@JvmInline
+value class ParentHash(val value: ByteArray) : LeafNodeInfo {
   companion object : Encodable<ParentHash> {
     override val dataT: DataType<ParentHash> = opaque[V].derive({ ParentHash(it) }, { it.value })
 
@@ -15,18 +16,17 @@ data class ParentHash(val value: ByteArray) : LeafNodeInfo {
 
     val ByteArray.asParentHash: ParentHash
       get() = ParentHash(this)
+
+    fun ParentHash?.eqNullable(other: ParentHash?): Boolean =
+      when {
+        this == null && other == null -> true
+        this != null && other != null -> eq(other)
+        else -> false
+      }
   }
 
-  override fun equals(other: Any?): Boolean {
-    if (this === other) return true
-    if (javaClass != other?.javaClass) return false
+  val hashCode: Int
+    get() = value.contentHashCode()
 
-    other as ParentHash
-
-    return value.contentEquals(other.value)
-  }
-
-  override fun hashCode(): Int {
-    return value.contentHashCode()
-  }
+  fun eq(other: ParentHash): Boolean = value.contentEquals(other.value)
 }

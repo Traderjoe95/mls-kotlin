@@ -32,7 +32,7 @@ import com.github.traderjoe95.mls.protocol.types.framing.message.PrivateMessage
 import com.github.traderjoe95.mls.protocol.types.framing.message.PublicMessage
 import com.github.traderjoe95.mls.protocol.types.framing.message.Welcome
 
-data class MlsMessage<M : Message> internal constructor(
+data class MlsMessage<out M : Message> internal constructor(
   val protocolVersion: ProtocolVersion,
   val wireFormat: WireFormat,
   val message: M,
@@ -43,6 +43,20 @@ data class MlsMessage<M : Message> internal constructor(
       authenticatedContent: AuthenticatedContent<C>,
       groupContext: GroupContext,
     ): MlsMessage<PublicMessage<C>> = public(PublicMessage.create(authenticatedContent, groupContext))
+
+    context(GroupState, Raise<PublicMessageSenderError>)
+    fun <C : Content> public(
+      framedContent: FramedContent<C>,
+      authData: FramedContent.AuthData,
+    ): MlsMessage<PublicMessage<C>> =
+      public(
+        AuthenticatedContent(
+          WireFormat.MlsPublicMessage,
+          framedContent,
+          authData.signature,
+          authData.confirmationTag,
+        ),
+      )
 
     context(GroupState, Raise<PublicMessageSenderError>)
     fun <C : Content> public(

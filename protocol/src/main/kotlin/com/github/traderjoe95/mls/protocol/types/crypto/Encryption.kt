@@ -26,6 +26,9 @@ value class HpkePrivateKey(val key: ByteArray) {
 
 @JvmInline
 value class HpkePublicKey(val key: ByteArray) {
+  val hashCode: Int
+    get() = key.contentHashCode()
+
   fun eq(other: HpkePublicKey): Boolean = key.contentEquals(other.key)
 
   companion object : Encodable<HpkePublicKey> {

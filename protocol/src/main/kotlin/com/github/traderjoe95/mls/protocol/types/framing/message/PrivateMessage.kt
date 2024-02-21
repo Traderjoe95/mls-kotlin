@@ -62,13 +62,12 @@ data class PrivateMessage(
 
   private fun senderDataAad(): Struct3<ULID, ULong, ContentType> = Struct3(groupId, epoch, contentType)
 
-  context(GroupState, Raise<PrivateMessageRecipientError>)
+  context(GroupState.Active, Raise<PrivateMessageRecipientError>)
   override suspend fun getAuthenticatedContent(): AuthenticatedContent<*> {
     val ciphertextSample = ciphertext.value.sliceArray(0..<minOf(ciphertext.size, hashLen.toInt()))
 
-    val senderDataKey = expandWithLabel(keySchedule(epoch).senderDataSecret, "key", ciphertextSample, keyLen)
-    val senderDataNonce =
-      expandWithLabel(keySchedule(epoch).senderDataSecret, "nonce", ciphertextSample, nonceLen).asNonce
+    val senderDataKey = expandWithLabel(keySchedule.senderDataSecret, "key", ciphertextSample, keyLen)
+    val senderDataNonce = expandWithLabel(keySchedule.senderDataSecret, "nonce", ciphertextSample, nonceLen).asNonce
 
     val senderData =
       try {
@@ -142,7 +141,7 @@ data class PrivateMessage(
       ),
       authData.signature,
       authData.confirmationTag,
-    ).apply { verify(groupContext(epoch)) }
+    ).apply { verify(groupContext) }
   }
 
   companion object : Encodable<PrivateMessage> {

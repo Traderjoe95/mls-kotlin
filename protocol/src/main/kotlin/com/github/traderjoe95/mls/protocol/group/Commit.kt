@@ -8,7 +8,6 @@ import arrow.core.raise.nullable
 import arrow.core.toOption
 import com.github.traderjoe95.mls.codec.util.uSize
 import com.github.traderjoe95.mls.protocol.app.ApplicationCtx
-import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite.Companion.zeroesNh
 import com.github.traderjoe95.mls.protocol.crypto.KeySchedule
 import com.github.traderjoe95.mls.protocol.error.CommitError
@@ -17,6 +16,8 @@ import com.github.traderjoe95.mls.protocol.error.RecipientCommitError
 import com.github.traderjoe95.mls.protocol.error.RecipientTreeUpdateError
 import com.github.traderjoe95.mls.protocol.error.RemovedFromGroup
 import com.github.traderjoe95.mls.protocol.error.SenderCommitError
+import com.github.traderjoe95.mls.protocol.psk.PskLookup
+import com.github.traderjoe95.mls.protocol.service.AuthenticationService
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.tree.RatchetTree
 import com.github.traderjoe95.mls.protocol.tree.applyUpdatePath
@@ -24,6 +25,7 @@ import com.github.traderjoe95.mls.protocol.tree.applyUpdatePathExternalJoin
 import com.github.traderjoe95.mls.protocol.tree.createUpdatePath
 import com.github.traderjoe95.mls.protocol.tree.lowestCommonAncestor
 import com.github.traderjoe95.mls.protocol.tree.validate
+import com.github.traderjoe95.mls.protocol.types.Extension
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtension
 import com.github.traderjoe95.mls.protocol.types.ProposalType
 import com.github.traderjoe95.mls.protocol.types.crypto.Aad
@@ -45,7 +47,6 @@ import com.github.traderjoe95.mls.protocol.types.framing.content.ProposalOrRef
 import com.github.traderjoe95.mls.protocol.types.framing.content.ReInit
 import com.github.traderjoe95.mls.protocol.types.framing.content.Remove
 import com.github.traderjoe95.mls.protocol.types.framing.content.Update
-import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
 import com.github.traderjoe95.mls.protocol.types.framing.enums.SenderType
 import com.github.traderjoe95.mls.protocol.types.framing.enums.WireFormat
 import com.github.traderjoe95.mls.protocol.types.framing.message.EncryptedGroupSecrets
@@ -55,22 +56,23 @@ import com.github.traderjoe95.mls.protocol.types.framing.message.GroupSecrets
 import com.github.traderjoe95.mls.protocol.types.framing.message.GroupSecrets.Companion.encodeUnsafe
 import com.github.traderjoe95.mls.protocol.types.framing.message.KeyPackage
 import com.github.traderjoe95.mls.protocol.types.framing.message.PathSecret
-import com.github.traderjoe95.mls.protocol.types.framing.message.PrivateMessage
 import com.github.traderjoe95.mls.protocol.types.framing.message.Welcome
 import com.github.traderjoe95.mls.protocol.types.tree.UpdatePath
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.LeafNodeSource
-import de.traderjoe.ulid.ULID
+import com.github.traderjoe95.mls.protocol.types.RatchetTree as RatchetTreeExt
 
-context(Raise<SenderCommitError>, ApplicationCtx<Identity>)
+context(Raise<SenderCommitError>, AuthenticationService<Identity>)
 suspend fun <Identity : Any> GroupState.prepareCommit(
   proposals: List<ProposalOrRef>,
   authenticatedData: ByteArray = byteArrayOf(),
   inReInit: Boolean = false,
   inBranch: Boolean = false,
-  createPublicGroupInfo: Boolean = false,
-): Triple<GroupState, MlsMessage<PrivateMessage>, MlsMessage<Welcome>?> =
+  usePrivateMessage: Boolean = false,
+  psks: PskLookup = PskLookup.EMPTY,
+): PrepareCommitResult =
   ensureActive {
-    val proposalResult = processProposals(proposals, None, ownLeafIndex, inReInit, inBranch)
+    val proposalResult = processProposals(proposals, None, leafIndex, inReInit, inBranch, psks)
+    val wireFormat = if (usePrivateMessage) WireFormat.MlsPrivateMessage else WireFormat.MlsPublicMessage
 
     val (updatedTree, updatePath, pathSecrets) =
       if (proposalResult.updatePathRequired) {
@@ -89,21 +91,22 @@ suspend fun <Identity : Any> GroupState.prepareCommit(
     val commit =
       FramedContent(
         groupId,
-        currentEpoch,
-        Sender.member(ownLeafIndex),
+        epoch,
+        Sender.member(leafIndex),
         authenticatedData,
         Commit(proposals, updatePath.toOption()),
       )
-    val signature = commit.sign(WireFormat.MlsPrivateMessage, groupContext)
+    val signature = commit.sign(wireFormat, groupContext)
 
     val updatedGroupContext =
       groupContext.evolve(
-        WireFormat.MlsPrivateMessage,
+        wireFormat,
         commit,
         signature,
         updatedTree,
         newExtensions = (proposalResult as? ProcessProposalsResult.CommitByMember)?.extensions,
       )
+
     val (newKeySchedule, joinerSecret, welcomeSecret) =
       keySchedule.next(
         commitSecret,
@@ -118,39 +121,59 @@ suspend fun <Identity : Any> GroupState.prepareCommit(
 
     val updatedGroupState =
       proposalResult.createNextEpochState(
-        commit.content,
         updatedGroupContext.withInterimTranscriptHash(confirmationTag),
         updatedTree,
         newKeySchedule,
       )
-    val groupInfo = updatedGroupState.groupInfo(createPublicGroupInfo)
-
-    Triple(
-      updatedGroupState,
-      MlsMessage.private(commit, authData),
-      proposalResult.welcomeTo
-        ?.createWelcome(
-          groupInfo,
-          updatedTree,
-          pathSecrets,
-          welcomeSecret,
-          joinerSecret,
-          proposalResult.pskIds,
+    val groupInfo =
+      GroupInfo.create(
+        leafIndex,
+        signingKey,
+        updatedGroupContext,
+        listOfNotNull(
+          RatchetTreeExt(updatedTree),
+          *Extension.grease(),
         ),
+        confirmationTag,
+      )
+
+    PrepareCommitResult(
+      updatedGroupState,
+      if (usePrivateMessage) MlsMessage.private(commit, authData) else MlsMessage.public(commit, authData),
+      proposalResult.welcomeTo
+        ?.takeIf { it.isNotEmpty() }
+        ?.let { newMembers ->
+          listOf(
+            PrepareCommitResult.WelcomeMessage(
+              newMembers.createWelcome(
+                groupInfo,
+                updatedTree,
+                pathSecrets,
+                welcomeSecret,
+                joinerSecret,
+                proposalResult.pskIds,
+              ),
+              newMembers.map { it.second },
+            ),
+          )
+        } ?: listOf(),
     )
   }
 
 context(Raise<RecipientCommitError>, ApplicationCtx<Identity>)
-suspend fun <Identity : Any> GroupState.processCommit(authenticatedCommit: AuthenticatedContent<Commit>): GroupState =
+suspend fun <Identity : Any> GroupState.processCommit(
+  authenticatedCommit: AuthenticatedContent<Commit>,
+  psks: PskLookup = PskLookup.EMPTY,
+): GroupState =
   ensureActive {
     val commit = authenticatedCommit.content
-    val proposalResult = commit.content.validateAndApply(commit.sender)
+    val proposalResult = commit.content.validateAndApply(commit.sender, psks)
     val updatePath = commit.content.updatePath
 
     val preTree = proposalResult.updatedTree ?: tree
 
     with(preTree) {
-      if (ownLeafIndex.isBlank) raise(RemovedFromGroup)
+      if (this@ensureActive.leafIndex.isBlank) raise(RemovedFromGroup)
     }
 
     val (updatedTree, commitSecret) =
@@ -171,6 +194,7 @@ suspend fun <Identity : Any> GroupState.processCommit(authenticatedCommit: Authe
         updatedTree,
         newExtensions = (proposalResult as? ProcessProposalsResult.CommitByMember)?.extensions,
       )
+
     val (newKeySchedule, _, _) =
       keySchedule.next(
         commitSecret,
@@ -187,15 +211,17 @@ suspend fun <Identity : Any> GroupState.processCommit(authenticatedCommit: Authe
     )
 
     proposalResult.createNextEpochState(
-      commit.content,
       updatedGroupContext.withInterimTranscriptHash(authenticatedCommit.confirmationTag),
       updatedTree,
       newKeySchedule,
     )
   }
 
-context(ActiveGroupState, ApplicationCtx<Identity>, Raise<CommitError>)
-private suspend fun <Identity : Any> Commit.validateAndApply(sender: Sender): ProcessProposalsResult =
+context(GroupState.Active, ApplicationCtx<Identity>, Raise<CommitError>)
+private suspend fun <Identity : Any> Commit.validateAndApply(
+  sender: Sender,
+  psks: PskLookup,
+): ProcessProposalsResult =
   processProposals(
     proposals,
     updatePath,
@@ -206,6 +232,7 @@ private suspend fun <Identity : Any> Commit.validateAndApply(sender: Sender): Pr
     },
     inReInit = false,
     inBranch = false,
+    psks,
   ).also { result ->
     if (result.updatePathRequired && updatePath.isNone()) raise(InvalidCommit.MissingUpdatePath)
 
@@ -229,7 +256,7 @@ private fun ProcessProposalsResult.newMemberLeafIndices(): Set<LeafIndex> =
     is ProcessProposalsResult.ReInitCommit -> setOf()
   }
 
-context(ActiveGroupState, Raise<RecipientTreeUpdateError>)
+context(GroupState.Active, Raise<RecipientTreeUpdateError>)
 private fun RatchetTree.applyCommitUpdatePath(
   groupContext: GroupContext,
   updatePath: UpdatePath,
@@ -242,7 +269,7 @@ private fun RatchetTree.applyCommitUpdatePath(
     applyUpdatePathExternalJoin(groupContext, updatePath, excludeNewLeaves)
   }
 
-context(ActiveGroupState, Raise<SenderCommitError>)
+context(GroupState.Active, Raise<SenderCommitError>)
 private fun List<Pair<LeafIndex, KeyPackage>>.createWelcome(
   groupInfo: GroupInfo,
   newTree: RatchetTree,
@@ -250,49 +277,47 @@ private fun List<Pair<LeafIndex, KeyPackage>>.createWelcome(
   welcomeSecret: Secret,
   joinerSecret: Secret,
   pskIds: List<PreSharedKeyId>,
-): MlsMessage<Welcome>? =
-  if (isEmpty()) {
-    null
-  } else {
-    val welcomeNonce = expandWithLabel(welcomeSecret, "nonce", byteArrayOf(), nonceLen).asNonce
-    val welcomeKey = expandWithLabel(welcomeSecret, "key", byteArrayOf(), keyLen)
+): MlsMessage<Welcome> {
+  val welcomeNonce = expandWithLabel(welcomeSecret, "nonce", byteArrayOf(), nonceLen).asNonce
+  val welcomeKey = expandWithLabel(welcomeSecret, "key", byteArrayOf(), keyLen)
 
-    val encryptedGroupInfo = encryptAead(welcomeKey, welcomeNonce, Aad.empty, groupInfo.encodeUnsafe())
+  val encryptedGroupInfo = encryptAead(welcomeKey, welcomeNonce, Aad.empty, groupInfo.encodeUnsafe())
 
-    val filteredPath = newTree.filteredDirectPath(ownLeafIndex)
+  val filteredPath = newTree.filteredDirectPath(leafIndex)
 
-    val encryptedGroupSecrets =
-      map { (newLeaf, keyPackage) ->
-        val commonAncestor = lowestCommonAncestor(ownLeafIndex, newLeaf)
-        val pathSecret = pathSecrets.getOrNull(filteredPath.indexOf(commonAncestor)).toOption().map(::PathSecret)
+  val encryptedGroupSecrets =
+    map { (newLeaf, keyPackage) ->
+      val commonAncestor = lowestCommonAncestor(leafIndex, newLeaf)
+      val pathSecret = pathSecrets.getOrNull(filteredPath.indexOf(commonAncestor)).toOption().map(::PathSecret)
 
-        val groupSecrets = GroupSecrets(joinerSecret, pathSecret, pskIds)
+      val groupSecrets = GroupSecrets(joinerSecret, pathSecret, pskIds)
 
-        EncryptedGroupSecrets(
-          makeKeyPackageRef(keyPackage),
-          encryptWithLabel(
-            keyPackage.initKey,
-            "Welcome",
-            encryptedGroupInfo.value,
-            groupSecrets.encodeUnsafe(),
-          ),
-        )
-      }
+      EncryptedGroupSecrets(
+        makeKeyPackageRef(keyPackage),
+        encryptWithLabel(
+          keyPackage.initKey,
+          "Welcome",
+          encryptedGroupInfo.value,
+          groupSecrets.encodeUnsafe(),
+        ),
+      )
+    }
 
-    MlsMessage.welcome(
-      groupContext.cipherSuite,
-      encryptedGroupSecrets,
-      encryptedGroupInfo,
-    )
-  }
+  return MlsMessage.welcome(
+    groupContext.cipherSuite,
+    encryptedGroupSecrets,
+    encryptedGroupInfo,
+  )
+}
 
-context(Raise<CommitError>, ApplicationCtx<Identity>)
-private suspend fun <Identity : Any> ActiveGroupState.processProposals(
+context(Raise<CommitError>, AuthenticationService<Identity>)
+private suspend fun <Identity : Any> GroupState.Active.processProposals(
   proposals: List<ProposalOrRef>,
   updatePath: Option<UpdatePath>,
   committerLeafIdx: LeafIndex?,
   inReInit: Boolean = false,
   inBranch: Boolean = false,
+  psks: PskLookup,
 ): ProcessProposalsResult {
   val resolved: ResolvedProposals = mutableMapOf()
 
@@ -365,7 +390,7 @@ private suspend fun <Identity : Any> ActiveGroupState.processProposals(
         }
 
         is PreSharedKey -> {
-          val psk = proposal.validateAndLoad(inReInit, inBranch)
+          val psk = proposal.validateAndLoad(inReInit, inBranch, psks)
 
           val pskInput =
             expandWithLabel(
@@ -389,13 +414,7 @@ private suspend fun <Identity : Any> ActiveGroupState.processProposals(
         is ReInit -> {
           proposal.validate()
 
-          return ProcessProposalsResult.ReInitCommit(
-            proposal.groupId,
-            proposal.protocolVersion,
-            proposal.cipherSuite,
-            proposal.extensions,
-            zeroesNh,
-          )
+          return ProcessProposalsResult.ReInitCommit(proposal, zeroesNh)
         }
       }
     }
@@ -422,13 +441,12 @@ internal sealed interface ProcessProposalsResult {
   val welcomeTo: List<Pair<LeafIndex, KeyPackage>>?
     get() = null
 
-  context(ActiveGroupState)
+  context(GroupState.Active)
   fun createNextEpochState(
-    commit: Commit,
     groupContext: GroupContext,
     tree: RatchetTree,
     keySchedule: KeySchedule,
-  ): GroupState = nextEpoch(commit, groupContext, tree, keySchedule)
+  ): GroupState = nextEpoch(groupContext, tree, keySchedule)
 
   data class CommitByMember(
     override val updatePathRequired: Boolean,
@@ -448,21 +466,17 @@ internal sealed interface ProcessProposalsResult {
   }
 
   data class ReInitCommit(
-    val groupId: ULID,
-    val protocolVersion: ProtocolVersion,
-    val cipherSuite: CipherSuite,
-    val extensions: List<GroupContextExtension<*>>,
+    val reInit: ReInit,
     override val pskSecret: Secret,
   ) : ProcessProposalsResult {
     override val updatePathRequired: Boolean = false
     override val updatedTree: RatchetTree? = null
 
-    context(ActiveGroupState)
+    context(GroupState.Active)
     override fun createNextEpochState(
-      commit: Commit,
       groupContext: GroupContext,
       tree: RatchetTree,
       keySchedule: KeySchedule,
-    ): GroupState = suspend(commit, groupContext, tree, keySchedule)
+    ): GroupState = suspend(groupContext, tree, keySchedule, reInit)
   }
 }

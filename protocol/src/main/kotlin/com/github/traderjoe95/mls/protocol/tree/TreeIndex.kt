@@ -43,7 +43,7 @@ sealed interface TreeIndex {
 
   val subtreeRange: NodeRange
 
-  fun isInSubtreeOf(node: TreeIndex): Boolean = node in subtreeRange
+  fun isInSubtreeOf(node: TreeIndex): Boolean = this in node.subtreeRange
 }
 
 @JvmInline
@@ -69,6 +69,10 @@ value class LeafIndex(val value: UInt) : TreeIndex, Comparable<LeafIndex> {
     get() = nodeIndex..nodeIndex
 
   override fun compareTo(other: LeafIndex): Int = value.compareTo(other.value)
+
+  fun eq(index: UInt): Boolean = value == index
+
+  fun eq(index: Int): Boolean = value == index.toUInt()
 
   companion object : Encodable<LeafIndex> {
     override val dataT: DataType<LeafIndex> = uint32.asUInt.derive({ LeafIndex(it) }, { it.value })
@@ -159,6 +163,8 @@ class NodeRange internal constructor(private val indices: UIntRange) :
     override fun isEmpty(): Boolean = indices.isEmpty()
 
     infix fun step(step: Int): NodeProgression = NodeProgression(indices step step)
+
+    override fun toString(): String = "Node(${first.value})..Node(${last.value})"
   }
 
 open class NodeProgression internal constructor(private val indices: UIntProgression) : Iterable<NodeIndex> {
@@ -172,4 +178,6 @@ open class NodeProgression internal constructor(private val indices: UIntProgres
     get() = indices.step
 
   override fun iterator(): Iterator<NodeIndex> = indices.asSequence().map(::NodeIndex).iterator()
+
+  override fun toString(): String = "Node(${first.value})..Node(${last.value}) step $step"
 }

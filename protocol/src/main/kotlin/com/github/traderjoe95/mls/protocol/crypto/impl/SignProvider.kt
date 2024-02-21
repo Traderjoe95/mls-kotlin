@@ -9,6 +9,7 @@ import com.github.traderjoe95.mls.protocol.types.crypto.Signature
 import com.github.traderjoe95.mls.protocol.types.crypto.Signature.Companion.asSignature
 import com.github.traderjoe95.mls.protocol.types.crypto.SigningKey
 import com.github.traderjoe95.mls.protocol.types.crypto.VerificationKey
+import org.bouncycastle.asn1.ASN1ObjectIdentifier
 import org.bouncycastle.asn1.x9.ECNamedCurveTable
 import org.bouncycastle.crypto.AsymmetricCipherKeyPairGenerator
 import org.bouncycastle.crypto.Signer
@@ -30,9 +31,6 @@ import org.bouncycastle.crypto.signers.DSADigestSigner
 import org.bouncycastle.crypto.signers.ECDSASigner
 import org.bouncycastle.crypto.signers.Ed25519Signer
 import org.bouncycastle.crypto.signers.Ed448Signer
-import org.bouncycastle.math.ec.custom.sec.SecP256R1Curve
-import org.bouncycastle.math.ec.custom.sec.SecP384R1Curve
-import org.bouncycastle.math.ec.custom.sec.SecP521R1Curve
 import java.math.BigInteger
 import java.security.SecureRandom
 import com.github.traderjoe95.mls.codec.error.DecoderError as BaseDecoderError
@@ -122,15 +120,19 @@ internal class SignProvider(
     }
   }
 
+  private val p256: ASN1ObjectIdentifier by lazy { ECNamedCurveTable.getOID("P-256") }
+  private val p384: ASN1ObjectIdentifier by lazy { ECNamedCurveTable.getOID("P-384") }
+  private val p521: ASN1ObjectIdentifier by lazy { ECNamedCurveTable.getOID("P-521") }
+
   private val AsymmetricKeyParameter.bytes: ByteArray
     get() =
       when (this) {
         is ECPublicKeyParameters ->
-          when (parameters.curve) {
-            is SecP256R1Curve -> P256_POINT_T.encodeUnsafe(q)
-            is SecP384R1Curve -> P384_POINT_T.encodeUnsafe(q)
-            is SecP521R1Curve -> P521_POINT_T.encodeUnsafe(q)
-            else -> error("Unsupported")
+          when (val oid = (parameters as ECNamedDomainParameters).name) {
+            p256 -> P256_POINT_T.encodeUnsafe(q)
+            p384 -> P384_POINT_T.encodeUnsafe(q)
+            p521 -> P521_POINT_T.encodeUnsafe(q)
+            else -> error("Unsupported curve ${ECNamedCurveTable.getName(oid)}")
           }
 
         is ECPrivateKeyParameters -> d.toByteArray()
