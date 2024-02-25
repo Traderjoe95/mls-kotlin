@@ -5,6 +5,7 @@ import com.github.traderjoe95.mls.codec.type.DataType
 import com.github.traderjoe95.mls.codec.type.derive
 import com.github.traderjoe95.mls.codec.type.uint32
 import com.github.traderjoe95.mls.protocol.types.tree.LeafNode
+import com.github.traderjoe95.mls.protocol.util.log2
 import com.github.traderjoe95.mls.protocol.util.shl
 import com.github.traderjoe95.mls.protocol.util.shr
 
@@ -141,6 +142,10 @@ value class NodeIndex(val value: UInt) : TreeIndex, Comparable<NodeIndex> {
   operator fun rangeTo(upper: NodeIndex): NodeRange = NodeRange(value..upper.value)
 
   operator fun rangeUntil(upper: NodeIndex): NodeRange = NodeRange(value..<upper.value)
+
+  companion object {
+    fun root(nodeCount: UInt): NodeIndex = NodeIndex((1U shl log2(nodeCount)) - 1U)
+  }
 }
 
 class NodeRange internal constructor(private val indices: UIntRange) :

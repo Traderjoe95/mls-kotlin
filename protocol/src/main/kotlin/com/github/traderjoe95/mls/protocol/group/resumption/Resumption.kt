@@ -13,6 +13,9 @@ import com.github.traderjoe95.mls.protocol.group.GroupState
 import com.github.traderjoe95.mls.protocol.group.PrepareCommitResult
 import com.github.traderjoe95.mls.protocol.group.newGroup
 import com.github.traderjoe95.mls.protocol.group.prepareCommit
+import com.github.traderjoe95.mls.protocol.message.GroupMessage
+import com.github.traderjoe95.mls.protocol.message.KeyPackage
+import com.github.traderjoe95.mls.protocol.message.MlsMessage
 import com.github.traderjoe95.mls.protocol.service.AuthenticationService
 import com.github.traderjoe95.mls.protocol.service.DeliveryService
 import com.github.traderjoe95.mls.protocol.service.authenticateCredentials
@@ -20,29 +23,25 @@ import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.tree.RatchetTreeOps
 import com.github.traderjoe95.mls.protocol.tree.nonBlankLeafNodeIndices
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtensions
+import com.github.traderjoe95.mls.protocol.types.GroupId
 import com.github.traderjoe95.mls.protocol.types.crypto.PreSharedKeyId
 import com.github.traderjoe95.mls.protocol.types.crypto.ResumptionPskId
 import com.github.traderjoe95.mls.protocol.types.crypto.ResumptionPskUsage
-import com.github.traderjoe95.mls.protocol.types.framing.MlsMessage
 import com.github.traderjoe95.mls.protocol.types.framing.content.Add
 import com.github.traderjoe95.mls.protocol.types.framing.content.PreSharedKey
 import com.github.traderjoe95.mls.protocol.types.framing.content.ReInit
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
-import com.github.traderjoe95.mls.protocol.types.framing.message.GroupMessage
-import com.github.traderjoe95.mls.protocol.types.framing.message.KeyPackage
-import de.traderjoe.ulid.ULID
-import de.traderjoe.ulid.suspending.new
 
 context(Raise<ReInitError>, AuthenticationService<Identity>)
 suspend fun <Identity : Any> GroupState.Active.reInitGroup(
-  groupId: ULID? = null,
+  groupId: GroupId? = null,
   protocolVersion: ProtocolVersion = this.protocolVersion,
   cipherSuite: CipherSuite = this.cipherSuite,
   extensions: GroupContextExtensions = this.extensions,
   authenticatedData: ByteArray = byteArrayOf(),
   usePrivateMessage: Boolean = false,
 ): Pair<GroupState.Suspended, MlsMessage<GroupMessage<*>>> {
-  val newGroupId = groupId ?: ULID.new()
+  val newGroupId = groupId ?: GroupId.new()
 
   val oldGroupResult =
     prepareCommit(
@@ -62,8 +61,8 @@ suspend fun <Identity : Any> GroupState.Suspended.createWelcome(
   createWelcome(
     ownKeyPackage,
     getKeyPackages(
-      protocolVersion,
-      cipherSuite,
+      reInit.protocolVersion,
+      reInit.cipherSuite,
       authenticateCredentials(
         tree.leaves
           .filterIndexed { idx, _ -> idx != leafIndex.value.toInt() }
@@ -88,8 +87,9 @@ suspend fun <Identity : Any> GroupState.Suspended.createWelcome(
 
   val (newGroup, _, newMemberWelcome) =
     newGroupInitial.prepareCommit(
-      otherKeyPackages.map(::Add) + PreSharedKey(ResumptionPskId.reInit(this, cipherSuite)),
+      otherKeyPackages.map(::Add) + PreSharedKey(ResumptionPskId.reInit(this, reInit.cipherSuite)),
       inReInit = true,
+      psks = this,
     )
 
   return newGroup to newMemberWelcome
@@ -99,7 +99,7 @@ context(Raise<BranchError>, AuthenticationService<Identity>, DeliveryService<Ide
 suspend fun <Identity : Any> GroupState.Active.branchGroup(
   ownKeyPackage: KeyPackage.Private,
   otherMemberLeafIndices: List<LeafIndex>,
-  groupId: ULID? = null,
+  groupId: GroupId? = null,
   extensions: GroupContextExtensions = this.extensions,
 ): BranchResult {
   val leafNodes =
@@ -132,7 +132,7 @@ context(Raise<BranchError>, AuthenticationService<Identity>)
 suspend fun <Identity : Any> GroupState.Active.branchGroup(
   ownKeyPackage: KeyPackage.Private,
   otherMemberKeyPackages: List<KeyPackage>,
-  groupId: ULID? = null,
+  groupId: GroupId? = null,
   extensions: GroupContextExtensions = this.extensions,
 ): BranchResult {
   val newGroupInitial =
@@ -146,6 +146,7 @@ suspend fun <Identity : Any> GroupState.Active.branchGroup(
     newGroupInitial.prepareCommit(
       otherMemberKeyPackages.map(::Add) + PreSharedKey(ResumptionPskId.branch(this)),
       inBranch = true,
+      psks = this,
     )
 
   return BranchResult(newGroupAfterCommit, welcome)
@@ -186,7 +187,7 @@ internal suspend fun <Identity : Any> validateReInit(
   }
 
   when {
-    groupContext.groupId != suspended.reInit.groupId ->
+    groupContext.groupId neq suspended.reInit.groupId ->
       raise(ReInitJoinError.GroupIdMismatch(groupContext.groupId, suspended.reInit.groupId))
 
     groupContext.protocolVersion != suspended.reInit.protocolVersion ->

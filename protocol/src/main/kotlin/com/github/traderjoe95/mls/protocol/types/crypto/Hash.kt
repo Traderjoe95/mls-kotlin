@@ -2,26 +2,21 @@ package com.github.traderjoe95.mls.protocol.types.crypto
 
 import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.type.DataType
-import com.github.traderjoe95.mls.codec.type.V
-import com.github.traderjoe95.mls.codec.type.derive
-import com.github.traderjoe95.mls.codec.type.opaque
 import com.github.traderjoe95.mls.codec.type.struct.Struct2T
 import com.github.traderjoe95.mls.codec.type.struct.lift
+import com.github.traderjoe95.mls.protocol.message.KeyPackage
+import com.github.traderjoe95.mls.protocol.types.RefinedBytes
 import com.github.traderjoe95.mls.protocol.types.framing.content.Proposal
-import com.github.traderjoe95.mls.protocol.types.framing.message.KeyPackage
 
 @JvmInline
-value class HashReference(val ref: ByteArray) {
-  val asRef: KeyPackage.Ref
-    get() = KeyPackage.Ref(ref)
+value class HashReference(override val bytes: ByteArray) : RefinedBytes<HashReference> {
+  val asKeyPackageRef: KeyPackage.Ref
+    get() = KeyPackage.Ref(bytes)
   val asProposalRef: Proposal.Ref
-    get() = Proposal.Ref(ref)
-
-  internal val hashCode: Int
-    get() = ref.contentHashCode()
+    get() = Proposal.Ref(bytes)
 
   companion object : Encodable<HashReference> {
-    override val dataT: DataType<HashReference> = opaque[V].derive({ HashReference(it) }, { it.ref }, name = "HashReference")
+    override val dataT: DataType<HashReference> = RefinedBytes.dataT(::HashReference, name = "HashReference")
 
     val ByteArray.asHashReference: HashReference
       get() = HashReference(this)

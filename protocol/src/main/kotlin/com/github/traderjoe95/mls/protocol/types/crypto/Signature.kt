@@ -2,36 +2,47 @@ package com.github.traderjoe95.mls.protocol.types.crypto
 
 import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.type.DataType
-import com.github.traderjoe95.mls.codec.type.V
-import com.github.traderjoe95.mls.codec.type.derive
-import com.github.traderjoe95.mls.codec.type.opaque
 import com.github.traderjoe95.mls.codec.type.struct.Struct2T
 import com.github.traderjoe95.mls.codec.type.struct.lift
+import com.github.traderjoe95.mls.protocol.types.RefinedBytes
 
 @JvmInline
-value class SigningKey(val key: ByteArray)
-
-@JvmInline
-value class VerificationKey(val key: ByteArray) {
-  val hashCode: Int
-    get() = key.contentHashCode()
-
-  fun eq(other: VerificationKey): Boolean = key.contentEquals(other.key)
-
-  companion object : Encodable<VerificationKey> {
-    override val dataT: DataType<VerificationKey> = opaque[V].derive({ VerificationKey(it) }, { it.key }, name = "SignaturePublicKey")
+value class SignaturePrivateKey(override val bytes: ByteArray) : RefinedBytes<SignaturePrivateKey> {
+  companion object {
+    val ByteArray.asSignaturePrivateKey: SignaturePrivateKey
+      get() = SignaturePrivateKey(this)
   }
 }
 
 @JvmInline
-value class Signature(val value: ByteArray) {
-  val hashCode: Int
-    get() = value.contentHashCode()
+value class SignaturePublicKey(override val bytes: ByteArray) : RefinedBytes<SignaturePublicKey> {
+  companion object : Encodable<SignaturePublicKey> {
+    override val dataT: DataType<SignaturePublicKey> = RefinedBytes.dataT(::SignaturePublicKey, name = "SignaturePublicKey")
 
-  fun eq(other: Signature): Boolean = value.contentEquals(other.value)
+    val ByteArray.asSignaturePublicKey: SignaturePublicKey
+      get() = SignaturePublicKey(this)
+  }
+}
 
+@JvmInline
+value class SignatureKeyPair(private val keyPair: Pair<SignaturePrivateKey, SignaturePublicKey>) {
+  constructor(privateKey: SignaturePrivateKey, publicKey: SignaturePublicKey) : this(privateKey to publicKey)
+
+  val private: SignaturePrivateKey
+    get() = keyPair.first
+
+  val public: SignaturePublicKey
+    get() = keyPair.second
+
+  operator fun component1(): SignaturePrivateKey = keyPair.first
+
+  operator fun component2(): SignaturePublicKey = keyPair.second
+}
+
+@JvmInline
+value class Signature(override val bytes: ByteArray) : RefinedBytes<Signature> {
   companion object : Encodable<Signature> {
-    override val dataT: DataType<Signature> = opaque[V].derive({ Signature(it) }, { it.value })
+    override val dataT: DataType<Signature> = RefinedBytes.dataT(::Signature)
 
     val ByteArray.asSignature: Signature
       get() = Signature(this)

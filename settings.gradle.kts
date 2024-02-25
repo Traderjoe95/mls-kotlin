@@ -27,7 +27,11 @@ rootProject.name = "mls"
 
 include("codec")
 include("protocol")
+
+include("interop")
+
 include("ulid")
 include("service:auth")
 include("service:delivery")
-include("playground")
+
+include("demo")

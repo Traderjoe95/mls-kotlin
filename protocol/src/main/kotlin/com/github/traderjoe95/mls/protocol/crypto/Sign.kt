@@ -5,68 +5,69 @@ import com.github.traderjoe95.mls.protocol.error.SignatureError
 import com.github.traderjoe95.mls.protocol.types.crypto.SignContent
 import com.github.traderjoe95.mls.protocol.types.crypto.SignContent.Companion.encodeUnsafe
 import com.github.traderjoe95.mls.protocol.types.crypto.Signature
-import com.github.traderjoe95.mls.protocol.types.crypto.SigningKey
-import com.github.traderjoe95.mls.protocol.types.crypto.VerificationKey
+import com.github.traderjoe95.mls.protocol.types.crypto.SignatureKeyPair
+import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePrivateKey
+import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePublicKey
 
 interface Sign {
   fun signWithLabel(
-    signatureKey: SigningKey,
+    signatureKey: SignaturePrivateKey,
     label: String,
     content: ByteArray,
   ): Signature
 
   context(Raise<SignatureError>)
   fun verifyWithLabel(
-    verificationKey: VerificationKey,
+    signaturePublicKey: SignaturePublicKey,
     label: String,
     content: ByteArray,
     signature: Signature,
   )
 
-  fun generateSignatureKeyPair(): Pair<SigningKey, VerificationKey>
+  fun generateSignatureKeyPair(): SignatureKeyPair
 
-  fun calculateVerificationKey(signingKey: SigningKey): VerificationKey
+  fun reconstructPublicKey(privateKey: SignaturePrivateKey): SignatureKeyPair
 
   abstract class Provider : Sign {
     final override fun signWithLabel(
-      signatureKey: SigningKey,
+      signatureKey: SignaturePrivateKey,
       label: String,
       content: ByteArray,
     ): Signature = sign(signatureKey, SignContent.create(label, content))
 
     context(Raise<SignatureError>)
     final override fun verifyWithLabel(
-      verificationKey: VerificationKey,
+      signaturePublicKey: SignaturePublicKey,
       label: String,
       content: ByteArray,
       signature: Signature,
-    ) = verify(verificationKey, SignContent.create(label, content), signature)
+    ) = verify(signaturePublicKey, SignContent.create(label, content), signature)
 
     private fun sign(
-      signatureKey: SigningKey,
+      signatureKey: SignaturePrivateKey,
       content: SignContent,
     ): Signature = sign(signatureKey, content.encodeUnsafe())
 
     internal abstract fun sign(
-      signatureKey: SigningKey,
+      signatureKey: SignaturePrivateKey,
       content: ByteArray,
     ): Signature
 
     context(Raise<SignatureError>)
     private fun verify(
-      verificationKey: VerificationKey,
+      signaturePublicKey: SignaturePublicKey,
       content: SignContent,
       signature: Signature,
     ): Unit =
       verify(
-        verificationKey,
+        signaturePublicKey,
         content.encodeUnsafe(),
         signature,
       )
 
     context(Raise<SignatureError>)
     internal abstract fun verify(
-      verificationKey: VerificationKey,
+      signaturePublicKey: SignaturePublicKey,
       content: ByteArray,
       signature: Signature,
     )

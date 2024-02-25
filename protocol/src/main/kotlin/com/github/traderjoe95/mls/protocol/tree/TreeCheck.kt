@@ -7,9 +7,9 @@ import com.github.traderjoe95.mls.protocol.error.LeafNodeCheckError
 import com.github.traderjoe95.mls.protocol.error.TreeCheckError
 import com.github.traderjoe95.mls.protocol.group.GroupContext
 import com.github.traderjoe95.mls.protocol.service.AuthenticationService
+import com.github.traderjoe95.mls.protocol.types.RefinedBytes.Companion.eqNullable
 import com.github.traderjoe95.mls.protocol.types.tree.Node
 import com.github.traderjoe95.mls.protocol.types.tree.ParentNode
-import com.github.traderjoe95.mls.protocol.types.tree.leaf.ParentHash.Companion.eqNullable
 
 context(Raise<TreeCheckError>, AuthenticationService<Identity>)
 suspend fun <Identity : Any> RatchetTreeOps.check(groupContext: GroupContext) =
@@ -60,7 +60,7 @@ private fun RatchetTreeOps.checkParentHashCoverage() {
 
       val ph = parentHash(currentNode, leafIdx)
 
-      if (ph.eqNullable(currentRefNode.parentHash)) {
+      if (ph eqNullable currentRefNode.parentHash) {
         phCoverage.compute(currentNode) { _, value ->
           (value ?: 0U) + 1U
         }

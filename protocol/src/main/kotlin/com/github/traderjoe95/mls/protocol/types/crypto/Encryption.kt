@@ -2,7 +2,6 @@ package com.github.traderjoe95.mls.protocol.types.crypto
 
 import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.type.DataType
-import com.github.traderjoe95.mls.codec.type.V
 import com.github.traderjoe95.mls.codec.type.derive
 import com.github.traderjoe95.mls.codec.type.opaque
 import com.github.traderjoe95.mls.codec.type.struct.Struct2T
@@ -11,33 +10,39 @@ import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.codec.util.fromBytes
 import com.github.traderjoe95.mls.codec.util.toBytes
 import com.github.traderjoe95.mls.codec.util.uSize
+import com.github.traderjoe95.mls.protocol.types.RefinedBytes
 import com.github.traderjoe95.mls.protocol.util.wipe
 import java.security.SecureRandom
 import kotlin.experimental.xor
 
 @JvmInline
-value class HpkePrivateKey(val key: ByteArray) {
+value class HpkePrivateKey(override val bytes: ByteArray) : RefinedBytes<HpkePrivateKey> {
   fun move() = copy().also { wipe() }
 
-  fun copy() = HpkePrivateKey(key.copyOf())
+  fun copy() = HpkePrivateKey(bytes.copyOf())
 
-  fun wipe() = key.wipe()
+  fun wipe() = bytes.wipe()
+
+  companion object {
+    val ByteArray.asHpkePrivateKey: HpkePrivateKey
+      get() = HpkePrivateKey(this)
+  }
 }
 
 @JvmInline
-value class HpkePublicKey(val key: ByteArray) {
-  val hashCode: Int
-    get() = key.contentHashCode()
-
-  fun eq(other: HpkePublicKey): Boolean = key.contentEquals(other.key)
-
+value class HpkePublicKey(override val bytes: ByteArray) : RefinedBytes<HpkePublicKey> {
   companion object : Encodable<HpkePublicKey> {
-    override val dataT: DataType<HpkePublicKey> = opaque[V].derive({ HpkePublicKey(it) }, { it.key }, name = "HPKEPublicKey")
+    override val dataT: DataType<HpkePublicKey> = RefinedBytes.dataT(::HpkePublicKey, name = "HPKEPublicKey")
+
+    val ByteArray.asHpkePublicKey: HpkePublicKey
+      get() = HpkePublicKey(this)
   }
 }
 
 @JvmInline
 value class HpkeKeyPair(private val keyPair: Pair<HpkePrivateKey, HpkePublicKey>) {
+  constructor(privateKey: HpkePrivateKey, publicKey: HpkePublicKey) : this(privateKey to publicKey)
+
   val private: HpkePrivateKey
     get() = keyPair.first
 
@@ -50,27 +55,27 @@ value class HpkeKeyPair(private val keyPair: Pair<HpkePrivateKey, HpkePublicKey>
 }
 
 @JvmInline
-value class Nonce(val value: ByteArray) {
+value class Nonce(override val bytes: ByteArray) : RefinedBytes<Nonce> {
   val size: UInt
-    get() = value.uSize
+    get() = bytes.uSize
 
   infix fun xor(reuseGuard: ReuseGuard): Nonce =
     Nonce(
-      value.mapIndexed { index, byte ->
+      bytes.mapIndexed { index, byte ->
         when (index) {
-          0 -> byte xor (reuseGuard.bytes shr 24).toByte()
-          1 -> byte xor (reuseGuard.bytes shr 16).toByte()
-          2 -> byte xor (reuseGuard.bytes shr 8).toByte()
-          3 -> byte xor reuseGuard.bytes.toByte()
+          0 -> byte xor (reuseGuard.value shr 24).toByte()
+          1 -> byte xor (reuseGuard.value shr 16).toByte()
+          2 -> byte xor (reuseGuard.value shr 8).toByte()
+          3 -> byte xor reuseGuard.value.toByte()
           else -> byte
         }
       }.toByteArray(),
     )
 
-  fun wipe(): Unit = value.wipe()
+  fun wipe(): Unit = bytes.wipe()
 
   companion object : Encodable<Nonce> {
-    override val dataT: DataType<Nonce> = opaque[V].derive({ Nonce(it) }, { it.value })
+    override val dataT: DataType<Nonce> = RefinedBytes.dataT(::Nonce)
 
     val ByteArray.asNonce: Nonce
       get() = Nonce(this)
@@ -78,14 +83,14 @@ value class Nonce(val value: ByteArray) {
 }
 
 @JvmInline
-value class ReuseGuard(val bytes: Int) {
+value class ReuseGuard(val value: Int) {
   companion object : Encodable<ReuseGuard> {
     private val RANDOM = SecureRandom()
 
     override val dataT: DataType<ReuseGuard> =
       opaque[4U].derive(
         { ReuseGuard(Int.fromBytes(it)) },
-        { it.bytes.toBytes(4U) },
+        { it.value.toBytes(4U) },
       )
 
     fun random(random: SecureRandom = RANDOM): ReuseGuard = ReuseGuard(random.nextInt())
@@ -93,7 +98,7 @@ value class ReuseGuard(val bytes: Int) {
 }
 
 @JvmInline
-value class Aad(val data: ByteArray) {
+value class Aad(override val bytes: ByteArray) : RefinedBytes<Aad> {
   companion object {
     val empty: Aad
       get() = Aad(byteArrayOf())
@@ -104,12 +109,12 @@ value class Aad(val data: ByteArray) {
 }
 
 @JvmInline
-value class Ciphertext(val value: ByteArray) {
+value class Ciphertext(override val bytes: ByteArray) : RefinedBytes<Ciphertext> {
   val size: Int
-    get() = value.size
+    get() = bytes.size
 
   companion object : Encodable<Ciphertext> {
-    override val dataT: DataType<Ciphertext> = opaque[V].derive({ Ciphertext(it) }, { it.value })
+    override val dataT: DataType<Ciphertext> = RefinedBytes.dataT(::Ciphertext)
 
     val ByteArray.asCiphertext: Ciphertext
       get() = Ciphertext(this)
@@ -117,12 +122,12 @@ value class Ciphertext(val value: ByteArray) {
 }
 
 @JvmInline
-value class KemOutput(val value: ByteArray) {
+value class KemOutput(override val bytes: ByteArray) : RefinedBytes<KemOutput> {
   val size: Int
-    get() = value.size
+    get() = bytes.size
 
   companion object : Encodable<KemOutput> {
-    override val dataT: DataType<KemOutput> = opaque[V].derive({ KemOutput(it) }, { it.value })
+    override val dataT: DataType<KemOutput> = RefinedBytes.dataT(::KemOutput)
 
     val ByteArray.asKemOutput: KemOutput
       get() = KemOutput(this)

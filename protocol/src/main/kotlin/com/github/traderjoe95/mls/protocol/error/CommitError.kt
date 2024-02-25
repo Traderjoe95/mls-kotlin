@@ -1,14 +1,14 @@
 package com.github.traderjoe95.mls.protocol.error
 
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
+import com.github.traderjoe95.mls.protocol.message.KeyPackage
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
+import com.github.traderjoe95.mls.protocol.types.GroupId
 import com.github.traderjoe95.mls.protocol.types.ProposalType
 import com.github.traderjoe95.mls.protocol.types.crypto.PreSharedKeyId
 import com.github.traderjoe95.mls.protocol.types.framing.content.Proposal
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
 import com.github.traderjoe95.mls.protocol.types.framing.enums.SenderType
-import com.github.traderjoe95.mls.protocol.types.framing.message.KeyPackage
-import de.traderjoe.ulid.ULID
 
 sealed interface SenderCommitError : ResumptionError
 
@@ -21,7 +21,7 @@ data object RemovedFromGroup : RecipientCommitError
 sealed interface InvalidCommit : CommitError {
   data class BadCommitSender(val senderType: SenderType) : InvalidCommit
 
-  data class UnknownProposal(val groupId: ULID, val epoch: ULong, val ref: Proposal.Ref) : InvalidCommit
+  data class UnknownProposal(val groupId: GroupId, val epoch: ULong, val ref: Proposal.Ref) : InvalidCommit
 
   data object UpdateByCommitter : InvalidCommit
 

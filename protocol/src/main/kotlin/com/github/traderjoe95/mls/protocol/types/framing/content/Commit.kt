@@ -19,6 +19,7 @@ import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.codec.util.throwAnyError
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ContentType
 import com.github.traderjoe95.mls.protocol.types.tree.UpdatePath
+import com.github.traderjoe95.mls.protocol.util.zipWithIndex
 
 data class Commit(
   val proposals: List<ProposalOrRef>,
@@ -39,10 +40,43 @@ data class Commit(
     val empty: Commit
       get() = Commit(listOf(), None)
   }
+
+  override fun equals(other: Any?): Boolean {
+    if (this === other) return true
+    if (javaClass != other?.javaClass) return false
+
+    other as Commit
+
+    if (proposals.size != other.proposals.size) return false
+    if (proposals.zipWithIndex().any { (proposalOrRef, idx) -> proposalOrRef neq other.proposals[idx] }) return false
+    if (updatePath != other.updatePath) return false
+    if (contentType != other.contentType) return false
+
+    return true
+  }
+
+  override fun hashCode(): Int {
+    var result = proposals.fold(1) { hc, el -> hc * 31 + el.hashCode }
+    result = 31 * result + updatePath.hashCode()
+    result = 31 * result + contentType.hashCode()
+    return result
+  }
 }
 
 sealed interface ProposalOrRef {
   val proposalOrRef: ProposalOrRefType
+
+  infix fun eq(other: ProposalOrRef): Boolean =
+    when {
+      this is Proposal && other is Proposal -> this == other
+      this is Proposal.Ref && other is Proposal.Ref -> this eq other
+      else -> false
+    }
+
+  infix fun neq(other: ProposalOrRef): Boolean = !(this eq other)
+
+  val hashCode: Int
+    get() = hashCode()
 
   companion object : Encodable<ProposalOrRef> {
     override val dataT: DataType<ProposalOrRef> =

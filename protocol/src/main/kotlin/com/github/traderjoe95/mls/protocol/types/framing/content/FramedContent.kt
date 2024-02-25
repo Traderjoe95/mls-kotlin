@@ -20,27 +20,28 @@ import com.github.traderjoe95.mls.protocol.error.SenderCommitError
 import com.github.traderjoe95.mls.protocol.error.SignatureError
 import com.github.traderjoe95.mls.protocol.group.GroupContext
 import com.github.traderjoe95.mls.protocol.group.GroupState
-import com.github.traderjoe95.mls.protocol.types.T
+import com.github.traderjoe95.mls.protocol.tree.LeafIndex
+import com.github.traderjoe95.mls.protocol.types.GroupId
 import com.github.traderjoe95.mls.protocol.types.crypto.Mac
 import com.github.traderjoe95.mls.protocol.types.crypto.Signature
-import com.github.traderjoe95.mls.protocol.types.crypto.SigningKey
+import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePrivateKey
+import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePublicKey
 import com.github.traderjoe95.mls.protocol.types.framing.Sender
 import com.github.traderjoe95.mls.protocol.types.framing.content.FramedContent.Tbs.Companion.encodeUnsafe
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ContentType
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
 import com.github.traderjoe95.mls.protocol.types.framing.enums.SenderType
 import com.github.traderjoe95.mls.protocol.types.framing.enums.WireFormat
-import de.traderjoe.ulid.ULID
 
 data class FramedContent<out T : Content>(
-  val groupId: ULID,
+  val groupId: GroupId,
   val epoch: ULong,
   val sender: Sender,
   val authenticatedData: ByteArray,
   val contentType: ContentType,
   val content: T,
-) : Struct6T.Shape<ULID, ULong, Sender, ByteArray, ContentType, Content> {
-  constructor(groupId: ULID, epoch: ULong, sender: Sender, authenticatedData: ByteArray, content: T) : this(
+) : Struct6T.Shape<GroupId, ULong, Sender, ByteArray, ContentType, Content> {
+  constructor(groupId: GroupId, epoch: ULong, sender: Sender, authenticatedData: ByteArray, content: T) : this(
     groupId,
     epoch,
     sender,
@@ -53,7 +54,7 @@ data class FramedContent<out T : Content>(
     override val dataT: DataType<FramedContent<*>> =
       throwAnyError {
         struct("FramedContent") {
-          it.field("group_id", ULID.T)
+          it.field("group_id", GroupId.dataT)
             .field("epoch", uint64.asULong)
             .field("sender", Sender.dataT)
             .field("authenticated_data", opaque[V])
@@ -65,6 +66,20 @@ data class FramedContent<out T : Content>(
             }
         }.lift(::FramedContent)
       }
+
+    fun <C : Content> createMember(
+      groupContext: GroupContext,
+      content: C,
+      leafIndex: LeafIndex,
+      authenticatedData: ByteArray = byteArrayOf(),
+    ): FramedContent<C> =
+      FramedContent(
+        groupContext.groupId,
+        groupContext.epoch,
+        Sender.member(leafIndex),
+        authenticatedData,
+        content,
+      )
   }
 
   fun tbs(
@@ -82,27 +97,28 @@ data class FramedContent<out T : Content>(
   fun sign(
     wireFormat: WireFormat,
     groupContext: GroupContext,
-  ): Signature = ensureActive { sign(wireFormat, groupContext, signingKey) }
+  ): Signature = ensureActive { sign(cipherSuite, wireFormat, groupContext, signaturePrivateKey) }
 
-  context(ICipherSuite)
   fun sign(
+    cipherSuite: ICipherSuite,
     wireFormat: WireFormat,
     groupContext: GroupContext,
-    signingKey: SigningKey,
+    signaturePrivateKey: SignaturePrivateKey,
   ): Signature =
-    signWithLabel(
-      signingKey,
+    cipherSuite.signWithLabel(
+      signaturePrivateKey,
       "FramedContentTBS",
       tbs(wireFormat, groupContext).encodeUnsafe(),
     )
 
-  context(GroupState.Active, Raise<SignatureError>, Raise<MacError>, Raise<EpochError>)
+  context(Raise<SignatureError>, Raise<MacError>, Raise<EpochError>)
   fun verifySignature(
     authData: AuthData,
     wireFormat: WireFormat,
     groupContext: GroupContext,
-  ) = verifyWithLabel(
-    getVerificationKey(this@FramedContent),
+    signaturePublicKey: SignaturePublicKey,
+  ) = groupContext.cipherSuite.verifyWithLabel(
+    signaturePublicKey,
     "FramedContentTBS",
     tbs(wireFormat, groupContext).encodeUnsafe(),
     authData.signature,

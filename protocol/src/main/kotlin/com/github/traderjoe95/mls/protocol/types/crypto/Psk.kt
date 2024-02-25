@@ -22,8 +22,8 @@ import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
 import com.github.traderjoe95.mls.protocol.error.PskError
 import com.github.traderjoe95.mls.protocol.group.GroupState
-import com.github.traderjoe95.mls.protocol.types.T
-import de.traderjoe.ulid.ULID
+import com.github.traderjoe95.mls.protocol.types.GroupId
+import com.github.traderjoe95.mls.protocol.util.hex
 
 enum class PskType(ord: UInt, override val isValid: Boolean = true) : ProtocolEnum<PskType> {
   @Deprecated("This reserved value isn't used by the protocol for now", level = DeprecationLevel.ERROR)
@@ -103,9 +103,8 @@ class ExternalPskId(
 
     other as ExternalPskId
 
-    if (pskType != other.pskType) return false
     if (!pskId.contentEquals(other.pskId)) return false
-    if (pskNonce != other.pskNonce) return false
+    if (pskNonce neq other.pskNonce) return false
 
     return true
   }
@@ -116,6 +115,8 @@ class ExternalPskId(
     result = 31 * result + pskNonce.hashCode()
     return result
   }
+
+  override fun toString(): String = "ExternalPskId(pskId=${pskId.hex}, nonce=${pskId.hex})"
 
   companion object {
     internal val T: DataType<ExternalPskId> =
@@ -128,7 +129,7 @@ class ExternalPskId(
 
 class ResumptionPskId(
   val usage: ResumptionPskUsage,
-  val pskGroupId: ULID,
+  val pskGroupId: GroupId,
   val pskEpoch: ULong,
   override val pskNonce: Nonce,
 ) : PreSharedKeyId {
@@ -146,7 +147,7 @@ class ResumptionPskId(
       if (usage == ResumptionPskUsage.Branch && !inBranch) raise(PskError.InvalidPskUsage(this))
     }
 
-  private fun asStruct(): Struct4<ResumptionPskUsage, ULID, ULong, Nonce> = Struct4(usage, pskGroupId, pskEpoch, pskNonce)
+  private fun asStruct(): Struct4<ResumptionPskUsage, GroupId, ULong, Nonce> = Struct4(usage, pskGroupId, pskEpoch, pskNonce)
 
   override fun equals(other: Any?): Boolean {
     if (this === other) return true
@@ -154,29 +155,31 @@ class ResumptionPskId(
 
     other as ResumptionPskId
 
-    if (pskType != other.pskType) return false
     if (usage != other.usage) return false
-    if (pskGroupId != other.pskGroupId) return false
+    if (pskGroupId neq other.pskGroupId) return false
     if (pskEpoch != other.pskEpoch) return false
-    if (pskNonce != other.pskNonce) return false
+    if (pskNonce neq other.pskNonce) return false
 
     return true
   }
 
   override fun hashCode(): Int {
-    var result = pskType.hashCode()
-    result = 31 * result + usage.hashCode()
-    result = 31 * result + pskGroupId.hashCode()
+    var result = usage.hashCode()
+    result = 31 * result + pskGroupId.hashCode
     result = 31 * result + pskEpoch.hashCode()
-    result = 31 * result + pskNonce.hashCode()
+    result = 31 * result + pskNonce.hashCode
     return result
+  }
+
+  override fun toString(): String {
+    return "ResumptionPskId(pskGroupId=$pskGroupId, pskEpoch=$pskEpoch, pskNonce=${pskNonce.hex})"
   }
 
   companion object {
     internal val T: DataType<ResumptionPskId> =
       struct("ResumptionPskId") {
         it.field("usage", ResumptionPskUsage.T)
-          .field("psk_group_id", ULID.T)
+          .field("psk_group_id", GroupId.dataT)
           .field("psk_epoch", uint64.asULong)
           .field("psk_nonce", Nonce.dataT)
       }.lift(::ResumptionPskId, ResumptionPskId::asStruct)

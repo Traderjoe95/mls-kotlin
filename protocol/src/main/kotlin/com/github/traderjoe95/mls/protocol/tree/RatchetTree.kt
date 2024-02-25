@@ -2,6 +2,7 @@ package com.github.traderjoe95.mls.protocol.tree
 
 import arrow.core.Option
 import arrow.core.prependTo
+import arrow.core.raise.Raise
 import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.error.DecoderError
 import com.github.traderjoe95.mls.codec.type.DataType
@@ -11,21 +12,24 @@ import com.github.traderjoe95.mls.codec.type.get
 import com.github.traderjoe95.mls.codec.type.optional
 import com.github.traderjoe95.mls.codec.util.uSize
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
+import com.github.traderjoe95.mls.protocol.error.SignatureError
+import com.github.traderjoe95.mls.protocol.group.GroupContext
 import com.github.traderjoe95.mls.protocol.tree.PublicRatchetTree.Companion.newTree
 import com.github.traderjoe95.mls.protocol.types.crypto.HpkeKeyPair
 import com.github.traderjoe95.mls.protocol.types.crypto.HpkePrivateKey
+import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePublicKey
+import com.github.traderjoe95.mls.protocol.types.framing.content.FramedContent
 import com.github.traderjoe95.mls.protocol.types.tree.KeyPackageLeafNode
 import com.github.traderjoe95.mls.protocol.types.tree.LeafNode
 import com.github.traderjoe95.mls.protocol.types.tree.Node
 import com.github.traderjoe95.mls.protocol.types.tree.ParentNode
-import com.github.traderjoe95.mls.protocol.types.tree.UpdateLeafNode
 import com.github.traderjoe95.mls.protocol.util.get
 import com.github.traderjoe95.mls.protocol.util.log2
 import com.github.traderjoe95.mls.protocol.util.shl
 import com.github.traderjoe95.mls.protocol.util.sliceArray
 import com.github.traderjoe95.mls.protocol.util.uSize
 
-sealed interface RatchetTreeOps {
+sealed interface RatchetTreeOps : SignaturePublicKeyLookup {
   val size: UInt
 
   val root: NodeIndex
@@ -60,6 +64,12 @@ sealed interface RatchetTreeOps {
   fun leafNode(idx: TreeIndex): LeafNode<*>
 
   fun leafNodeOrNull(idx: TreeIndex): LeafNode<*>?
+
+  context(Raise<SignatureError.SignaturePublicKeyKeyNotFound>)
+  override fun getSignaturePublicKey(
+    groupContext: GroupContext,
+    framedContent: FramedContent<*>,
+  ): SignaturePublicKey = findSignaturePublicKey(framedContent, groupContext, this)
 }
 
 class RatchetTree(
@@ -77,7 +87,7 @@ class RatchetTree(
 
   fun update(
     leafIndex: LeafIndex,
-    leafNode: UpdateLeafNode,
+    leafNode: LeafNode<*>,
   ): RatchetTree = set(leafIndex, leafNode).blank(directPath(leafIndex).dropLast(1))
 
   fun remove(leafIndex: LeafIndex): RatchetTree =
@@ -194,7 +204,7 @@ value class PublicRatchetTree private constructor(private val nodes: Array<Node?
   override val size: UInt
     get() = nodes.uSize
   override val root: NodeIndex
-    get() = NodeIndex((1U shl log2(size)) - 1U)
+    get() = NodeIndex.root(size)
 
   override val leafNodeIndices: NodeProgression
     get() = NodeIndex(0U)..<size step 2
@@ -231,12 +241,19 @@ value class PublicRatchetTree private constructor(private val nodes: Array<Node?
   }
 
   operator fun minus(leafIndex: LeafIndex): PublicRatchetTree {
-    val intermediateDirectPath = directPath(leafIndex).dropLast(1).map { it.value.toInt() }.toSet()
+    // The specification states that only the intermediate nodes along the path are to be blanked (commented line of
+    // code). Still, other implementors, including the public test vectors, blank the entire direct path of the leaf.
+    //
+    // Anyway, this shouldn't make any substantial difference in practice, as a Remove proposal requires an update
+    // path, which will always replace the root of the tree.
+    //
+    // val intermediateDirectPath = directPath(leafIndex).dropLast(1).map { it.value.toInt() }.toSet()
+    val directPath = directPath(leafIndex).map { it.value.toInt() }.toSet()
     val nodeIdx = leafIndex.nodeIndex.value.toInt()
 
     return PublicRatchetTree(
       Array(nodes.size) {
-        if (it == nodeIdx || it in intermediateDirectPath) {
+        if (it == nodeIdx || it in directPath) {
           null
         } else {
           nodes[it]
@@ -247,10 +264,17 @@ value class PublicRatchetTree private constructor(private val nodes: Array<Node?
 
   fun update(
     leafIndex: LeafIndex,
-    leafNode: UpdateLeafNode,
+    leafNode: LeafNode<*>,
   ): PublicRatchetTree =
     set(leafIndex, leafNode)
-      .blank(directPath(leafIndex).dropLast(1))
+      // The specification states that only the intermediate nodes along the path are to be blanked (commented line of
+      // code). Still, other implementors, including the public test vectors, blank the entire direct path of the leaf.
+      //
+      // Anyway, this shouldn't make any substantial difference in practice, as an Update proposal requires an update
+      // path, which will always replace the root of the tree.
+      //
+      // .blank(directPath(leafIndex).dropLast(1))
+      .blank(directPath(leafIndex))
 
   fun blank(indices: Iterable<TreeIndex>): PublicRatchetTree =
     indices.map { it.nodeIndex.value.toInt() }.toSet().let { blanked ->
@@ -304,7 +328,7 @@ value class PublicRatchetTree private constructor(private val nodes: Array<Node?
   }
 
   private fun truncateIfRequired(): PublicRatchetTree =
-    generateSequence(leftSubtree) { it.leftSubtree }
+    generateSequence(this) { it.leftSubtree }
       .dropWhile { ((it.root + 1U)..<it.size).all { node -> node.isBlank } }
       .first()
 
@@ -393,7 +417,11 @@ value class PublicRatchetTree private constructor(private val nodes: Array<Node?
 
     fun LeafNode<*>.newTree(): PublicRatchetTree = PublicRatchetTree(arrayOf(this))
 
-    fun blankWithLeaves(leafCount: UInt): PublicRatchetTree = PublicRatchetTree(Array(2 * leafCount.toInt() - 1) { null })
+    fun blankWithLeaves(leafCount: UInt): PublicRatchetTree {
+      require(leafCount.toString(2).count { it == '1' } == 1) { "Leaf count must be a power of 2" }
+
+      return PublicRatchetTree(Array(2 * leafCount.toInt() - 1) { null })
+    }
   }
 }
 

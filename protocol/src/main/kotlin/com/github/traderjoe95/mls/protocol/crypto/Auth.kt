@@ -17,6 +17,6 @@ interface Auth {
     content: ByteArray,
     mac: Mac,
   ) {
-    if (mac(secret, content).value.contentEquals(mac.value).not()) raise(MacError.BadMac)
+    if (mac(secret, content).bytes.contentEquals(mac.bytes).not()) raise(MacError.BadMac)
   }
 }

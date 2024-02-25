@@ -3,28 +3,24 @@ package com.github.traderjoe95.mls.protocol.types.framing.content
 import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.Struct2
 import com.github.traderjoe95.mls.codec.type.DataType
-import com.github.traderjoe95.mls.codec.type.derive
 import com.github.traderjoe95.mls.codec.type.struct.Struct1T
 import com.github.traderjoe95.mls.codec.type.struct.Struct4T
 import com.github.traderjoe95.mls.codec.type.struct.lift
 import com.github.traderjoe95.mls.codec.type.struct.member.then
 import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
+import com.github.traderjoe95.mls.protocol.message.KeyPackage
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtension
+import com.github.traderjoe95.mls.protocol.types.GroupId
 import com.github.traderjoe95.mls.protocol.types.ProposalType
-import com.github.traderjoe95.mls.protocol.types.T
-import com.github.traderjoe95.mls.protocol.types.crypto.HashReference
+import com.github.traderjoe95.mls.protocol.types.RefinedBytes
 import com.github.traderjoe95.mls.protocol.types.crypto.KemOutput
 import com.github.traderjoe95.mls.protocol.types.crypto.PreSharedKeyId
 import com.github.traderjoe95.mls.protocol.types.extensionList
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ContentType
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
-import com.github.traderjoe95.mls.protocol.types.framing.message.KeyPackage
 import com.github.traderjoe95.mls.protocol.types.tree.LeafNode
-import com.github.traderjoe95.mls.protocol.types.tree.UpdateLeafNode
-import com.github.traderjoe95.mls.protocol.types.tree.leaf.LeafNodeSource
-import de.traderjoe.ulid.ULID
 
 sealed class Proposal(
   val type: ProposalType,
@@ -34,17 +30,6 @@ sealed class Proposal(
 
   open val mayBeExternal: Boolean = false
   open val requiresPath: Boolean = true
-
-  fun evaluationOrder(): Int =
-    when (this) {
-      is GroupContextExtensions -> 0
-      is Update -> 1
-      is Remove -> 2
-      is Add -> 3
-      is PreSharedKey -> 4
-      is ExternalInit -> 5
-      is ReInit -> 6
-    }
 
   companion object : Encodable<Proposal> {
     override val dataT: DataType<Proposal> by lazy {
@@ -64,20 +49,15 @@ sealed class Proposal(
   }
 
   @JvmInline
-  value class Ref(val ref: ByteArray) : ProposalOrRef {
-    internal val hashCode: Int
-      get() = ref.contentHashCode()
-
+  value class Ref(override val bytes: ByteArray) : ProposalOrRef, RefinedBytes<Ref> {
     override val proposalOrRef: ProposalOrRefType
       get() = ProposalOrRefType.Reference
 
+    override val hashCode: Int
+      get() = bytes.contentHashCode()
+
     companion object {
-      val T: DataType<Ref> =
-        HashReference.dataT.derive(
-          { it.asProposalRef },
-          { HashReference(it.ref) },
-          name = "ProposalRef",
-        )
+      val T: DataType<Ref> = RefinedBytes.dataT(::Ref, name = "ProposalRef")
     }
   }
 }
@@ -97,12 +77,12 @@ data class Add(
 }
 
 data class Update(
-  val leafNode: UpdateLeafNode,
-) : Proposal(ProposalType.Update), Struct1T.Shape<UpdateLeafNode> {
+  val leafNode: LeafNode<*>,
+) : Proposal(ProposalType.Update), Struct1T.Shape<LeafNode<*>> {
   companion object {
     val T: DataType<Update> =
       struct("Update") {
-        it.field("leaf_node", LeafNode.t(LeafNodeSource.Update))
+        it.field("leaf_node", LeafNode.dataT)
       }.lift(::Update)
   }
 }
@@ -135,22 +115,49 @@ data class PreSharedKey(
 }
 
 data class ReInit(
-  val groupId: ULID,
+  val groupId: GroupId,
   val protocolVersion: ProtocolVersion,
   val cipherSuite: CipherSuite,
   val extensions: List<GroupContextExtension<*>>,
-) : Proposal(ProposalType.ReInit), Struct4T.Shape<ULID, ProtocolVersion, CipherSuite, List<GroupContextExtension<*>>> {
+) : Proposal(ProposalType.ReInit),
+  Struct4T.Shape<GroupId, ProtocolVersion, CipherSuite, List<GroupContextExtension<*>>> {
   override val mayBeExternal: Boolean = true
   override val requiresPath: Boolean = false
 
   companion object {
     val T: DataType<ReInit> =
       struct("ReInit") {
-        it.field("group_id", ULID.T)
+        it.field("group_id", GroupId.dataT)
           .field("version", ProtocolVersion.T)
           .field("cipher_suite", CipherSuite.T)
           .field("extensions", GroupContextExtension.dataT.extensionList())
       }.lift(::ReInit)
+  }
+
+  override fun equals(other: Any?): Boolean {
+    if (this === other) return true
+    if (javaClass != other?.javaClass) return false
+
+    other as ReInit
+
+    if (groupId neq other.groupId) return false
+    if (protocolVersion != other.protocolVersion) return false
+    if (cipherSuite != other.cipherSuite) return false
+    if (extensions != other.extensions) return false
+    if (mayBeExternal != other.mayBeExternal) return false
+    if (requiresPath != other.requiresPath) return false
+
+    return true
+  }
+
+  override fun hashCode(): Int {
+    var result = groupId.hashCode
+    result = 31 * result + protocolVersion.hashCode()
+    result = 31 * result + cipherSuite.hashCode()
+    result = 31 * result + extensions.hashCode()
+    result = 31 * result + mayBeExternal.hashCode()
+    result = 31 * result + requiresPath.hashCode()
+    return result
   }
 }
 
@@ -162,6 +169,19 @@ data class ExternalInit(
       struct("ExternalInit") {
         it.field("kem_output", KemOutput.dataT)
       }.lift(::ExternalInit)
+  }
+
+  override fun equals(other: Any?): Boolean {
+    if (this === other) return true
+    if (javaClass != other?.javaClass) return false
+
+    other as ExternalInit
+
+    return kemOutput eq other.kemOutput
+  }
+
+  override fun hashCode(): Int {
+    return kemOutput.hashCode
   }
 }
 

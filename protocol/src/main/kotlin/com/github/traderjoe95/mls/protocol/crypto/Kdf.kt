@@ -32,7 +32,7 @@ interface Kdf {
   fun extract(
     salt: Secret,
     ikm: Secret,
-  ): Secret = extract(salt.key, ikm)
+  ): Secret = extract(salt.bytes, ikm)
 
   val hashLen: UShort
 

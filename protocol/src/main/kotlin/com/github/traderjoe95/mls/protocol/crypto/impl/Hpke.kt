@@ -20,21 +20,12 @@ import com.github.traderjoe95.mls.protocol.types.crypto.KemOutput.Companion.asKe
 import com.github.traderjoe95.mls.protocol.types.crypto.Nonce
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret.Companion.asSecret
-import org.bouncycastle.asn1.x9.ECNamedCurveTable
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair
-import org.bouncycastle.crypto.AsymmetricCipherKeyPairGenerator
-import org.bouncycastle.crypto.generators.ECKeyPairGenerator
-import org.bouncycastle.crypto.generators.X25519KeyPairGenerator
-import org.bouncycastle.crypto.generators.X448KeyPairGenerator
 import org.bouncycastle.crypto.hpke.HPKE
 import org.bouncycastle.crypto.modes.AEADCipher
 import org.bouncycastle.crypto.params.AsymmetricKeyParameter
-import org.bouncycastle.crypto.params.ECKeyGenerationParameters
-import org.bouncycastle.crypto.params.ECNamedDomainParameters
 import org.bouncycastle.crypto.params.KeyParameter
 import org.bouncycastle.crypto.params.ParametersWithIV
-import org.bouncycastle.crypto.params.X25519KeyGenerationParameters
-import org.bouncycastle.crypto.params.X448KeyGenerationParameters
 import java.security.SecureRandom
 
 internal class Hpke(
@@ -53,7 +44,9 @@ internal class Hpke(
     "MLS 1.0 external init secret".encodeToByteArray()
   }
 
-  override fun deriveKeyPair(secret: Secret): HpkeKeyPair = hpke.deriveKeyPair(secret.key).asHpkeKeyPair
+  override fun deriveKeyPair(secret: Secret): HpkeKeyPair = dhKem.deriveKeyPair(secret.bytes).asHpkeKeyPair
+
+  override fun reconstructPublicKey(privateKey: HpkePrivateKey): HpkeKeyPair = dhKem.reconstructPublicKey(privateKey)
 
   override fun encryptAead(
     key: Secret,
@@ -62,8 +55,8 @@ internal class Hpke(
     plaintext: ByteArray,
   ): Ciphertext =
     with(aead()) {
-      init(true, ParametersWithIV(KeyParameter(key.key), nonce.value))
-      processAADBytes(aad.data, 0, aad.data.size)
+      init(true, ParametersWithIV(KeyParameter(key.bytes), nonce.bytes))
+      processAADBytes(aad.bytes, 0, aad.bytes.size)
 
       ByteArray(getOutputSize(plaintext.size)).also { out ->
         val written = processBytes(plaintext, 0, plaintext.size, out, 0)
@@ -79,19 +72,26 @@ internal class Hpke(
     ciphertext: Ciphertext,
   ): ByteArray =
     with(aead()) {
-      init(false, ParametersWithIV(KeyParameter(key.key), nonce.value))
-      processAADBytes(aad.data, 0, aad.data.size)
+      init(false, ParametersWithIV(KeyParameter(key.bytes), nonce.bytes))
+      processAADBytes(aad.bytes, 0, aad.bytes.size)
 
       catch(
         block = {
           ByteArray(getOutputSize(ciphertext.size)).also { out ->
-            val written = processBytes(ciphertext.value, 0, ciphertext.size, out, 0)
+            val written = processBytes(ciphertext.bytes, 0, ciphertext.size, out, 0)
             doFinal(out, written)
           }
         },
         catch = { raise(DecryptError.AeadDecryptionFailed) },
       )
     }
+
+  override fun decryptWithLabel(
+    privateKey: HpkePrivateKey,
+    label: String,
+    context: ByteArray,
+    ciphertext: HpkeCiphertext,
+  ): ByteArray = decryptWithLabel(dhKem.reconstructPublicKey(privateKey), label, context, ciphertext)
 
   override fun export(
     publicKey: HpkePublicKey,
@@ -115,7 +115,7 @@ internal class Hpke(
     info: String,
   ): Secret =
     hpke.receiveExport(
-      kemOutput.value,
+      kemOutput.bytes,
       keyPair.asParameter,
       info.encodeToByteArray(),
       exporterContext,
@@ -134,7 +134,7 @@ internal class Hpke(
     hpke.seal(
       publicKey.asParameter,
       context.encodeUnsafe(),
-      aad.data,
+      aad.bytes,
       plaintext,
       null,
       null,
@@ -151,11 +151,11 @@ internal class Hpke(
     ciphertext: Ciphertext,
   ): ByteArray =
     hpke.open(
-      kemOutput.value,
+      kemOutput.bytes,
       keyPair.asParameter,
       context.encodeUnsafe(),
-      aad.data,
-      ciphertext.value,
+      aad.bytes,
+      ciphertext.bytes,
       null,
       null,
       null,
@@ -163,56 +163,20 @@ internal class Hpke(
 
   override fun generateSecret(len: UShort): Secret = ByteArray(len.toInt()).also { rand.nextBytes(it) }.asSecret
 
-  override fun generateHpkeKeyPair(): HpkeKeyPair = kpg().generateKeyPair().asHpkeKeyPair
+  override fun generateHpkeKeyPair(): HpkeKeyPair = dhKem.generatePrivateKey().asHpkeKeyPair
 
   private fun aead(): AEADCipher = aeadAlgorithm.createCipher()
-
-  private fun kpg(): AsymmetricCipherKeyPairGenerator =
-    when (dhKem) {
-      DhKem.P256_SHA256 -> ECKeyPairGenerator().apply { init(ECKeyGenerationParameters(secp256r1, rand)) }
-      DhKem.P384_SHA384 -> ECKeyPairGenerator().apply { init(ECKeyGenerationParameters(secp384r1, rand)) }
-      DhKem.P521_SHA512 -> ECKeyPairGenerator().apply { init(ECKeyGenerationParameters(secp521r1, rand)) }
-
-      DhKem.X25519_SHA256 -> X25519KeyPairGenerator().apply { init(X25519KeyGenerationParameters(rand)) }
-      DhKem.X448_SHA512 -> X448KeyPairGenerator().apply { init(X448KeyGenerationParameters(rand)) }
-    }
 
   private val AsymmetricCipherKeyPair.asHpkeKeyPair: HpkeKeyPair
     get() =
       HpkeKeyPair(
-        HpkePrivateKey(hpke.serializePrivateKey(private)) to HpkePublicKey(hpke.serializePublicKey(public)),
+        HpkePrivateKey(hpke.serializePrivateKey(private)),
+        HpkePublicKey(hpke.serializePublicKey(public)),
       )
-
-  private val secp256r1: ECNamedDomainParameters by lazy {
-    ECNamedCurveTable.getOID("secp256r1").let { oid ->
-      ECNamedDomainParameters(
-        oid,
-        ECNamedCurveTable.getByOID(oid),
-      )
-    }
-  }
-
-  private val secp384r1: ECNamedDomainParameters by lazy {
-    ECNamedCurveTable.getOID("secp384r1").let { oid ->
-      ECNamedDomainParameters(
-        oid,
-        ECNamedCurveTable.getByOID(oid),
-      )
-    }
-  }
-
-  private val secp521r1: ECNamedDomainParameters by lazy {
-    ECNamedCurveTable.getOID("secp521r1").let { oid ->
-      ECNamedDomainParameters(
-        oid,
-        ECNamedCurveTable.getByOID(oid),
-      )
-    }
-  }
 
   private val HpkePublicKey.asParameter: AsymmetricKeyParameter
-    get() = hpke.deserializePublicKey(key)
+    get() = hpke.deserializePublicKey(bytes)
 
   private val HpkeKeyPair.asParameter: AsymmetricCipherKeyPair
-    get() = hpke.deserializePrivateKey(private.key, public.key)
+    get() = hpke.deserializePrivateKey(private.bytes, public.bytes)
 }

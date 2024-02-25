@@ -5,27 +5,27 @@ import com.github.traderjoe95.mls.protocol.error.CredentialIdentityValidationErr
 import com.github.traderjoe95.mls.protocol.error.CredentialValidationError
 import com.github.traderjoe95.mls.protocol.error.IsSameClientError
 import com.github.traderjoe95.mls.protocol.types.Credential
-import com.github.traderjoe95.mls.protocol.types.crypto.VerificationKey
+import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePublicKey
 import com.github.traderjoe95.mls.protocol.types.tree.LeafNode
 
 interface AuthenticationService<Identity : Any> {
   suspend fun authenticateCredentialIdentity(
     identity: Identity,
-    verificationKey: VerificationKey,
+    signaturePublicKey: SignaturePublicKey,
     credential: Credential,
   ): Either<CredentialIdentityValidationError, Unit>
 
   suspend fun authenticateCredential(
-    verificationKey: VerificationKey,
+    signaturePublicKey: SignaturePublicKey,
     credential: Credential,
   ): Either<CredentialValidationError, Identity>
 
   suspend fun authenticateCredentials(
-    vararg credentials: Pair<VerificationKey, Credential>,
+    vararg credentials: Pair<SignaturePublicKey, Credential>,
   ): List<Either<CredentialValidationError, Identity>> = authenticateCredentials(credentials.asList())
 
   suspend fun authenticateCredentials(
-    credentials: Iterable<Pair<VerificationKey, Credential>>,
+    credentials: Iterable<Pair<SignaturePublicKey, Credential>>,
   ): List<Either<CredentialValidationError, Identity>>
 
   suspend fun isSameClient(
@@ -36,8 +36,8 @@ interface AuthenticationService<Identity : Any> {
 
 suspend fun <Identity : Any> AuthenticationService<Identity>.authenticateCredential(
   leafNode: LeafNode<*>,
-): Either<CredentialValidationError, Identity> = authenticateCredential(leafNode.verificationKey, leafNode.credential)
+): Either<CredentialValidationError, Identity> = authenticateCredential(leafNode.signaturePublicKey, leafNode.credential)
 
 suspend fun <Identity : Any> AuthenticationService<Identity>.authenticateCredentials(
   leafNodes: Iterable<LeafNode<*>>,
-): List<Either<CredentialValidationError, Identity>> = authenticateCredentials(leafNodes.map { it.verificationKey to it.credential })
+): List<Either<CredentialValidationError, Identity>> = authenticateCredentials(leafNodes.map { it.signaturePublicKey to it.credential })

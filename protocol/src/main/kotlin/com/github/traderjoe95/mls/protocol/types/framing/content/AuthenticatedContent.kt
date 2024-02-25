@@ -14,9 +14,9 @@ import com.github.traderjoe95.mls.protocol.error.EpochError
 import com.github.traderjoe95.mls.protocol.error.MacError
 import com.github.traderjoe95.mls.protocol.error.SignatureError
 import com.github.traderjoe95.mls.protocol.group.GroupContext
-import com.github.traderjoe95.mls.protocol.group.GroupState
 import com.github.traderjoe95.mls.protocol.types.crypto.Mac
 import com.github.traderjoe95.mls.protocol.types.crypto.Signature
+import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePublicKey
 import com.github.traderjoe95.mls.protocol.types.framing.Sender
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ContentType
 import com.github.traderjoe95.mls.protocol.types.framing.enums.SenderType
@@ -28,9 +28,17 @@ data class AuthenticatedContent<out C : Content>(
   val signature: Signature,
   val confirmationTag: Mac?,
 ) : Struct4T.Shape<WireFormat, FramedContent<C>, Signature, Mac?> {
-  context(GroupState.Active, Raise<SignatureError>, Raise<MacError>, Raise<EpochError>)
-  fun verify(groupContext: GroupContext) {
-    content.verifySignature(FramedContent.AuthData(signature, confirmationTag), wireFormat, groupContext)
+  context(Raise<SignatureError>, Raise<MacError>, Raise<EpochError>)
+  fun verify(
+    groupContext: GroupContext,
+    signaturePublicKey: SignaturePublicKey,
+  ) {
+    content.verifySignature(
+      FramedContent.AuthData(signature, confirmationTag),
+      wireFormat,
+      groupContext,
+      signaturePublicKey,
+    )
   }
 
   val sender: Sender
@@ -52,10 +60,10 @@ data class AuthenticatedContent<out C : Content>(
 
     if (wireFormat != other.wireFormat) return false
     if (content != other.content) return false
-    if (!signature.value.contentEquals(other.signature.value)) return false
+    if (!signature.bytes.contentEquals(other.signature.bytes)) return false
     if (confirmationTag != null) {
       if (other.confirmationTag == null) return false
-      if (!confirmationTag.value.contentEquals(other.confirmationTag.value)) return false
+      if (!confirmationTag.bytes.contentEquals(other.confirmationTag.bytes)) return false
     } else if (other.confirmationTag != null) {
       return false
     }
@@ -66,9 +74,24 @@ data class AuthenticatedContent<out C : Content>(
   override fun hashCode(): Int {
     var result = wireFormat.hashCode()
     result = 31 * result + content.hashCode()
-    result = 31 * result + signature.value.contentHashCode()
-    result = 31 * result + (confirmationTag?.value?.contentHashCode() ?: 0)
+    result = 31 * result + signature.bytes.contentHashCode()
+    result = 31 * result + (confirmationTag?.bytes?.contentHashCode() ?: 0)
     return result
+  }
+
+  companion object : Encodable<AuthenticatedContent<*>> {
+    override val dataT: DataType<AuthenticatedContent<*>> =
+      throwAnyError {
+        struct("AuthenticatedContent") {
+          it.field("wire_format", WireFormat.T)
+            .field("content", FramedContent.dataT)
+            .field("signature", Signature.dataT)
+            .select<Mac?, _>(ContentType.T, "content", "content_type") {
+              case(ContentType.Commit).then(Mac.dataT, "confirmation_tag")
+                .orElseNothing()
+            }
+        }.lift(::AuthenticatedContent)
+      }
   }
 
   data class Tbm(
@@ -97,10 +120,10 @@ data class AuthenticatedContent<out C : Content>(
       other as Tbm
 
       if (contentTbs != other.contentTbs) return false
-      if (!signature.value.contentEquals(other.signature.value)) return false
+      if (!signature.bytes.contentEquals(other.signature.bytes)) return false
       if (confirmationTag != null) {
         if (other.confirmationTag == null) return false
-        if (!confirmationTag.value.contentEquals(other.confirmationTag.value)) return false
+        if (!confirmationTag.bytes.contentEquals(other.confirmationTag.bytes)) return false
       } else if (other.confirmationTag != null) {
         return false
       }
@@ -110,8 +133,8 @@ data class AuthenticatedContent<out C : Content>(
 
     override fun hashCode(): Int {
       var result = contentTbs.hashCode()
-      result = 31 * result + signature.value.contentHashCode()
-      result = 31 * result + (confirmationTag?.value?.contentHashCode() ?: 0)
+      result = 31 * result + signature.bytes.contentHashCode()
+      result = 31 * result + (confirmationTag?.bytes?.contentHashCode() ?: 0)
       return result
     }
   }

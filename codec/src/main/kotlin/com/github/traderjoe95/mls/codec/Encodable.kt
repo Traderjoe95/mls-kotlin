@@ -6,6 +6,7 @@ import arrow.core.raise.either
 import com.github.traderjoe95.mls.codec.error.DecoderError
 import com.github.traderjoe95.mls.codec.error.EncoderError
 import com.github.traderjoe95.mls.codec.type.DataType
+import com.github.traderjoe95.mls.codec.util.throwAnyError
 
 interface Encodable<T> {
   val dataT: DataType<T>
@@ -16,4 +17,6 @@ interface Encodable<T> {
 
   context(Raise<DecoderError>)
   fun decode(bytes: ByteArray): T = bytes.decodeAs(dataT)
+
+  fun decodeUnsafe(bytes: ByteArray): T = throwAnyError { decode(bytes) }
 }

@@ -4,4 +4,6 @@ sealed interface PublicMessageSenderError : SenderCommitError, ExternalJoinError
 
 sealed interface PublicMessageRecipientError : RecipientCommitError
 
-sealed interface PublicMessageError : PublicMessageSenderError, PublicMessageRecipientError
+sealed interface PublicMessageError : PublicMessageSenderError, PublicMessageRecipientError {
+  data object ApplicationMessageMustNotBePublic : PublicMessageError
+}

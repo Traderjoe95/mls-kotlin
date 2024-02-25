@@ -20,28 +20,27 @@ import com.github.traderjoe95.mls.protocol.tree.RatchetTree
 import com.github.traderjoe95.mls.protocol.tree.treeHash
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtension
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtensions
+import com.github.traderjoe95.mls.protocol.types.GroupId
 import com.github.traderjoe95.mls.protocol.types.HasExtensions
-import com.github.traderjoe95.mls.protocol.types.T
 import com.github.traderjoe95.mls.protocol.types.crypto.Mac
 import com.github.traderjoe95.mls.protocol.types.crypto.Signature
 import com.github.traderjoe95.mls.protocol.types.extensionList
 import com.github.traderjoe95.mls.protocol.types.framing.content.FramedContent
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
 import com.github.traderjoe95.mls.protocol.types.framing.enums.WireFormat
-import de.traderjoe.ulid.ULID
-import de.traderjoe.ulid.suspending.new
+import com.github.traderjoe95.mls.protocol.util.hex
 
 class GroupContext(
   val protocolVersion: ProtocolVersion,
   val cipherSuite: CipherSuite,
-  val groupId: ULID,
+  val groupId: GroupId,
   val epoch: ULong,
   val treeHash: ByteArray,
   val confirmedTranscriptHash: ByteArray,
-  override val extensions: GroupContextExtensions,
+  override val extensions: GroupContextExtensions = listOf(),
   val interimTranscriptHash: ByteArray = byteArrayOf(),
 ) : HasExtensions<GroupContextExtension<*>>(),
-  Struct7T.Shape<ProtocolVersion, CipherSuite, ULID, ULong, ByteArray, ByteArray, GroupContextExtensions> {
+  Struct7T.Shape<ProtocolVersion, CipherSuite, GroupId, ULong, ByteArray, ByteArray, GroupContextExtensions> {
   inline val encoded: ByteArray
     get() = encodeUnsafe()
 
@@ -49,7 +48,7 @@ class GroupContext(
 
   override fun component2(): CipherSuite = cipherSuite
 
-  override fun component3(): ULID = groupId
+  override fun component3(): GroupId = groupId
 
   override fun component4(): ULong = epoch
 
@@ -84,8 +83,7 @@ class GroupContext(
       interimTranscriptHash,
     )
 
-  context(ICipherSuite)
-  fun withInterimTranscriptHash(confirmationTag: Mac): GroupContext =
+  fun withInterimTranscriptHash(interimTranscriptHash: ByteArray): GroupContext =
     GroupContext(
       protocolVersion,
       cipherSuite,
@@ -94,8 +92,10 @@ class GroupContext(
       treeHash,
       confirmedTranscriptHash,
       extensions,
-      hash(confirmedTranscriptHash + InterimTranscriptHashInput(confirmationTag).encodeUnsafe()),
+      interimTranscriptHash,
     )
+
+  fun toShortString(): String = "GroupContext[v=$protocolVersion, id=${groupId.hex}, epoch=$epoch]"
 
   companion object : Encodable<GroupContext> {
     @Suppress("kotlin:S6531")
@@ -103,7 +103,7 @@ class GroupContext(
       struct("GroupContext") {
         it.field("version", ProtocolVersion.T, ProtocolVersion.MLS_1_0)
           .field("cipher_suite", CipherSuite.T)
-          .field("group_id", ULID.T)
+          .field("group_id", GroupId.dataT)
           .field("epoch", uint64.asULong)
           .field("tree_hash", opaque[V])
           .field("confirmed_transcript_hash", opaque[V])
@@ -111,18 +111,18 @@ class GroupContext(
       }.lift(::GroupContext)
 
     context(Raise<GroupCreationError>)
-    suspend fun new(
+    fun new(
       protocolVersion: ProtocolVersion,
       cipherSuite: CipherSuite,
       keySchedule: KeySchedule,
       tree: RatchetTree,
       vararg extensions: GroupContextExtension<*>,
-      groupId: ULID? = null,
+      groupId: GroupId? = null,
     ): GroupContext =
       GroupContext(
         protocolVersion,
         cipherSuite,
-        groupId ?: ULID.new(),
+        groupId ?: GroupId.new(),
         0UL,
         with(cipherSuite) { tree.treeHash },
         byteArrayOf(),

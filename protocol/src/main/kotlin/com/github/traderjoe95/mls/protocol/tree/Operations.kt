@@ -6,8 +6,16 @@ import arrow.core.raise.Raise
 import arrow.core.raise.nullable
 import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
 import com.github.traderjoe95.mls.protocol.error.IsSameClientError
+import com.github.traderjoe95.mls.protocol.error.SignatureError
+import com.github.traderjoe95.mls.protocol.group.GroupContext
+import com.github.traderjoe95.mls.protocol.message.KeyPackage
 import com.github.traderjoe95.mls.protocol.service.AuthenticationService
-import com.github.traderjoe95.mls.protocol.types.framing.message.KeyPackage
+import com.github.traderjoe95.mls.protocol.types.ExternalSenders
+import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePublicKey
+import com.github.traderjoe95.mls.protocol.types.framing.content.Add
+import com.github.traderjoe95.mls.protocol.types.framing.content.Commit
+import com.github.traderjoe95.mls.protocol.types.framing.content.FramedContent
+import com.github.traderjoe95.mls.protocol.types.framing.enums.SenderType
 import com.github.traderjoe95.mls.protocol.types.tree.LeafNode
 import com.github.traderjoe95.mls.protocol.types.tree.hash.ParentHashInput
 import com.github.traderjoe95.mls.protocol.types.tree.hash.ParentHashInput.Companion.encodeUnsafe
@@ -105,3 +113,55 @@ val RatchetTreeOps.nonBlankLeafIndices: List<LeafIndex>
 
 val RatchetTreeOps.nonBlankNodeIndices: List<NodeIndex>
   get() = nonBlankParentNodeIndices + nonBlankLeafNodeIndices
+
+interface SignaturePublicKeyLookup {
+  context(Raise<SignatureError.SignaturePublicKeyKeyNotFound>)
+  fun getSignaturePublicKey(
+    groupContext: GroupContext,
+    framedContent: FramedContent<*>,
+  ): SignaturePublicKey
+
+  companion object {
+    // For testing purposes
+    internal fun only(signaturePublicKey: SignaturePublicKey): SignaturePublicKeyLookup =
+      object : SignaturePublicKeyLookup {
+        context(Raise<SignatureError.SignaturePublicKeyKeyNotFound>)
+        override fun getSignaturePublicKey(
+          groupContext: GroupContext,
+          framedContent: FramedContent<*>,
+        ): SignaturePublicKey = signaturePublicKey
+      }
+  }
+}
+
+context(Raise<SignatureError.SignaturePublicKeyKeyNotFound>)
+fun findSignaturePublicKey(
+  framedContent: FramedContent<*>,
+  groupContext: GroupContext,
+  tree: RatchetTreeOps,
+): SignaturePublicKey =
+  when (framedContent.sender.type) {
+    SenderType.Member ->
+      tree.leafNodeOrNull(framedContent.sender.index!!)
+        ?.signaturePublicKey
+
+    SenderType.External ->
+      groupContext.extension<ExternalSenders>()
+        ?.externalSenders
+        ?.getOrNull(framedContent.sender.index!!.value.toInt())
+        ?.signaturePublicKey
+
+    SenderType.NewMemberCommit ->
+      (framedContent.content as? Commit)
+        ?.updatePath?.getOrNull()
+        ?.leafNode
+        ?.signaturePublicKey
+
+    SenderType.NewMemberProposal ->
+      (framedContent.content as? Add)
+        ?.keyPackage
+        ?.leafNode
+        ?.signaturePublicKey
+
+    else -> error("Unreachable")
+  } ?: raise(SignatureError.SignaturePublicKeyKeyNotFound(framedContent.sender))

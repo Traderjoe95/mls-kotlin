@@ -2,7 +2,7 @@ plugins {
   kotlin("jvm")
 
   `java-library`
-//  `java-test-fixtures`
+  `java-test-fixtures`
 }
 
 val projectVersion: String by project
@@ -27,6 +27,8 @@ val kotestVersion: String by project
 val kotestArrowVersion: String by project
 val mockkVersion: String by project
 
+val vertxVersion: String by project
+
 dependencies {
   // Kotlin Standard Library
   implementation(kotlin("stdlib-jdk8"))
@@ -37,16 +39,11 @@ dependencies {
   api("io.arrow-kt:arrow-core")
 
   // Codec
-  implementation(project(":codec"))
-
-  // ULID
-  implementation(project(":ulid"))
+  api(project(":codec"))
 
   // Crypto
   implementation("org.bouncycastle:bcprov-jdk18on:$bouncycastleVersion")
   implementation("org.bouncycastle:bcpkix-jdk18on:$bouncycastleVersion")
-
-  testImplementation(kotlin("test"))
 
   // Test Dependencies
   testImplementation(kotlin("test"))
@@ -60,11 +57,16 @@ dependencies {
   testImplementation("io.mockk:mockk:$mockkVersion")
 
   testImplementation(testFixtures(project(":codec")))
+  testImplementation(project(":interop"))
 
-//  testFixturesApi(platform("io.kotest:kotest-bom:$kotestVersion"))
-//  testFixturesImplementation("io.kotest:kotest-assertions-core")
-//  testFixturesApi("io.kotest:kotest-property")
-//  testFixturesImplementation("io.kotest.extensions:kotest-assertions-arrow:$kotestArrowVersion")
+  testImplementation(platform("io.vertx:vertx-stack-depchain:$vertxVersion"))
+  testImplementation("io.vertx:vertx-lang-kotlin")
+  testImplementation("io.vertx:vertx-lang-kotlin-coroutines")
+
+  testFixturesApi(platform("io.vertx:vertx-stack-depchain:$vertxVersion"))
+  testFixturesApi("io.vertx:vertx-core")
+  testFixturesImplementation("io.vertx:vertx-lang-kotlin")
+  testFixturesImplementation("io.vertx:vertx-lang-kotlin-coroutines")
 }
 
 tasks.test {

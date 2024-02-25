@@ -104,7 +104,7 @@ private fun LeafNode<*>.checkDuplicateKeys(
 
   // Check for duplicated signature keys
   tree.nonBlankLeafIndices.filter {
-    it != leafIdx && tree.leafNode(it).verificationKey.eq(verificationKey)
+    it != leafIdx && tree.leafNode(it).signaturePublicKey.eq(signaturePublicKey)
   }.let { duplicates ->
     if (duplicates.isNotEmpty()) raise(LeafNodeCheckError.DuplicateSignatureKey(duplicates + leafIdx))
   }

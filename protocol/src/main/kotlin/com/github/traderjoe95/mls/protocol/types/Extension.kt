@@ -24,9 +24,8 @@ import com.github.traderjoe95.mls.codec.util.Slice
 import com.github.traderjoe95.mls.codec.util.throwAnyError
 import com.github.traderjoe95.mls.protocol.tree.PublicRatchetTree
 import com.github.traderjoe95.mls.protocol.types.crypto.HpkePublicKey
-import com.github.traderjoe95.mls.protocol.types.crypto.VerificationKey
+import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePublicKey
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.Capabilities
-import de.traderjoe.ulid.ULID
 import kotlin.random.Random
 
 enum class ExtensionType(
@@ -228,16 +227,28 @@ sealed interface LeafNodeExtension<V : LeafNodeExtension<V>> : Extension<V> {
 typealias LeafNodeExtensions = List<LeafNodeExtension<*>>
 
 data class ApplicationId(
-  val applicationId: ULID,
-) : LeafNodeExtension<ApplicationId>, Struct1T.Shape<ULID> {
-  override val type: UShort = ExtensionType.ApplicationId.asUShort
-  override val valueT: DataType<ApplicationId> = T
+  override val bytes: ByteArray,
+) : LeafNodeExtension<ApplicationId>, RefinedBytes<ApplicationId> {
+  override val type: UShort
+    get() = ExtensionType.ApplicationId.asUShort
+  override val valueT: DataType<ApplicationId>
+    get() = T
+
+  override fun equals(other: Any?): Boolean {
+    if (this === other) return true
+    if (javaClass != other?.javaClass) return false
+
+    other as ApplicationId
+
+    return bytes.contentEquals(other.bytes)
+  }
+
+  override fun hashCode(): Int {
+    return bytes.contentHashCode()
+  }
 
   companion object {
-    val T: DataType<ApplicationId> =
-      struct("ApplicationId") {
-        it.field("application_id", ULID.T)
-      }.lift(::ApplicationId)
+    val T: DataType<ApplicationId> = RefinedBytes.dataT(::ApplicationId, "ApplicationId")
   }
 }
 
@@ -279,13 +290,13 @@ data class ExternalSenders(
   }
 
   data class ExternalSender(
-    val verificationKey: VerificationKey,
+    val signaturePublicKey: SignaturePublicKey,
     val credential: Credential,
-  ) : Struct2T.Shape<VerificationKey, Credential> {
+  ) : Struct2T.Shape<SignaturePublicKey, Credential> {
     companion object {
       val T: DataType<ExternalSender> =
         struct("ExternalSender") {
-          it.field("signature_key", VerificationKey.dataT)
+          it.field("signature_key", SignaturePublicKey.dataT)
             .field("credential", Credential.dataT)
         }.lift(::ExternalSender)
     }

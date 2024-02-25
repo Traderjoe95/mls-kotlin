@@ -1,7 +1,6 @@
 package com.github.traderjoe95.mls.protocol.tree
 
 import arrow.core.raise.Raise
-import com.github.traderjoe95.mls.codec.util.throwAnyError
 import com.github.traderjoe95.mls.codec.util.toBytes
 import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
 import com.github.traderjoe95.mls.protocol.error.EpochError
@@ -36,6 +35,14 @@ interface SecretTree {
       generation: UInt,
     ): Pair<Nonce, Secret>
   }
+
+  companion object {
+    fun create(
+      cipherSuite: ICipherSuite,
+      encryptionSecret: Secret,
+      leaves: UInt,
+    ): SecretTree = SecretTreeImpl.create(leaves, encryptionSecret, cipherSuite)
+  }
 }
 
 class Ratchet(
@@ -47,7 +54,14 @@ class Ratchet(
 ) {
   companion object {
     const val SKIP_LIMIT = 255U
-    const val BACKLOG_LIMIT = 64U
+    const val BACKLOG_LIMIT = 255U
+
+    fun ICipherSuite.deriveTreeSecret(
+      secret: Secret,
+      label: String,
+      generation: UInt,
+      length: UShort = hashLen,
+    ): Secret = expandWithLabel(secret, label, generation.toBytes(4U), length)
   }
 
   private val mutex: Mutex = Mutex()
@@ -93,20 +107,13 @@ class Ratchet(
   }
 
   private val next: Secret
-    get() = deriveTreeSecret(currentSecret, "secret", currentGeneration)
+    get() = cipherSuite.deriveTreeSecret(currentSecret, "secret", currentGeneration)
 
   private val nonce: Nonce
-    get() = deriveTreeSecret(currentSecret, "nonce", currentGeneration, cipherSuite.nonceLen).asNonce
+    get() = cipherSuite.deriveTreeSecret(currentSecret, "nonce", currentGeneration, cipherSuite.nonceLen).asNonce
 
   private val key: Secret
-    get() = deriveTreeSecret(currentSecret, "key", currentGeneration, cipherSuite.keyLen)
-
-  private fun deriveTreeSecret(
-    secret: Secret,
-    label: String,
-    generation: UInt,
-    length: UShort = cipherSuite.hashLen,
-  ): Secret = throwAnyError { cipherSuite.expandWithLabel(secret, label, generation.toBytes(4U), length) }
+    get() = cipherSuite.deriveTreeSecret(currentSecret, "key", currentGeneration, cipherSuite.keyLen)
 }
 
 data class SecretTreeLeaf(
@@ -158,40 +165,49 @@ internal class SecretTreeImpl private constructor(private val leaves: Array<Secr
       encryptionSecret: Secret,
       cipherSuite: ICipherSuite,
     ): SecretTree =
-      generateSequence(encryptionSecret) { cipherSuite.expandWithLabel(it, "tree", "left") }.take(
-        when (leaves) {
-          1U -> 1
-          else -> log2(leaves - 1U).toInt() + 2
-        },
-      ).toList().let { initSecrets ->
-        var intermediate = initSecrets
+      with(cipherSuite) {
+        // Traverse the tree in-order, that way every intermediate secret only needs to be computed once
+        // First generate the left flank of the tree: Start with the encryption secret and step down to the leaf, deriving
+        // the "left" child secret on each step.
+        generateSequence(encryptionSecret) { expandWithLabel(it, "tree", "left") }
+          .take(if (leaves == 1U) 1 else log2(leaves - 1U).toInt() + 2)
+          .toList()
+          .let { initSecrets ->
+            var intermediate = initSecrets
 
-        Array(leaves.toInt()) { idx ->
-          SecretTreeLeaf(
-            cipherSuite.expandWithLabel(intermediate.last(), "handshake", ""),
-            cipherSuite.expandWithLabel(intermediate.last(), "application", ""),
-            cipherSuite,
-          ).also {
-            val no = idx.toUInt() + 1U
+            Array(leaves.toInt()) { idx ->
+              // Calculate the leaf init secrets
+              SecretTreeLeaf(
+                expandWithLabel(intermediate.last(), "handshake", ""),
+                expandWithLabel(intermediate.last(), "application", ""),
+                cipherSuite,
+              ).also {
+                val no = idx.toUInt() + 1U
 
-            generateSequence(0) { it + 1 }.find { no % (1U shl it) != 0U }!!.let { nullBits ->
-              intermediate.takeLast(nullBits + 1).forEach { it.wipe() }
+                // Find out how many steps to go back up the tree to reach the next leaf.
+                // This is basically done by finding the first non-zero bit in the current leafIdx + 1
+                generateSequence(1) { it + 1 }.find { no % (1U shl it) != 0U }!!.let { backTrack ->
+                  // Wipe intermediate secrets that are no longer needed
+                  intermediate
+                    .takeLast(backTrack)
+                    .forEach { it.wipe() }
 
-              if (no < leaves) {
-                intermediate = intermediate.dropLast(nullBits + 1) +
-                  generateSequence(
-                    cipherSuite.expandWithLabel(
-                      intermediate.lastOrNull() ?: encryptionSecret,
-                      "tree",
-                      "right",
-                    ),
-                  ) {
-                    cipherSuite.expandWithLabel(it, "tree", "left")
-                  }.take(nullBits + 1).toList()
+                  if (no < leaves) {
+                    // Backtrack by dropping the last n steps, then go one step right and continue by stepping down to
+                    // the left until reaching the leaf
+                    intermediate = intermediate.dropLast(backTrack)
+                    val stepRight = expandWithLabel(intermediate.lastOrNull() ?: encryptionSecret, "tree", "right")
+
+                    intermediate =
+                      intermediate +
+                        generateSequence(stepRight) { expandWithLabel(it, "tree", "left") }
+                          .take(backTrack)
+                          .toList()
+                  }
+                }
               }
             }
           }
-        }
       }.let(::SecretTreeImpl)
   }
 }

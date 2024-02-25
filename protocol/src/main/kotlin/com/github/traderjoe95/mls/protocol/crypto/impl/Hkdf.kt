@@ -1,5 +1,6 @@
 package com.github.traderjoe95.mls.protocol.crypto.impl
 
+import com.github.traderjoe95.mls.codec.type.uint16
 import com.github.traderjoe95.mls.protocol.crypto.Auth
 import com.github.traderjoe95.mls.protocol.crypto.Kdf
 import com.github.traderjoe95.mls.protocol.types.crypto.Mac
@@ -8,10 +9,45 @@ import com.github.traderjoe95.mls.protocol.types.crypto.Secret
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret.Companion.asSecret
 import org.bouncycastle.crypto.macs.HMac
 import org.bouncycastle.crypto.params.KeyParameter
+import org.bouncycastle.util.Arrays
 
 internal class Hkdf(private val hash: HashFunction) : Kdf.Provider(), Auth {
+  companion object {
+    const val VERSION_LABEL = "HPKE-v1"
+  }
+
   override val hashLen: UShort
     get() = hash.hashLen
+
+  internal fun labeledExtract(
+    salt: ByteArray?,
+    suiteId: ByteArray,
+    label: String,
+    ikm: ByteArray,
+  ): ByteArray =
+    extract(
+      salt ?: ByteArray(hashLen.toInt()),
+      Arrays.concatenate(VERSION_LABEL.encodeToByteArray(), suiteId, label.encodeToByteArray(), ikm).asSecret,
+    ).bytes
+
+  internal fun labeledExpand(
+    prk: ByteArray,
+    suiteId: ByteArray,
+    label: String,
+    info: ByteArray?,
+    length: UShort,
+  ): ByteArray {
+    val labeledInfo =
+      ByteArray(2 + VERSION_LABEL.length + suiteId.size + label.length + (info?.size ?: 0)).also {
+        uint16(length).encode().copyInto(it)
+        VERSION_LABEL.encodeToByteArray().copyInto(it, destinationOffset = 2)
+        suiteId.copyInto(it, destinationOffset = 2 + VERSION_LABEL.length)
+        label.encodeToByteArray().copyInto(it, destinationOffset = 2 + VERSION_LABEL.length + suiteId.size)
+        info?.copyInto(it, destinationOffset = 2 + VERSION_LABEL.length + suiteId.size + label.length)
+      }
+
+    return expand(prk.asSecret, labeledInfo, length).bytes
+  }
 
   override fun extract(
     salt: ByteArray,
@@ -20,7 +56,7 @@ internal class Hkdf(private val hash: HashFunction) : Kdf.Provider(), Auth {
     ByteArray(hash.hashLen.toInt()).also { out ->
       hmac().apply {
         init(KeyParameter(salt))
-        update(ikm.key, 0, ikm.key.size)
+        update(ikm.bytes, 0, ikm.bytes.size)
       }.doFinal(out, 0)
     }.asSecret
 
@@ -30,7 +66,7 @@ internal class Hkdf(private val hash: HashFunction) : Kdf.Provider(), Auth {
     length: UShort,
   ): Secret {
     val out = ByteArray(length.toInt())
-    val hmac = hmac().apply { init(KeyParameter(prk.key)) }
+    val hmac = hmac().apply { init(KeyParameter(prk.bytes)) }
     val n = if (length % hash.hashLen == 0U) length / hash.hashLen else length / hash.hashLen + 1U
 
     for (i in 0U..<n) {
@@ -65,7 +101,7 @@ internal class Hkdf(private val hash: HashFunction) : Kdf.Provider(), Auth {
   ): Mac =
     ByteArray(hashLen.toInt()).also { out ->
       hmac().apply {
-        init(KeyParameter(secret.key))
+        init(KeyParameter(secret.bytes))
         update(content, 0, content.size)
         doFinal(out, 0)
       }

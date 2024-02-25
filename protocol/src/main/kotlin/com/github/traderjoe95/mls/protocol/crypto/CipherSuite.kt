@@ -9,21 +9,23 @@ import com.github.traderjoe95.mls.protocol.crypto.impl.AeadAlgorithm
 import com.github.traderjoe95.mls.protocol.crypto.impl.CipherSuiteImpl.Companion.using
 import com.github.traderjoe95.mls.protocol.crypto.impl.DhKem
 import com.github.traderjoe95.mls.protocol.error.SignatureError
+import com.github.traderjoe95.mls.protocol.message.KeyPackage
 import com.github.traderjoe95.mls.protocol.types.crypto.Aad
 import com.github.traderjoe95.mls.protocol.types.crypto.Ciphertext
 import com.github.traderjoe95.mls.protocol.types.crypto.HashReference
 import com.github.traderjoe95.mls.protocol.types.crypto.HpkeCiphertext
 import com.github.traderjoe95.mls.protocol.types.crypto.HpkeKeyPair
+import com.github.traderjoe95.mls.protocol.types.crypto.HpkePrivateKey
 import com.github.traderjoe95.mls.protocol.types.crypto.HpkePublicKey
 import com.github.traderjoe95.mls.protocol.types.crypto.KemOutput
 import com.github.traderjoe95.mls.protocol.types.crypto.Mac
 import com.github.traderjoe95.mls.protocol.types.crypto.Nonce
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret
 import com.github.traderjoe95.mls.protocol.types.crypto.Signature
-import com.github.traderjoe95.mls.protocol.types.crypto.SigningKey
-import com.github.traderjoe95.mls.protocol.types.crypto.VerificationKey
+import com.github.traderjoe95.mls.protocol.types.crypto.SignatureKeyPair
+import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePrivateKey
+import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePublicKey
 import com.github.traderjoe95.mls.protocol.types.framing.content.Proposal
-import com.github.traderjoe95.mls.protocol.types.framing.message.KeyPackage
 import kotlin.random.Random
 
 interface ICipherSuite : Sign, Encrypt, Hash, Auth, Kdf, Kem, Gen
@@ -94,12 +96,13 @@ enum class CipherSuite(
   override val ord: UIntRange = ord..ord
   val asUShort: UShort = ord.toUShort()
 
-  override fun toString(): String = "$name($asUShort)"
+  override fun toString(): String = "$name[$asUShort]"
 
   companion object {
     val T: EnumT<CipherSuite> = throwAnyError { enum(upperBound = 0xFFFFU) }
 
-    val VALID: List<UShort> = entries.filter { it.isValid }.map { it.asUShort }
+    val validEntries: List<CipherSuite> = entries.filter(CipherSuite::isValid)
+    val VALID: List<UShort> = validEntries.map { it.asUShort }
 
     operator fun invoke(type: UShort): CipherSuite? = entries.find { it.isValid && type in it.ord }
 
@@ -115,22 +118,22 @@ enum class CipherSuite(
 
 internal object Dummy : ICipherSuite {
   override fun signWithLabel(
-    signatureKey: SigningKey,
+    signatureKey: SignaturePrivateKey,
     label: String,
     content: ByteArray,
   ): Signature = error("unsupported")
 
   context(Raise<SignatureError>)
   override fun verifyWithLabel(
-    verificationKey: VerificationKey,
+    signaturePublicKey: SignaturePublicKey,
     label: String,
     content: ByteArray,
     signature: Signature,
   ) = error("unsupported")
 
-  override fun generateSignatureKeyPair(): Pair<SigningKey, VerificationKey> = error("unsupported")
+  override fun generateSignatureKeyPair(): SignatureKeyPair = error("unsupported")
 
-  override fun calculateVerificationKey(signingKey: SigningKey): VerificationKey = error("unsupported")
+  override fun reconstructPublicKey(privateKey: SignaturePrivateKey): SignatureKeyPair = error("unsupported")
 
   override fun encryptWithLabel(
     publicKey: HpkePublicKey,
@@ -141,6 +144,13 @@ internal object Dummy : ICipherSuite {
 
   override fun decryptWithLabel(
     keyPair: HpkeKeyPair,
+    label: String,
+    context: ByteArray,
+    ciphertext: HpkeCiphertext,
+  ): ByteArray = error("unsupported")
+
+  override fun decryptWithLabel(
+    privateKey: HpkePrivateKey,
     label: String,
     context: ByteArray,
     ciphertext: HpkeCiphertext,
@@ -220,6 +230,8 @@ internal object Dummy : ICipherSuite {
     get() = error("unsupported")
 
   override fun deriveKeyPair(secret: Secret): HpkeKeyPair = error("unsupported")
+
+  override fun reconstructPublicKey(privateKey: HpkePrivateKey): HpkeKeyPair = error("unsupported")
 
   override fun generateSecret(len: UShort): Secret = error("unsupported")
 

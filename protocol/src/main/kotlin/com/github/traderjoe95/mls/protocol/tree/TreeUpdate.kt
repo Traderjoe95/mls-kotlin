@@ -11,15 +11,14 @@ import com.github.traderjoe95.mls.protocol.error.SenderTreeUpdateError
 import com.github.traderjoe95.mls.protocol.error.WrongParentHash
 import com.github.traderjoe95.mls.protocol.error.WrongUpdatePathLength
 import com.github.traderjoe95.mls.protocol.group.GroupContext
+import com.github.traderjoe95.mls.protocol.types.RefinedBytes.Companion.neqNullable
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret.Companion.asSecret
-import com.github.traderjoe95.mls.protocol.types.crypto.SigningKey
-import com.github.traderjoe95.mls.protocol.types.framing.message.PathSecret
+import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePrivateKey
 import com.github.traderjoe95.mls.protocol.types.tree.LeafNode
 import com.github.traderjoe95.mls.protocol.types.tree.ParentNode
 import com.github.traderjoe95.mls.protocol.types.tree.UpdatePath
 import com.github.traderjoe95.mls.protocol.types.tree.UpdatePathNode
-import com.github.traderjoe95.mls.protocol.types.tree.leaf.ParentHash.Companion.eqNullable
 import com.github.traderjoe95.mls.protocol.util.foldWith
 import com.github.traderjoe95.mls.protocol.util.zipWithIndex
 
@@ -28,7 +27,7 @@ internal fun createUpdatePath(
   originalTree: RatchetTree,
   excludeNewLeaves: Set<LeafIndex>,
   groupContext: GroupContext,
-  signingKey: SigningKey,
+  signaturePrivateKey: SignaturePrivateKey,
 ): Triple<RatchetTree, UpdatePath, List<Secret>> =
   with(originalTree.cipherSuite) {
     val oldLeafNode = originalTree.leafNode(originalTree.leafIndex)
@@ -54,18 +53,24 @@ internal fun createUpdatePath(
 
           set(nodeIdx, ParentNode.new(nodeKp.public), nodeKp.private)
         }
-        .foldWith(originalTree.leafIndex.nodeIndex.prependTo(filteredDirectPath).zipWithNext().reversed()) { (nodeIdx, parent) ->
+        .foldWith(
+          originalTree.leafIndex.nodeIndex.prependTo(filteredDirectPath).zipWithNext().reversed(),
+        ) { (nodeIdx, parent) ->
           updateOrNull(nodeIdx) { withParentHash(parentHash = parentHash(parent, leafIndex)) }
         }
 
     val newLeafNode =
       LeafNode.commit(
+        groupContext.cipherSuite,
         leafKp.public,
         oldLeafNode,
-        updatedTreeWithoutLeaf.parentHash(filteredDirectPath.firstOrNull() ?: originalTree.root, originalTree.leafIndex),
+        updatedTreeWithoutLeaf.parentHash(
+          filteredDirectPath.firstOrNull() ?: originalTree.root,
+          originalTree.leafIndex,
+        ),
         originalTree.leafIndex,
         groupContext,
-        signingKey,
+        signaturePrivateKey,
       )
     val updatedTree =
       updatedTreeWithoutLeaf.set(
@@ -88,7 +93,7 @@ internal fun createUpdatePath(
               originalTree.node(idx).encryptionKey,
               "UpdatePathNode",
               provisionalGroupCtx.encoded,
-              pathSecret.key,
+              pathSecret.bytes,
             )
           },
         )
@@ -129,8 +134,8 @@ internal fun applyUpdatePath(
         }
 
     val computedParentHash = updatedTreeWithoutLeaf.parentHash(filteredDirectPath.first(), fromLeafIndex)
-    if (!updatePath.leafNode.parentHash.eqNullable(computedParentHash)) {
-      raise(WrongParentHash(computedParentHash.value, updatePath.leafNode.parentHash!!.value))
+    if (updatePath.leafNode.parentHash neqNullable computedParentHash) {
+      raise(WrongParentHash(computedParentHash.bytes, updatePath.leafNode.parentHash!!.bytes))
     }
 
     var updatedTree = updatedTreeWithoutLeaf.set(fromLeafIndex, updatePath.leafNode)
@@ -199,10 +204,10 @@ context(ICipherSuite, Raise<JoinError>)
 internal fun RatchetTree.updateOnJoin(
   ownLeafIdx: LeafIndex,
   senderLeafIdx: LeafIndex,
-  pathSecret: PathSecret,
+  pathSecret: Secret,
 ): RatchetTree {
   var currentIdx = lowestCommonAncestor(ownLeafIdx, senderLeafIdx)
-  var currentPathSecret = pathSecret.pathSecret
+  var currentPathSecret = pathSecret
   var currentTree = nodeKeyUpdate(currentIdx, currentPathSecret)
 
   while (currentIdx != root) {

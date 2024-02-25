@@ -14,18 +14,18 @@ import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
 import com.github.traderjoe95.mls.protocol.error.SignatureError
 import com.github.traderjoe95.mls.protocol.group.GroupContext
-import com.github.traderjoe95.mls.protocol.group.GroupState
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.types.Credential
 import com.github.traderjoe95.mls.protocol.types.Extension
+import com.github.traderjoe95.mls.protocol.types.GroupId
 import com.github.traderjoe95.mls.protocol.types.HasExtensions
 import com.github.traderjoe95.mls.protocol.types.LeafNodeExtension
 import com.github.traderjoe95.mls.protocol.types.LeafNodeExtensions
-import com.github.traderjoe95.mls.protocol.types.T
+import com.github.traderjoe95.mls.protocol.types.RefinedBytes.Companion.neqNullable
 import com.github.traderjoe95.mls.protocol.types.crypto.HpkePublicKey
 import com.github.traderjoe95.mls.protocol.types.crypto.Signature
-import com.github.traderjoe95.mls.protocol.types.crypto.SigningKey
-import com.github.traderjoe95.mls.protocol.types.crypto.VerificationKey
+import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePrivateKey
+import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePublicKey
 import com.github.traderjoe95.mls.protocol.types.extensionList
 import com.github.traderjoe95.mls.protocol.types.tree.LeafNode.Tbs.Companion.encodeUnsafe
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.Capabilities
@@ -33,8 +33,6 @@ import com.github.traderjoe95.mls.protocol.types.tree.leaf.LeafNodeInfo
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.LeafNodeSource
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.Lifetime
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.ParentHash
-import com.github.traderjoe95.mls.protocol.types.tree.leaf.ParentHash.Companion.eqNullable
-import de.traderjoe.ulid.ULID
 
 typealias KeyPackageLeafNode = LeafNode<LeafNodeSource.KeyPackage>
 typealias CommitLeafNode = LeafNode<LeafNodeSource.Commit>
@@ -42,7 +40,7 @@ typealias UpdateLeafNode = LeafNode<LeafNodeSource.Update>
 
 data class LeafNode<S : LeafNodeSource>(
   override val encryptionKey: HpkePublicKey,
-  val verificationKey: VerificationKey,
+  val signaturePublicKey: SignaturePublicKey,
   val credential: Credential,
   val capabilities: Capabilities,
   val source: S,
@@ -51,7 +49,7 @@ data class LeafNode<S : LeafNodeSource>(
   val signature: Signature,
 ) : HasExtensions<LeafNodeExtension<*>>(),
   Node,
-  Struct8T.Shape<HpkePublicKey, VerificationKey, Credential, Capabilities, S, LeafNodeInfo?, LeafNodeExtensions, Signature> {
+  Struct8T.Shape<HpkePublicKey, SignaturePublicKey, Credential, Capabilities, S, LeafNodeInfo?, LeafNodeExtensions, Signature> {
   override val parentHash: ParentHash?
     get() = info as? ParentHash
 
@@ -66,12 +64,12 @@ data class LeafNode<S : LeafNodeSource>(
     }
 
   private fun tbs(
-    groupId: ULID,
+    groupId: GroupId,
     leafIndex: LeafIndex,
   ): ByteArray =
     Tbs(
       encryptionKey,
-      verificationKey,
+      signaturePublicKey,
       credential,
       capabilities,
       source,
@@ -86,7 +84,7 @@ data class LeafNode<S : LeafNodeSource>(
     leafIndex: LeafIndex,
   ) {
     groupContext.cipherSuite.verifyWithLabel(
-      verificationKey,
+      signaturePublicKey,
       "LeafNodeTBS",
       tbs(groupContext.groupId, leafIndex),
       signature,
@@ -99,15 +97,15 @@ data class LeafNode<S : LeafNodeSource>(
 
     other as LeafNode<*>
 
-    if (!encryptionKey.eq(other.encryptionKey)) return false
-    if (!verificationKey.eq(other.verificationKey)) return false
+    if (encryptionKey neq other.encryptionKey) return false
+    if (signaturePublicKey neq other.signaturePublicKey) return false
     if (credential != other.credential) return false
     if (capabilities != other.capabilities) return false
     if (source != other.source) return false
     if (info != other.info) return false
     if (extensions != other.extensions) return false
-    if (!signature.eq(other.signature)) return false
-    if (!parentHash.eqNullable(other.parentHash)) return false
+    if (signature neq other.signature) return false
+    if (parentHash neqNullable other.parentHash) return false
     if (lifetime != other.lifetime) return false
 
     return true
@@ -115,7 +113,7 @@ data class LeafNode<S : LeafNodeSource>(
 
   override fun hashCode(): Int {
     var result = encryptionKey.hashCode
-    result = 31 * result + verificationKey.hashCode
+    result = 31 * result + signaturePublicKey.hashCode
     result = 31 * result + credential.hashCode()
     result = 31 * result + capabilities.hashCode()
     result = 31 * result + source.hashCode()
@@ -132,7 +130,7 @@ data class LeafNode<S : LeafNodeSource>(
     override val dataT: DataType<LeafNode<*>> =
       struct("LeafNode") {
         it.field("encryption_key", HpkePublicKey.dataT)
-          .field("signature_key", VerificationKey.dataT)
+          .field("signature_key", SignaturePublicKey.dataT)
           .field("credential", Credential.dataT)
           .field("capabilities", Capabilities.dataT)
           .field("leaf_node_source", LeafNodeSource.T)
@@ -149,7 +147,7 @@ data class LeafNode<S : LeafNodeSource>(
     fun <S : LeafNodeSource> t(expectedSource: S): DataType<LeafNode<S>> =
       struct("LeafNode") {
         it.field("encryption_key", HpkePublicKey.dataT)
-          .field("signature_key", VerificationKey.dataT)
+          .field("signature_key", SignaturePublicKey.dataT)
           .field("credential", Credential.dataT)
           .field("capabilities", Capabilities.dataT)
           .field("leaf_node_source", LeafNodeSource.T as DataType<S>, expectedSource)
@@ -162,15 +160,15 @@ data class LeafNode<S : LeafNodeSource>(
           .field("signature", Signature.dataT)
       }.lift(::LeafNode)
 
-    context(ICipherSuite)
     fun keyPackage(
+      cipherSuite: ICipherSuite,
       encryptionKey: HpkePublicKey,
-      verificationKey: VerificationKey,
+      signaturePublicKey: SignaturePublicKey,
       credential: Credential,
       capabilities: Capabilities,
       lifetime: Lifetime,
       extensions: LeafNodeExtensions,
-      signingKey: SigningKey,
+      signaturePrivateKey: SignaturePrivateKey,
     ): KeyPackageLeafNode {
       val greasedExtensions = extensions + listOf(*Extension.grease())
       val greasedCapabilities =
@@ -183,16 +181,23 @@ data class LeafNode<S : LeafNodeSource>(
         )
 
       val signature =
-        signWithLabel(
-          signingKey,
+        cipherSuite.signWithLabel(
+          signaturePrivateKey,
           "LeafNodeTBS",
-          Tbs.keyPackage(encryptionKey, verificationKey, credential, greasedCapabilities, lifetime, greasedExtensions)
+          Tbs.keyPackage(
+            encryptionKey,
+            signaturePublicKey,
+            credential,
+            greasedCapabilities,
+            lifetime,
+            greasedExtensions,
+          )
             .encodeUnsafe(),
         )
 
       return LeafNode(
         encryptionKey,
-        verificationKey,
+        signaturePublicKey,
         credential,
         greasedCapabilities,
         LeafNodeSource.KeyPackage,
@@ -202,23 +207,23 @@ data class LeafNode<S : LeafNodeSource>(
       )
     }
 
-    context(ICipherSuite)
     fun commit(
+      cipherSuite: ICipherSuite,
       encryptionKey: HpkePublicKey,
       oldLeafNode: LeafNode<*>,
       parentHash: ParentHash,
       leafIndex: LeafIndex,
       groupContext: GroupContext,
-      signingKey: SigningKey,
+      signaturePrivateKey: SignaturePrivateKey,
     ): CommitLeafNode =
-      signWithLabel(
-        signingKey,
+      cipherSuite.signWithLabel(
+        signaturePrivateKey,
         "LeafNodeTBS",
         Tbs.commit(encryptionKey, oldLeafNode, parentHash, leafIndex, groupContext).encodeUnsafe(),
       ).let { signature ->
         LeafNode(
           encryptionKey,
-          oldLeafNode.verificationKey,
+          oldLeafNode.signaturePublicKey,
           oldLeafNode.credential,
           oldLeafNode.capabilities,
           LeafNodeSource.Commit,
@@ -228,20 +233,22 @@ data class LeafNode<S : LeafNodeSource>(
         )
       }
 
-    context(GroupState.Active)
-    internal fun update(
+    fun update(
+      cipherSuite: ICipherSuite,
       encryptionKey: HpkePublicKey,
       oldLeafNode: LeafNode<*>,
       leafIndex: LeafIndex,
+      groupContext: GroupContext,
+      signaturePrivateKey: SignaturePrivateKey,
     ): UpdateLeafNode =
-      signWithLabel(
-        signingKey,
+      cipherSuite.signWithLabel(
+        signaturePrivateKey,
         "LeafNodeTBS",
         Tbs.update(encryptionKey, oldLeafNode, leafIndex, groupContext).encodeUnsafe(),
       ).let { signature ->
         LeafNode(
           encryptionKey,
-          oldLeafNode.verificationKey,
+          oldLeafNode.signaturePublicKey,
           oldLeafNode.credential,
           oldLeafNode.capabilities,
           LeafNodeSource.Update,
@@ -250,11 +257,40 @@ data class LeafNode<S : LeafNodeSource>(
           signature,
         )
       }
+
+    fun update(
+      cipherSuite: ICipherSuite,
+      signaturePublicKey: SignaturePublicKey,
+      encryptionKey: HpkePublicKey,
+      credential: Credential,
+      capabilities: Capabilities,
+      extensions: LeafNodeExtensions,
+      leafIndex: LeafIndex,
+      groupContext: GroupContext,
+      signaturePrivateKey: SignaturePrivateKey,
+    ): UpdateLeafNode =
+      cipherSuite.signWithLabel(
+        signaturePrivateKey,
+        "LeafNodeTBS",
+        Tbs.update(encryptionKey, signaturePublicKey, credential, capabilities, extensions, leafIndex, groupContext)
+          .encodeUnsafe(),
+      ).let { signature ->
+        LeafNode(
+          encryptionKey,
+          signaturePublicKey,
+          credential,
+          capabilities,
+          LeafNodeSource.Update,
+          null,
+          extensions,
+          signature,
+        )
+      }
   }
 
   data class Tbs(
     val encryptionKey: HpkePublicKey,
-    val verificationKey: VerificationKey,
+    val signaturePublicKey: SignaturePublicKey,
     val credential: Credential,
     val capabilities: Capabilities,
     val source: LeafNodeSource,
@@ -264,7 +300,7 @@ data class LeafNode<S : LeafNodeSource>(
   ) :
     Struct8T.Shape<
         HpkePublicKey,
-        VerificationKey,
+        SignaturePublicKey,
         Credential,
         Capabilities,
         LeafNodeSource,
@@ -277,7 +313,7 @@ data class LeafNode<S : LeafNodeSource>(
       override val dataT: DataType<Tbs> =
         struct("LeafNodeTBS") {
           it.field("encryption_key", HpkePublicKey.dataT)
-            .field("signature_key", VerificationKey.dataT)
+            .field("signature_key", SignaturePublicKey.dataT)
             .field("credential", Credential.dataT)
             .field("capabilities", Capabilities.dataT)
             .field("leaf_node_source", LeafNodeSource.T)
@@ -295,7 +331,7 @@ data class LeafNode<S : LeafNodeSource>(
 
       internal fun keyPackage(
         encryptionKey: HpkePublicKey,
-        verificationKey: VerificationKey,
+        signaturePublicKey: SignaturePublicKey,
         credential: Credential,
         capabilities: Capabilities,
         lifetime: Lifetime,
@@ -303,7 +339,7 @@ data class LeafNode<S : LeafNodeSource>(
       ): Tbs =
         Tbs(
           encryptionKey,
-          verificationKey,
+          signaturePublicKey,
           credential,
           capabilities,
           LeafNodeSource.KeyPackage,
@@ -321,7 +357,7 @@ data class LeafNode<S : LeafNodeSource>(
       ): Tbs =
         Tbs(
           encryptionKey,
-          oldLeafNode.verificationKey,
+          oldLeafNode.signaturePublicKey,
           oldLeafNode.credential,
           oldLeafNode.capabilities,
           LeafNodeSource.Commit,
@@ -336,27 +372,46 @@ data class LeafNode<S : LeafNodeSource>(
         leafIndex: LeafIndex,
         groupContext: GroupContext,
       ): Tbs =
-        Tbs(
+        update(
           encryptionKey,
-          oldLeafNode.verificationKey,
+          oldLeafNode.signaturePublicKey,
           oldLeafNode.credential,
           oldLeafNode.capabilities,
+          oldLeafNode.extensions,
+          leafIndex,
+          groupContext,
+        )
+
+      internal fun update(
+        encryptionKey: HpkePublicKey,
+        signaturePublicKey: SignaturePublicKey,
+        credential: Credential,
+        capabilities: Capabilities,
+        extensions: LeafNodeExtensions,
+        leafIndex: LeafIndex,
+        groupContext: GroupContext,
+      ): Tbs =
+        Tbs(
+          encryptionKey,
+          signaturePublicKey,
+          credential,
+          capabilities,
           LeafNodeSource.Update,
           null,
-          oldLeafNode.extensions,
+          extensions,
           LeafNodeLocation(groupContext.groupId, leafIndex),
         )
     }
   }
 
   data class LeafNodeLocation(
-    val groupId: ULID,
+    val groupId: GroupId,
     val leafIndex: LeafIndex,
-  ) : Struct2T.Shape<ULID, LeafIndex> {
+  ) : Struct2T.Shape<GroupId, LeafIndex> {
     companion object : Encodable<LeafNodeLocation> {
       override val dataT: DataType<LeafNodeLocation> =
         struct("LeafNodeLocation") {
-          it.field("group_id", ULID.T)
+          it.field("group_id", GroupId.dataT)
             .field("leaf_index", LeafIndex.dataT)
         }.lift(::LeafNodeLocation)
     }

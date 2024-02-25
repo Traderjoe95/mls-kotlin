@@ -5,7 +5,7 @@ import com.github.traderjoe95.mls.protocol.types.crypto.ResumptionPskId
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.Capabilities
 
 sealed interface WelcomeJoinError {
-  data object NoMatchingKeyPackage : WelcomeJoinError
+  data object WelcomeNotForYou : WelcomeJoinError
 
   data object OwnLeafNotFound : WelcomeJoinError
 

@@ -7,6 +7,7 @@ import com.github.traderjoe95.mls.protocol.types.crypto.Ciphertext
 import com.github.traderjoe95.mls.protocol.types.crypto.EncryptContext
 import com.github.traderjoe95.mls.protocol.types.crypto.HpkeCiphertext
 import com.github.traderjoe95.mls.protocol.types.crypto.HpkeKeyPair
+import com.github.traderjoe95.mls.protocol.types.crypto.HpkePrivateKey
 import com.github.traderjoe95.mls.protocol.types.crypto.HpkePublicKey
 import com.github.traderjoe95.mls.protocol.types.crypto.KemOutput
 import com.github.traderjoe95.mls.protocol.types.crypto.Nonce
@@ -22,6 +23,13 @@ interface Encrypt {
 
   fun decryptWithLabel(
     keyPair: HpkeKeyPair,
+    label: String,
+    context: ByteArray,
+    ciphertext: HpkeCiphertext,
+  ): ByteArray
+
+  fun decryptWithLabel(
+    privateKey: HpkePrivateKey,
     label: String,
     context: ByteArray,
     ciphertext: HpkeCiphertext,

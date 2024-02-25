@@ -3,7 +3,7 @@ package com.github.traderjoe95.mls.delivery
 import com.github.traderjoe95.mls.codec.util.throwAnyError
 import com.github.traderjoe95.mls.delivery.util.read
 import com.github.traderjoe95.mls.delivery.util.write
-import com.github.traderjoe95.mls.protocol.types.framing.MlsMessage
+import com.github.traderjoe95.mls.protocol.message.MlsMessage
 import de.traderjoe.ulid.ULID
 import de.traderjoe.ulid.ULID.Companion.toULID
 import io.vertx.core.Closeable

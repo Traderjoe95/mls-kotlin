@@ -6,16 +6,22 @@ import arrow.core.getOrElse
 import arrow.core.raise.Raise
 import arrow.core.raise.nullable
 import arrow.core.toOption
-import com.github.traderjoe95.mls.codec.util.uSize
 import com.github.traderjoe95.mls.protocol.app.ApplicationCtx
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite.Companion.zeroesNh
 import com.github.traderjoe95.mls.protocol.crypto.KeySchedule
+import com.github.traderjoe95.mls.protocol.crypto.updatePskSecret
 import com.github.traderjoe95.mls.protocol.error.CommitError
 import com.github.traderjoe95.mls.protocol.error.InvalidCommit
 import com.github.traderjoe95.mls.protocol.error.RecipientCommitError
 import com.github.traderjoe95.mls.protocol.error.RecipientTreeUpdateError
 import com.github.traderjoe95.mls.protocol.error.RemovedFromGroup
 import com.github.traderjoe95.mls.protocol.error.SenderCommitError
+import com.github.traderjoe95.mls.protocol.message.GroupInfo
+import com.github.traderjoe95.mls.protocol.message.GroupInfo.Companion.encodeUnsafe
+import com.github.traderjoe95.mls.protocol.message.GroupSecrets
+import com.github.traderjoe95.mls.protocol.message.KeyPackage
+import com.github.traderjoe95.mls.protocol.message.MlsMessage
+import com.github.traderjoe95.mls.protocol.message.Welcome
 import com.github.traderjoe95.mls.protocol.psk.PskLookup
 import com.github.traderjoe95.mls.protocol.service.AuthenticationService
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
@@ -30,10 +36,7 @@ import com.github.traderjoe95.mls.protocol.types.GroupContextExtension
 import com.github.traderjoe95.mls.protocol.types.ProposalType
 import com.github.traderjoe95.mls.protocol.types.crypto.Aad
 import com.github.traderjoe95.mls.protocol.types.crypto.PreSharedKeyId
-import com.github.traderjoe95.mls.protocol.types.crypto.PskLabel
-import com.github.traderjoe95.mls.protocol.types.crypto.PskLabel.Companion.encodeUnsafe
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret
-import com.github.traderjoe95.mls.protocol.types.framing.MlsMessage
 import com.github.traderjoe95.mls.protocol.types.framing.Sender
 import com.github.traderjoe95.mls.protocol.types.framing.content.Add
 import com.github.traderjoe95.mls.protocol.types.framing.content.AuthenticatedContent
@@ -49,14 +52,6 @@ import com.github.traderjoe95.mls.protocol.types.framing.content.Remove
 import com.github.traderjoe95.mls.protocol.types.framing.content.Update
 import com.github.traderjoe95.mls.protocol.types.framing.enums.SenderType
 import com.github.traderjoe95.mls.protocol.types.framing.enums.WireFormat
-import com.github.traderjoe95.mls.protocol.types.framing.message.EncryptedGroupSecrets
-import com.github.traderjoe95.mls.protocol.types.framing.message.GroupInfo
-import com.github.traderjoe95.mls.protocol.types.framing.message.GroupInfo.Companion.encodeUnsafe
-import com.github.traderjoe95.mls.protocol.types.framing.message.GroupSecrets
-import com.github.traderjoe95.mls.protocol.types.framing.message.GroupSecrets.Companion.encodeUnsafe
-import com.github.traderjoe95.mls.protocol.types.framing.message.KeyPackage
-import com.github.traderjoe95.mls.protocol.types.framing.message.PathSecret
-import com.github.traderjoe95.mls.protocol.types.framing.message.Welcome
 import com.github.traderjoe95.mls.protocol.types.tree.UpdatePath
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.LeafNodeSource
 import com.github.traderjoe95.mls.protocol.types.RatchetTree as RatchetTreeExt
@@ -80,7 +75,7 @@ suspend fun <Identity : Any> GroupState.prepareCommit(
           (proposalResult.updatedTree ?: tree),
           proposalResult.newMemberLeafIndices(),
           groupContext.withExtensions((proposalResult as? ProcessProposalsResult.CommitByMember)?.extensions),
-          signingKey,
+          signaturePrivateKey,
         )
       } else {
         Triple((proposalResult.updatedTree ?: tree), null, listOf())
@@ -111,7 +106,6 @@ suspend fun <Identity : Any> GroupState.prepareCommit(
       keySchedule.next(
         commitSecret,
         updatedGroupContext,
-        updatedTree.leaves.uSize,
         proposalResult.pskSecret,
         (proposalResult as? ProcessProposalsResult.ExternalJoin)?.externalInitSecret,
       )
@@ -121,20 +115,26 @@ suspend fun <Identity : Any> GroupState.prepareCommit(
 
     val updatedGroupState =
       proposalResult.createNextEpochState(
-        updatedGroupContext.withInterimTranscriptHash(confirmationTag),
+        updatedGroupContext.withInterimTranscriptHash(
+          updateInterimTranscriptHash(
+            cipherSuite,
+            updatedGroupContext.confirmedTranscriptHash,
+            confirmationTag,
+          ),
+        ),
         updatedTree,
         newKeySchedule,
       )
     val groupInfo =
       GroupInfo.create(
         leafIndex,
-        signingKey,
+        signaturePrivateKey,
         updatedGroupContext,
+        confirmationTag,
         listOfNotNull(
           RatchetTreeExt(updatedTree),
           *Extension.grease(),
         ),
-        confirmationTag,
       )
 
     PrepareCommitResult(
@@ -199,7 +199,6 @@ suspend fun <Identity : Any> GroupState.processCommit(
       keySchedule.next(
         commitSecret,
         updatedGroupContext,
-        updatedTree.leaves.uSize,
         proposalResult.pskSecret,
         (proposalResult as? ProcessProposalsResult.ExternalJoin)?.externalInitSecret,
       )
@@ -211,7 +210,13 @@ suspend fun <Identity : Any> GroupState.processCommit(
     )
 
     proposalResult.createNextEpochState(
-      updatedGroupContext.withInterimTranscriptHash(authenticatedCommit.confirmationTag),
+      updatedGroupContext.withInterimTranscriptHash(
+        updateInterimTranscriptHash(
+          cipherSuite,
+          updatedGroupContext.confirmedTranscriptHash,
+          authenticatedCommit.confirmationTag,
+        ),
+      ),
       updatedTree,
       newKeySchedule,
     )
@@ -288,19 +293,10 @@ private fun List<Pair<LeafIndex, KeyPackage>>.createWelcome(
   val encryptedGroupSecrets =
     map { (newLeaf, keyPackage) ->
       val commonAncestor = lowestCommonAncestor(leafIndex, newLeaf)
-      val pathSecret = pathSecrets.getOrNull(filteredPath.indexOf(commonAncestor)).toOption().map(::PathSecret)
+      val pathSecret = pathSecrets.getOrNull(filteredPath.indexOf(commonAncestor)).toOption()
 
-      val groupSecrets = GroupSecrets(joinerSecret, pathSecret, pskIds)
-
-      EncryptedGroupSecrets(
-        makeKeyPackageRef(keyPackage),
-        encryptWithLabel(
-          keyPackage.initKey,
-          "Welcome",
-          encryptedGroupInfo.value,
-          groupSecrets.encodeUnsafe(),
-        ),
-      )
+      GroupSecrets(joinerSecret, pathSecret, pskIds)
+        .encrypt(cipherSuite, keyPackage, encryptedGroupInfo)
     }
 
   return MlsMessage.welcome(
@@ -392,15 +388,7 @@ private suspend fun <Identity : Any> GroupState.Active.processProposals(
         is PreSharedKey -> {
           val psk = proposal.validateAndLoad(inReInit, inBranch, psks)
 
-          val pskInput =
-            expandWithLabel(
-              extract(zeroesNh.key, psk),
-              "derivedPsk",
-              PskLabel(proposal.pskId, pskIndex++, pskCount).encodeUnsafe(),
-              hashLen,
-            )
-
-          pskSecret = extract(pskInput.key, pskSecret)
+          pskSecret = updatePskSecret(pskSecret, proposal.pskId, psk, pskIndex++, pskCount)
           pskIds.add(proposal.pskId)
         }
 

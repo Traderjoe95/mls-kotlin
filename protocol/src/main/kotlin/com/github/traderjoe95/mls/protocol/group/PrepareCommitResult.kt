@@ -1,9 +1,9 @@
 package com.github.traderjoe95.mls.protocol.group
 
-import com.github.traderjoe95.mls.protocol.types.framing.MlsMessage
-import com.github.traderjoe95.mls.protocol.types.framing.message.GroupMessage
-import com.github.traderjoe95.mls.protocol.types.framing.message.KeyPackage
-import com.github.traderjoe95.mls.protocol.types.framing.message.Welcome
+import com.github.traderjoe95.mls.protocol.message.GroupMessage
+import com.github.traderjoe95.mls.protocol.message.KeyPackage
+import com.github.traderjoe95.mls.protocol.message.MlsMessage
+import com.github.traderjoe95.mls.protocol.message.Welcome
 
 data class PrepareCommitResult(
   val newGroupState: GroupState,

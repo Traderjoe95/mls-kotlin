@@ -11,15 +11,11 @@ enum class NodeType(ord: UInt, override val isValid: Boolean = true) : ProtocolE
 
   Leaf(1U),
   Parent(2U),
-
-  // Upper bound to force field width
-  @Deprecated("This is technically required, but must not be used", level = DeprecationLevel.ERROR)
-  UPPER_(0xFFU, false),
   ;
 
   override val ord: UIntRange = ord..ord
 
   companion object {
-    val T: EnumT<NodeType> = throwAnyError { enum() }
+    val T: EnumT<NodeType> = throwAnyError { enum(upperBound = 0xFFU) }
   }
 }

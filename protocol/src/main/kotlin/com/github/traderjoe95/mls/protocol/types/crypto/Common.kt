@@ -4,26 +4,31 @@ import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.type.DataType
 import com.github.traderjoe95.mls.codec.type.V
 import com.github.traderjoe95.mls.codec.type.asUtf8String
-import com.github.traderjoe95.mls.codec.type.derive
 import com.github.traderjoe95.mls.codec.type.opaque
 import com.github.traderjoe95.mls.codec.type.struct.Struct2T
 import com.github.traderjoe95.mls.codec.type.struct.struct
+import com.github.traderjoe95.mls.protocol.types.RefinedBytes
 import com.github.traderjoe95.mls.protocol.types.crypto.Nonce.Companion.asNonce
 import com.github.traderjoe95.mls.protocol.util.wipe
 
 @JvmInline
-value class Secret(val key: ByteArray) {
-  val asNonce: Nonce
-    get() = key.asNonce
+value class Secret(override val bytes: ByteArray) : RefinedBytes<Secret> {
+  fun copy(): Secret = Secret(bytes.copyOf())
 
-  fun wipe(): Unit = key.wipe()
+  val asNonce: Nonce
+    get() = bytes.asNonce
+
+  fun wipe(): Unit = bytes.wipe()
 
   companion object : Encodable<Secret> {
-    override val dataT: DataType<Secret> = opaque[V].derive({ it.asSecret }, { it.key })
+    override val dataT: DataType<Secret> = RefinedBytes.dataT(::Secret)
+
     val ByteArray.asSecret: Secret
       get() = Secret(this)
 
     fun zeroes(length: UInt): Secret = Secret(ByteArray(length.toInt()))
+
+    fun zeroes(length: UShort): Secret = Secret(ByteArray(length.toInt()))
   }
 }
 
