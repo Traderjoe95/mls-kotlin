@@ -22,6 +22,7 @@ import com.github.traderjoe95.mls.protocol.service.authenticateCredentials
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.tree.RatchetTreeOps
 import com.github.traderjoe95.mls.protocol.tree.nonBlankLeafNodeIndices
+import com.github.traderjoe95.mls.protocol.types.GroupContextExtension
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtensions
 import com.github.traderjoe95.mls.protocol.types.GroupId
 import com.github.traderjoe95.mls.protocol.types.crypto.PreSharedKeyId
@@ -80,7 +81,7 @@ suspend fun <Identity : Any> GroupState.Suspended.createWelcome(
   val newGroupInitial =
     newGroup(
       ownKeyPackage,
-      *reInit.extensions.toTypedArray(),
+      *reInit.extensions.map { it as GroupContextExtension<*> }.toTypedArray(),
       protocolVersion = reInit.protocolVersion,
       cipherSuite = reInit.cipherSuite,
       groupId = reInit.groupId,
@@ -211,7 +212,7 @@ internal suspend fun <Identity : Any> validateReInit(
       raise(
         ReInitJoinError.ExtensionsMismatch(
           groupContext.extensions,
-          suspended.reInit.extensions,
+          suspended.reInit.extensions.map { it as GroupContextExtension<*> },
         ),
       )
   }

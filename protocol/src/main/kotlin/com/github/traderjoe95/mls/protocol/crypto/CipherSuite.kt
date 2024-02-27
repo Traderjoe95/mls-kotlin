@@ -25,6 +25,7 @@ import com.github.traderjoe95.mls.protocol.types.crypto.Signature
 import com.github.traderjoe95.mls.protocol.types.crypto.SignatureKeyPair
 import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePrivateKey
 import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePublicKey
+import com.github.traderjoe95.mls.protocol.types.framing.content.AuthenticatedContent
 import com.github.traderjoe95.mls.protocol.types.framing.content.Proposal
 import kotlin.random.Random
 
@@ -188,7 +189,7 @@ internal object Dummy : ICipherSuite {
 
   override fun makeKeyPackageRef(keyPackage: KeyPackage): KeyPackage.Ref = error("unsupported")
 
-  override fun makeProposalRef(proposal: Proposal): Proposal.Ref = error("unsupported")
+  override fun makeProposalRef(proposal: AuthenticatedContent<Proposal>): Proposal.Ref = error("unsupported")
 
   override fun refHash(
     label: String,

@@ -6,13 +6,14 @@ import com.github.traderjoe95.mls.protocol.types.crypto.HashReference
 import com.github.traderjoe95.mls.protocol.types.crypto.HashReference.Companion.asHashReference
 import com.github.traderjoe95.mls.protocol.types.crypto.RefHashInput
 import com.github.traderjoe95.mls.protocol.types.crypto.RefHashInput.Companion.encodeUnsafe
+import com.github.traderjoe95.mls.protocol.types.framing.content.AuthenticatedContent
+import com.github.traderjoe95.mls.protocol.types.framing.content.AuthenticatedContent.Companion.encodeUnsafe
 import com.github.traderjoe95.mls.protocol.types.framing.content.Proposal
-import com.github.traderjoe95.mls.protocol.types.framing.content.ProposalOrRef.Companion.encodeUnsafe
 
 interface Hash {
   fun makeKeyPackageRef(keyPackage: KeyPackage): KeyPackage.Ref
 
-  fun makeProposalRef(proposal: Proposal): Proposal.Ref
+  fun makeProposalRef(proposal: AuthenticatedContent<Proposal>): Proposal.Ref
 
   fun refHash(
     label: String,
@@ -27,7 +28,7 @@ interface Hash {
         RefHashInput.keyPackage(keyPackage.encodeUnsafe()),
       ).asKeyPackageRef
 
-    final override fun makeProposalRef(proposal: Proposal): Proposal.Ref =
+    final override fun makeProposalRef(proposal: AuthenticatedContent<Proposal>): Proposal.Ref =
       refHash(
         RefHashInput.proposal(proposal.encodeUnsafe()),
       ).asProposalRef

@@ -36,7 +36,6 @@ import kotlin.random.Random
 import kotlin.random.nextInt
 import kotlin.random.nextUInt
 
-@OptIn(ExperimentalStdlibApi::class)
 data class CryptoBasicsTestVector(
   val cipherSuite: CipherSuite,
   val refHash: RefHash,

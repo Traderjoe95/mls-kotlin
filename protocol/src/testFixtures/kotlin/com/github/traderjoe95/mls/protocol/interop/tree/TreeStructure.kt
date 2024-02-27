@@ -161,8 +161,8 @@ data class TestTree(
     newPublic.nonBlankLeafIndices
       .filter { it neq committer }
       .forEach { leaf ->
-        val commonAncestorIdx = fdp.indexOfFirst { leaf.isInSubtreeOf(it) }
-        val commonAncestor = fdp[commonAncestorIdx]
+        val commonAncestorIdx = fdp.indexOfFirst { leaf.isInSubtreeOf(it.first) }
+        val commonAncestor = fdp[commonAncestorIdx].first
         val secret = pathSecrets[commonAncestorIdx]
 
         newPrivate = newPrivate.replace(leaf, this[leaf]!!.insertPathSecrets(commonAncestor, secret).private)

@@ -16,26 +16,34 @@ sealed class ContentType<out C : Content<C>>(
   sealed class Handshake<out C : Content.Handshake<C>>(ord: UInt) : ContentType<C>(ord)
 
   @Deprecated("This reserved value isn't used by the protocol for now")
-  data object Reserved : ContentType<Nothing>(0U, false)
+  data object Reserved : ContentType<Nothing>(0U, false) {
+    override fun toString(): String = "$name[${ord.first}]"
+  }
 
-  data object Application : ContentType<ApplicationData>(1U)
+  data object Application : ContentType<ApplicationData>(1U) {
+    override fun toString(): String = "$name[${ord.first}]"
+  }
 
-  data object Proposal : Handshake<ProposalContent>(2U)
+  data object Proposal : Handshake<ProposalContent>(2U) {
+    override fun toString(): String = "$name[${ord.first}]"
+  }
 
-  data object Commit : Handshake<CommitContent>(3U)
+  data object Commit : Handshake<CommitContent>(3U) {
+    override fun toString(): String = "$name[${ord.first}]"
+  }
 
   companion object {
     @Suppress("DEPRECATION")
     val T: EnumT<ContentType<*>> by lazy {
       // Funny thing: This needs to be lazy, because otherwise the initialization happens in the wrong order; this leads
-      // to Proposal being uninitialized/null
+      // to `Proposal` being uninitialized/null
       throwAnyError { enum(Reserved, Application, Proposal, Commit, upperBound = 0xFFU) }
     }
   }
 
   override val ord: UIntRange = ord..ord
   override val name: String
-    get() = toString()
+    get() = this::class.simpleName!!
 
   override fun compareTo(other: ContentType<*>): Int = ord.first.compareTo(other.ord.first)
 }

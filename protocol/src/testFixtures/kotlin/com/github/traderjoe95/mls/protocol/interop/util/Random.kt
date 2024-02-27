@@ -6,7 +6,11 @@ import com.github.traderjoe95.mls.protocol.message.KeyPackage
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.types.BasicCredential
 import com.github.traderjoe95.mls.protocol.types.CredentialType
+import com.github.traderjoe95.mls.protocol.types.ExtensionType
+import com.github.traderjoe95.mls.protocol.types.ExternalSenders
 import com.github.traderjoe95.mls.protocol.types.GroupId
+import com.github.traderjoe95.mls.protocol.types.ProposalType
+import com.github.traderjoe95.mls.protocol.types.RequiredCapabilities
 import com.github.traderjoe95.mls.protocol.types.crypto.ExternalPskId
 import com.github.traderjoe95.mls.protocol.types.crypto.HashReference.Companion.asHashReference
 import com.github.traderjoe95.mls.protocol.types.crypto.Nonce.Companion.asNonce
@@ -16,6 +20,7 @@ import com.github.traderjoe95.mls.protocol.types.crypto.SignatureKeyPair
 import com.github.traderjoe95.mls.protocol.types.framing.content.Add
 import com.github.traderjoe95.mls.protocol.types.framing.content.Commit
 import com.github.traderjoe95.mls.protocol.types.framing.content.ExternalInit
+import com.github.traderjoe95.mls.protocol.types.framing.content.GroupContextExtensions
 import com.github.traderjoe95.mls.protocol.types.framing.content.PreSharedKey
 import com.github.traderjoe95.mls.protocol.types.framing.content.Proposal
 import com.github.traderjoe95.mls.protocol.types.framing.content.ReInit
@@ -119,6 +124,33 @@ fun Random.nextReInit(): ReInit =
 
 fun Random.nextExternalInit(cipherSuite: CipherSuite): ExternalInit =
   ExternalInit(cipherSuite.export(cipherSuite.generateHpkeKeyPair().public, "MLS 1.0 external init secret").first)
+
+fun Random.nextGroupContextExtensions(cipherSuite: CipherSuite): GroupContextExtensions =
+  GroupContextExtensions(
+    listOfNotNull(
+      if (nextDouble() < 0.5) {
+        ExternalSenders(
+          List(nextInt(1..3)) {
+            ExternalSenders.ExternalSender(
+              cipherSuite.generateSignatureKeyPair().public,
+              BasicCredential(Random.nextBytes(32)),
+            )
+          },
+        )
+      } else {
+        null
+      },
+      if (nextDouble() < 0.5) {
+        RequiredCapabilities(
+          listOf(ExtensionType.ExternalSenders),
+          listOf(ProposalType.ReInit),
+          listOf(CredentialType.Basic, CredentialType.X509),
+        )
+      } else {
+        null
+      },
+    ),
+  )
 
 fun Random.nextProposal(
   cipherSuite: CipherSuite,

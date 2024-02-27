@@ -13,8 +13,6 @@ import com.github.traderjoe95.mls.protocol.types.crypto.HpkePublicKey
 import com.github.traderjoe95.mls.protocol.types.crypto.HpkePublicKey.Companion.asHpkePublicKey
 import com.github.traderjoe95.mls.protocol.types.crypto.KemOutput
 import com.github.traderjoe95.mls.protocol.types.crypto.KemOutput.Companion.asKemOutput
-import com.github.traderjoe95.mls.protocol.types.crypto.Mac
-import com.github.traderjoe95.mls.protocol.types.crypto.Mac.Companion.asMac
 import com.github.traderjoe95.mls.protocol.types.crypto.Nonce
 import com.github.traderjoe95.mls.protocol.types.crypto.Nonce.Companion.asNonce
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret
@@ -40,10 +38,13 @@ fun JsonObject.getCipherSuite(key: String): CipherSuite = CipherSuite(getUShort(
 fun JsonObject.getHexBinary(key: String): ByteArray = getString(key).hexToByteArray()
 
 @OptIn(ExperimentalStdlibApi::class)
+fun JsonObject.getHexBinaryOrNull(key: String): ByteArray? = getString(key)?.hexToByteArray()
+
+@OptIn(ExperimentalStdlibApi::class)
 fun JsonObject.getHexBinary(
   key: String,
   default: ByteArray,
-): ByteArray = getString(key, default.toHexString()).hexToByteArray()
+): ByteArray = getHexBinaryOrNull(key) ?: default
 
 fun JsonObject.getSecret(key: String): Secret = getHexBinary(key).asSecret
 
@@ -69,8 +70,6 @@ fun JsonObject.getKemOutput(key: String): KemOutput = getHexBinary(key).asKemOut
 fun JsonObject.getHashReference(key: String): HashReference = getHexBinary(key).asHashReference
 
 fun JsonObject.getSignature(key: String): Signature = getHexBinary(key).asSignature
-
-fun JsonObject.getMac(key: String): Mac = getHexBinary(key).asMac
 
 fun JsonObject.getGroupId(key: String): GroupId = getHexBinary(key).asGroupId
 

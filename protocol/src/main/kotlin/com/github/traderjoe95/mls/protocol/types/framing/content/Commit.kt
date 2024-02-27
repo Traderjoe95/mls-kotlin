@@ -99,6 +99,8 @@ enum class ProposalOrRefType(ord: UInt, override val isValid: Boolean = true) : 
 
   override val ord: UIntRange = ord..ord
 
+  override fun toString(): String = "$name[${ord.first}]"
+
   companion object {
     val T: EnumT<ProposalOrRefType> = throwAnyError { enum(upperBound = 0xFFU) }
   }

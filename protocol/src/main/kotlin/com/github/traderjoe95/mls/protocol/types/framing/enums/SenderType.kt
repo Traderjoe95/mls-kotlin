@@ -17,6 +17,8 @@ enum class SenderType(ord: UInt, override val isValid: Boolean = true) : Protoco
 
   override val ord: UIntRange = ord..ord
 
+  override fun toString(): String = "$name[${ord.first}]"
+
   companion object {
     val T: EnumT<SenderType> = throwAnyError { enum(upperBound = 0xFFU) }
   }

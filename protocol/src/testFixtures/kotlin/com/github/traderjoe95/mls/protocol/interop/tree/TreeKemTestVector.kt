@@ -128,7 +128,7 @@ data class TreeKemTestVector(
               if (leaf == sender || tree[leaf] == null) {
                 null
               } else {
-                val commonAncestorIdx = fdp.indexOfFirst { leaf.isInSubtreeOf(it) }
+                val commonAncestorIdx = fdp.indexOfFirst { leaf.isInSubtreeOf(it.first) }
                 pathSecrets[commonAncestorIdx]
               }
             },

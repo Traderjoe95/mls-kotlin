@@ -15,6 +15,8 @@ enum class ProtocolVersion(ord: UInt, override val isValid: Boolean = true) : Pr
 
   override val ord: UIntRange = ord..ord
 
+  override fun toString(): String = "$name[${ord.first}]"
+
   companion object {
     val T: EnumT<ProtocolVersion> = throwAnyError { enum(upperBound = 0xFFFFU) }
   }

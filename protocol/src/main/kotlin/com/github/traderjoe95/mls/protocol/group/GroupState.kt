@@ -12,6 +12,7 @@ import com.github.traderjoe95.mls.protocol.error.PskError
 import com.github.traderjoe95.mls.protocol.message.AuthHandshakeContent
 import com.github.traderjoe95.mls.protocol.message.GroupInfo
 import com.github.traderjoe95.mls.protocol.message.HandshakeMessage
+import com.github.traderjoe95.mls.protocol.message.MlsHandshakeMessage
 import com.github.traderjoe95.mls.protocol.psk.PskLookup
 import com.github.traderjoe95.mls.protocol.service.AuthenticationService
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
@@ -56,20 +57,24 @@ sealed class GroupState(
   fun isActive(): Boolean = this is Active
 
   context(Raise<GroupSuspended>)
-  inline fun <T> ensureActive(body: Active.() -> T): T =
-    (this@GroupState as? Active)
-      ?.body()
-      ?: raise(GroupSuspended(groupId))
+  inline fun <T> ensureActive(body: Active.() -> T): T = coerceActive().body()
+
+  context(Raise<GroupSuspended>)
+  fun coerceActive(): Active = (this@GroupState as? Active) ?: raise(GroupSuspended(groupId))
 
   data class CachedProposal(
     val ref: Proposal.Ref,
     val sender: LeafIndex?,
     val proposal: Proposal,
   ) {
-    internal constructor(proposal: Proposal, sender: LeafIndex?, cipherSuite: ICipherSuite) : this(
+    internal constructor(
+      proposal: AuthenticatedContent<Proposal>,
+      sender: LeafIndex?,
+      cipherSuite: ICipherSuite,
+    ) : this(
       cipherSuite.makeProposalRef(proposal),
       sender,
-      proposal,
+      proposal.content.content,
     )
   }
 
@@ -81,7 +86,7 @@ sealed class GroupState(
     private val storedProposals: Map<Int, CachedProposal> = mapOf(),
   ) : GroupState(groupContext, tree, keySchedule), SecretTree.Lookup, PskLookup {
     fun storeProposal(
-      proposal: Proposal,
+      proposal: AuthenticatedContent<Proposal>,
       sender: LeafIndex?,
     ): Active =
       Active(
@@ -95,7 +100,7 @@ sealed class GroupState(
     fun getStoredProposals(): Map<Proposal.Ref, CachedProposal> = storedProposals.mapKeys { it.value.ref }
 
     context(Raise<InvalidCommit.UnknownProposal>)
-    fun getProposal(proposalRef: Proposal.Ref): CachedProposal =
+    fun getStoredProposal(proposalRef: Proposal.Ref): CachedProposal =
       storedProposals[proposalRef.hashCode]
         ?: raise(InvalidCommit.UnknownProposal(groupId, epoch, proposalRef))
 
@@ -104,8 +109,6 @@ sealed class GroupState(
       public: Boolean = false,
     ): GroupInfo =
       GroupInfo.create(
-        leafIndex,
-        signaturePrivateKey,
         groupContext,
         mac(keySchedule.confirmationKey, groupContext.confirmedTranscriptHash),
         listOfNotNull(
@@ -113,6 +116,8 @@ sealed class GroupState(
           if (public) ExternalPub(deriveKeyPair(keySchedule.externalSecret).public) else null,
           *Extension.grease(),
         ),
+        leafIndex,
+        signaturePrivateKey,
       )
 
     context(Raise<PskError>)
@@ -122,6 +127,13 @@ sealed class GroupState(
       } else {
         raise(PskError.PskNotFound(id))
       }
+
+    context(Raise<ProcessMessageError>, AuthenticationService<Identity>)
+    suspend fun <Identity : Any, Err : ProcessMessageError> process(
+      mlsMessage: MlsHandshakeMessage<Err>,
+      psks: PskLookup = PskLookup.EMPTY,
+      cachedState: GroupState? = null,
+    ): GroupState = process(mlsMessage.message, psks, cachedState)
 
     context(Raise<ProcessMessageError>, AuthenticationService<Identity>)
     suspend fun <Identity : Any, Err : ProcessMessageError> process(
@@ -137,9 +149,12 @@ sealed class GroupState(
       psks: PskLookup = PskLookup.EMPTY,
       cachedState: GroupState? = null,
     ): GroupState =
-      when (val c = message.content.content) {
+      when (message.content.content) {
         is Proposal ->
-          storeProposal(c, message.content.sender.takeIf { it.type == Member }?.index)
+          storeProposal(
+            message as AuthenticatedContent<Proposal>,
+            message.content.sender.takeIf { it.type == Member }?.index,
+          )
 
         is Commit ->
           if (message.sender.type == Member && message.sender.index == leafIndex) {

@@ -46,8 +46,6 @@ sealed interface RatchetTreeOps : SignaturePublicKeyLookup {
 
   val firstBlankLeaf: LeafIndex?
 
-  val TreeIndex.filteredParent: NodeIndex
-
   val TreeIndex.isBlank: Boolean
 
   operator fun get(nodeIndex: TreeIndex): Node?
@@ -58,7 +56,7 @@ sealed interface RatchetTreeOps : SignaturePublicKeyLookup {
 
   fun coPath(node: TreeIndex): List<NodeIndex>
 
-  fun filteredDirectPath(node: TreeIndex): List<NodeIndex>
+  fun filteredDirectPath(node: TreeIndex): List<Pair<NodeIndex, List<NodeIndex>>>
 
   fun resolution(node: TreeIndex): List<NodeIndex>
 
@@ -372,9 +370,6 @@ value class PublicRatchetTree private constructor(private val nodes: Array<Node?
     )
   }
 
-  override val TreeIndex.filteredParent: NodeIndex
-    get() = filteredDirectPath(this).firstOrNull() ?: root
-
   override val TreeIndex.isBlank: Boolean
     get() = nodeIndex >= nodes.size.toUInt() || nodes[nodeIndex.value] == null
 
@@ -428,11 +423,11 @@ value class PublicRatchetTree private constructor(private val nodes: Array<Node?
         .map { it.sibling }
     }
 
-  override fun filteredDirectPath(node: TreeIndex): List<NodeIndex> =
+  override fun filteredDirectPath(node: TreeIndex): List<Pair<NodeIndex, List<NodeIndex>>> =
     node.nodeIndex.let { nodeIdx ->
-      directPath(nodeIdx).zip(coPath(nodeIdx)).filterNot { (_, coPathChild) ->
-        resolution(coPathChild).isEmpty()
-      }.map { it.first }
+      directPath(nodeIdx).zip(coPath(nodeIdx).map(::resolution)).filterNot { (_, res) ->
+        res.isEmpty()
+      }
     }
 
   override fun resolution(node: TreeIndex): List<NodeIndex> =
@@ -509,7 +504,7 @@ data class PrivateRatchetTree(
     from: TreeIndex,
     pathSecret: Secret,
   ): PrivateRatchetTree {
-    val fdp = pub.filteredDirectPath(from)
+    val fdp = pub.filteredDirectPath(from).map { it.first }
     val newPathSecrets =
       generateSequence(pathSecret) { cipherSuite.deriveSecret(it, "path") }
         .take(fdp.size + 1)

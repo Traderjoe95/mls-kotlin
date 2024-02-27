@@ -47,6 +47,8 @@ sealed interface InvalidCommit : CommitError {
 
   data class ReInitDowngrade(val from: ProtocolVersion, val to: ProtocolVersion) : InvalidCommit
 
+  data class UnexpectedExtension(val target: String, val extensionType: String) : InvalidCommit
+
   data object ExternalInitFromMember : InvalidCommit
 
   data object MissingUpdatePath : InvalidCommit

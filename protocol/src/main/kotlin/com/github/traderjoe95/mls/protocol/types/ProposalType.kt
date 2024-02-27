@@ -68,7 +68,7 @@ enum class ProposalType(ord: UInt, override val isValid: Boolean = true) : Proto
   override val ord: UIntRange = ord..ord
   val asUShort: UShort = ord.toUShort()
 
-  override fun toString(): String = "$name($asUShort)"
+  override fun toString(): String = "$name[$asUShort]"
 
   companion object {
     val T: EnumT<ProposalType> = throwAnyError { enum(upperBound = 0xFFFFU) }

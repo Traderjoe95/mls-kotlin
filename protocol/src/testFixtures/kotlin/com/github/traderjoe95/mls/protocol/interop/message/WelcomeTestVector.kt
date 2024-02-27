@@ -98,10 +98,10 @@ data class WelcomeTestVector(
 
       val groupInfo =
         GroupInfo.create(
-          LeafIndex(Random.nextUInt()),
-          sigKeyPair.private,
           groupContext,
           cipherSuite.mac(keySchedule.confirmationKey, cth),
+          ownLeafIndex = LeafIndex(Random.nextUInt()),
+          signaturePrivateKey = sigKeyPair.private,
         )
       val welcomeNonce =
         cipherSuite.expandWithLabel(welcomeSecret, "nonce", byteArrayOf(), cipherSuite.nonceLen).asNonce

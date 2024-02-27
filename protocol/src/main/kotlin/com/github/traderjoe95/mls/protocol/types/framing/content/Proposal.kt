@@ -11,6 +11,7 @@ import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.message.KeyPackage
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
+import com.github.traderjoe95.mls.protocol.types.Extension
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtension
 import com.github.traderjoe95.mls.protocol.types.GroupId
 import com.github.traderjoe95.mls.protocol.types.ProposalType
@@ -21,6 +22,7 @@ import com.github.traderjoe95.mls.protocol.types.extensionList
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ContentType
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
 import com.github.traderjoe95.mls.protocol.types.tree.LeafNode
+import com.github.traderjoe95.mls.protocol.util.hex
 
 sealed class Proposal(
   val type: ProposalType,
@@ -55,6 +57,8 @@ sealed class Proposal(
 
     override val hashCode: Int
       get() = bytes.contentHashCode()
+
+    override fun toString(): String = "Ref(${bytes.hex})"
 
     companion object {
       val T: DataType<Ref> = RefinedBytes.dataT(::Ref, name = "ProposalRef")
@@ -114,13 +118,13 @@ data class PreSharedKey(
   }
 }
 
-data class ReInit(
+data class ReInit internal constructor(
   val groupId: GroupId,
   val protocolVersion: ProtocolVersion,
   val cipherSuite: CipherSuite,
-  val extensions: List<GroupContextExtension<*>>,
+  val extensions: List<Extension<*>>,
 ) : Proposal(ProposalType.ReInit),
-  Struct4T.Shape<GroupId, ProtocolVersion, CipherSuite, List<GroupContextExtension<*>>> {
+  Struct4T.Shape<GroupId, ProtocolVersion, CipherSuite, List<Extension<*>>> {
   override val mayBeExternal: Boolean = true
   override val requiresPath: Boolean = false
 
@@ -130,7 +134,7 @@ data class ReInit(
         it.field("group_id", GroupId.dataT)
           .field("version", ProtocolVersion.T)
           .field("cipher_suite", CipherSuite.T)
-          .field("extensions", GroupContextExtension.dataT.extensionList())
+          .field("extensions", Extension.T.extensionList())
       }.lift(::ReInit)
   }
 

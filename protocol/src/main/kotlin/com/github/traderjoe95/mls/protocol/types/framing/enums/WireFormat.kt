@@ -18,6 +18,8 @@ enum class WireFormat(ord: UInt, override val isValid: Boolean = true) : Protoco
 
   override val ord: UIntRange = ord..ord
 
+  override fun toString(): String = "$name[${ord.first}]"
+
   companion object {
     val T: EnumT<WireFormat> = throwAnyError { enum(upperBound = 0xFFFFU) }
   }

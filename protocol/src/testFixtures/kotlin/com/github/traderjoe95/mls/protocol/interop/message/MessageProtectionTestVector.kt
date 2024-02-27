@@ -12,6 +12,7 @@ import com.github.traderjoe95.mls.protocol.interop.util.getSignaturePublicKey
 import com.github.traderjoe95.mls.protocol.interop.util.getULong
 import com.github.traderjoe95.mls.protocol.interop.util.nextCommit
 import com.github.traderjoe95.mls.protocol.interop.util.nextProposal
+import com.github.traderjoe95.mls.protocol.message.MlsMessage.Companion.coerceFormat
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.tree.SecretTree
 import com.github.traderjoe95.mls.protocol.types.GroupId
@@ -55,7 +56,6 @@ class MessageProtectionTestVector(
   val groupContext: GroupContext
     get() = GroupContext(ProtocolVersion.MLS_1_0, cipherSuite, groupId, epoch, treeHash, confirmedTranscriptHash)
 
-  @Suppress("UNCHECKED_CAST")
   constructor(json: JsonObject) : this(
     json.getCipherSuite("cipher_suite"),
     json.getGroupId("group_id"),
@@ -68,13 +68,13 @@ class MessageProtectionTestVector(
     json.getSecret("sender_data_secret"),
     json.getSecret("membership_key"),
     Proposal.decodeUnsafe(json.getHexBinary("proposal")),
-    MlsMessage.decodeUnsafe(json.getHexBinary("proposal_pub")) as MlsMessage<PublicMessage<Proposal>>,
-    MlsMessage.decodeUnsafe(json.getHexBinary("proposal_priv")) as MlsMessage<PrivateMessage<Proposal>>,
+    MlsMessage.decodeUnsafe(json.getHexBinary("proposal_pub")).coerceFormat<PublicMessage<Proposal>>(),
+    MlsMessage.decodeUnsafe(json.getHexBinary("proposal_priv")).coerceFormat<PrivateMessage<Proposal>>(),
     Commit.decodeUnsafe(json.getHexBinary("commit")),
-    MlsMessage.decodeUnsafe(json.getHexBinary("commit_pub")) as MlsMessage<PublicMessage<Commit>>,
-    MlsMessage.decodeUnsafe(json.getHexBinary("commit_priv")) as MlsMessage<PrivateMessage<Commit>>,
+    MlsMessage.decodeUnsafe(json.getHexBinary("commit_pub")).coerceFormat<PublicMessage<Commit>>(),
+    MlsMessage.decodeUnsafe(json.getHexBinary("commit_priv")).coerceFormat<PrivateMessage<Commit>>(),
     json.getApplicationData("application"),
-    MlsMessage.decodeUnsafe(json.getHexBinary("application_priv")) as MlsMessage<ApplicationMessage>,
+    MlsMessage.decodeUnsafe(json.getHexBinary("application_priv")).coerceFormat<ApplicationMessage>(),
   )
 
   companion object {

@@ -35,6 +35,8 @@ enum class PskType(ord: UInt, override val isValid: Boolean = true) : ProtocolEn
 
   override val ord: UIntRange = ord..ord
 
+  override fun toString(): String = "$name[${ord.first}]"
+
   companion object {
     val T: EnumT<PskType> = throwAnyError { enum(upperBound = 0xFFU) }
   }
@@ -52,7 +54,7 @@ enum class ResumptionPskUsage(ord: UInt, override val isValid: Boolean = true) :
   override val ord: UIntRange = ord..ord
 
   companion object {
-    val T: EnumT<ResumptionPskUsage> = throwAnyError { enum(upperBound = 0xFFFFU) }
+    val T: EnumT<ResumptionPskUsage> = throwAnyError { enum(upperBound = 0xFFU) }
 
     val PROTOCOL_RESUMPTION: Set<ResumptionPskUsage> = setOf(ReInit, Branch)
   }

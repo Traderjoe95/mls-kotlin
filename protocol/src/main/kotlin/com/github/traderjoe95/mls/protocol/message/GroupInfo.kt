@@ -54,11 +54,11 @@ data class GroupInfo(
       }.lift(::GroupInfo)
 
     fun create(
-      ownLeafIndex: LeafIndex,
-      signaturePrivateKey: SignaturePrivateKey,
       groupContext: GroupContext,
       confirmationTag: Mac,
       extensions: List<GroupInfoExtension<*>> = listOf(),
+      ownLeafIndex: LeafIndex,
+      signaturePrivateKey: SignaturePrivateKey,
     ): GroupInfo =
       GroupInfo(
         groupContext,

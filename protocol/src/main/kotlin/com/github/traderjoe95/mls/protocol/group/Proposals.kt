@@ -13,6 +13,7 @@ import com.github.traderjoe95.mls.protocol.tree.findEquivalentLeaf
 import com.github.traderjoe95.mls.protocol.tree.validate
 import com.github.traderjoe95.mls.protocol.tree.zipWithLeafIndex
 import com.github.traderjoe95.mls.protocol.types.Credential
+import com.github.traderjoe95.mls.protocol.types.GroupContextExtension
 import com.github.traderjoe95.mls.protocol.types.ProposalType
 import com.github.traderjoe95.mls.protocol.types.RequiredCapabilities
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret
@@ -56,7 +57,7 @@ internal fun ResolvedProposals.validateMember(committerLeafIdx: LeafIndex) {
     checkDuplicates()
   }
 
-  getAll<ReInit>(ProposalType.GroupContextExtensions).apply {
+  getAll<GroupContextExtensions>(ProposalType.GroupContextExtensions).apply {
     if (size > 1) raise(InvalidCommit.AmbiguousGroupCtxExtensions)
   }
 
@@ -166,6 +167,15 @@ context(Raise<CommitError>, GroupState)
 internal fun ReInit.validate() {
   if (protocolVersion < this@GroupState.protocolVersion) {
     raise(InvalidCommit.ReInitDowngrade(this@GroupState.protocolVersion, protocolVersion))
+  }
+
+  extensions.find { it !is GroupContextExtension<*> }?.also {
+    raise(
+      InvalidCommit.UnexpectedExtension(
+        "GroupContext",
+        it.extensionType?.toString() ?: it.type.toString(),
+      ),
+    )
   }
 }
 

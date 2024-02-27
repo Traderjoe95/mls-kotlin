@@ -119,7 +119,7 @@ class TreeKem : VertxFunSpec({ vertx ->
                         test("the decrypted path secret should be ${expectedPathSecret.hex}") {
                           val updatedTree = unsafe { leafTree.mergeUpdatePath(up.sender, up.updatePath) }
 
-                          updatedTree.findPathSecret(
+                          updatedTree.extractCommonPathSecret(
                             up.sender,
                             up.updatePath,
                             groupContext,

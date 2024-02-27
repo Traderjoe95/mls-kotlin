@@ -28,7 +28,6 @@ import com.github.traderjoe95.mls.protocol.tree.RatchetTree
 import com.github.traderjoe95.mls.protocol.tree.applyUpdatePath
 import com.github.traderjoe95.mls.protocol.tree.applyUpdatePathExternalJoin
 import com.github.traderjoe95.mls.protocol.tree.createUpdatePath
-import com.github.traderjoe95.mls.protocol.tree.lowestCommonAncestor
 import com.github.traderjoe95.mls.protocol.tree.validate
 import com.github.traderjoe95.mls.protocol.types.Extension
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtension
@@ -126,14 +125,14 @@ suspend fun <Identity : Any> GroupState.prepareCommit(
       )
     val groupInfo =
       GroupInfo.create(
-        leafIndex,
-        signaturePrivateKey,
         updatedGroupContext,
         confirmationTag,
         listOfNotNull(
           RatchetTreeExt(updatedTree),
           *Extension.grease(),
         ),
+        leafIndex,
+        signaturePrivateKey,
       )
 
     PrepareCommitResult(
@@ -259,7 +258,7 @@ private fun ProcessProposalsResult.newMemberLeafIndices(): Set<LeafIndex> =
     is ProcessProposalsResult.ReInitCommit -> setOf()
   }
 
-context(GroupState.Active, Raise<RecipientTreeUpdateError>)
+context(Raise<RecipientTreeUpdateError>)
 private fun RatchetTree.applyCommitUpdatePath(
   groupContext: GroupContext,
   updatePath: UpdatePath,
@@ -286,12 +285,12 @@ private fun List<Pair<LeafIndex, KeyPackage>>.createWelcome(
 
   val encryptedGroupInfo = encryptAead(welcomeKey, welcomeNonce, Aad.empty, groupInfo.encodeUnsafe())
 
-  val filteredPath = newTree.filteredDirectPath(leafIndex)
+  val filteredPath = newTree.filteredDirectPath(leafIndex).map { it.first }
 
   val encryptedGroupSecrets =
     map { (newLeaf, keyPackage) ->
-      val commonAncestor = lowestCommonAncestor(leafIndex, newLeaf)
-      val pathSecret = pathSecrets.getOrNull(filteredPath.indexOf(commonAncestor)).toOption()
+      val commonAncestorIdx = filteredPath.indexOfFirst { newLeaf.isInSubtreeOf(it) }
+      val pathSecret = pathSecrets.getOrNull(commonAncestorIdx).toOption()
 
       GroupSecrets(joinerSecret, pathSecret, pskIds)
         .encrypt(cipherSuite, keyPackage, encryptedGroupInfo)
@@ -316,19 +315,19 @@ private suspend fun <Identity : Any> GroupState.Active.processProposals(
   val resolved: ResolvedProposals = mutableMapOf()
 
   proposals.forEach { proposalOrRef ->
-    when (proposalOrRef) {
-      is Proposal ->
-        resolved.compute(proposalOrRef.type) { _, current ->
-          (current ?: listOf()) + (proposalOrRef to committerLeafIdx)
-        }
+    val (proposal, sender) =
+      when (proposalOrRef) {
+        is Proposal -> proposalOrRef to committerLeafIdx
 
-      is Proposal.Ref ->
-        if (committerLeafIdx == null) {
-          raise(InvalidCommit.NoProposalRefAllowed)
-        } else {
-          getProposal(proposalOrRef)
-        }
-    }
+        is Proposal.Ref ->
+          if (committerLeafIdx == null) {
+            raise(InvalidCommit.NoProposalRefAllowed)
+          } else {
+            getStoredProposal(proposalOrRef).let { it.proposal to it.sender }
+          }
+      }
+
+    resolved.compute(proposal.type) { _, current -> (current ?: listOf()) + (proposal to sender) }
   }
 
   if (committerLeafIdx == null) {
