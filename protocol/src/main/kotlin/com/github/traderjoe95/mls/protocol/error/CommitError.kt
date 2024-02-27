@@ -12,7 +12,7 @@ import com.github.traderjoe95.mls.protocol.types.framing.enums.SenderType
 
 sealed interface SenderCommitError : ResumptionError
 
-sealed interface RecipientCommitError
+sealed interface RecipientCommitError : ProcessMessageError
 
 sealed interface CommitError : SenderCommitError, RecipientCommitError
 

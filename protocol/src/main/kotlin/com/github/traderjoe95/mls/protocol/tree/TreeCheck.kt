@@ -12,35 +12,34 @@ import com.github.traderjoe95.mls.protocol.types.tree.Node
 import com.github.traderjoe95.mls.protocol.types.tree.ParentNode
 
 context(Raise<TreeCheckError>, AuthenticationService<Identity>)
-suspend fun <Identity : Any> RatchetTreeOps.check(groupContext: GroupContext) =
-  with(groupContext.cipherSuite) {
-    treeHash.let { th ->
-      if (th.contentEquals(groupContext.treeHash).not()) {
-        raise(TreeCheckError.BadTreeHash(groupContext.treeHash, th))
-      }
-    }
-
-    checkParentHashCoverage()
-
-    nonBlankParentNodeIndices.forEach { parentIdx ->
-      val parentNode = parentNode(parentIdx)
-
-      parentNode.checkUnmergedLeaves(parentIdx)
-
-      (nonBlankLeafNodeIndices + nonBlankParentNodeIndices).filter {
-        it != parentIdx && node(it).encryptionKey.eq(parentNode.encryptionKey)
-      }.sorted().let {
-        if (it.isNotEmpty()) raise(LeafNodeCheckError.DuplicateEncryptionKey(it))
-      }
-    }
-
-    nonBlankLeafIndices.forEach {
-      leafNode(it).validate(this@check, groupContext, it)
+suspend fun <Identity : Any> RatchetTreeOps.check(groupContext: GroupContext) {
+  treeHash(groupContext.cipherSuite).let { th ->
+    if (th.contentEquals(groupContext.treeHash).not()) {
+      raise(TreeCheckError.BadTreeHash(groupContext.treeHash, th))
     }
   }
 
-context(ICipherSuite, Raise<TreeCheckError>)
-private fun RatchetTreeOps.checkParentHashCoverage() {
+  checkParentHashCoverage(groupContext.cipherSuite)
+
+  nonBlankParentNodeIndices.forEach { parentIdx ->
+    val parentNode = parentNode(parentIdx)
+
+    parentNode.checkUnmergedLeaves(parentIdx)
+
+    (nonBlankLeafNodeIndices + nonBlankParentNodeIndices).filter {
+      it != parentIdx && node(it).encryptionKey.eq(parentNode.encryptionKey)
+    }.sorted().let {
+      if (it.isNotEmpty()) raise(LeafNodeCheckError.DuplicateEncryptionKey(it))
+    }
+  }
+
+  nonBlankLeafIndices.forEach {
+    leafNode(it).validate(this@check, groupContext, it)
+  }
+}
+
+context(Raise<TreeCheckError>)
+internal fun RatchetTreeOps.checkParentHashCoverage(cipherSuite: ICipherSuite) {
   val phCoverage = mutableMapOf<NodeIndex, UInt>()
 
   leaves.zipWithLeafIndex().mapNotNull { (l, leafIdx) ->
@@ -58,7 +57,7 @@ private fun RatchetTreeOps.checkParentHashCoverage() {
         break
       }
 
-      val ph = parentHash(currentNode, leafIdx)
+      val ph = parentHash(cipherSuite, currentNode, leafIdx)
 
       if (ph eqNullable currentRefNode.parentHash) {
         phCoverage.compute(currentNode) { _, value ->
@@ -73,7 +72,9 @@ private fun RatchetTreeOps.checkParentHashCoverage() {
   }
 
   nonBlankParentNodeIndices.forEach { parentIdx ->
-    if (phCoverage.getOrDefault(parentIdx, 0U) != 1U) raise(TreeCheckError.NotParentHashValid(parentIdx))
+    if (phCoverage.getOrDefault(parentIdx, 0U) != 1U) {
+      raise(TreeCheckError.NotParentHashValid(parentIdx))
+    }
   }
 }
 

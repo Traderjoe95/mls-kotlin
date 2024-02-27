@@ -3,7 +3,6 @@ package com.github.traderjoe95.mls.protocol.tree
 import arrow.core.raise.Raise
 import com.github.traderjoe95.mls.codec.util.toBytes
 import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
-import com.github.traderjoe95.mls.protocol.error.EpochError
 import com.github.traderjoe95.mls.protocol.error.RatchetError
 import com.github.traderjoe95.mls.protocol.types.crypto.Nonce
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret
@@ -17,24 +16,16 @@ interface SecretTree {
   context(Raise<RatchetError>)
   suspend fun getNonceAndKey(
     leafIndex: LeafIndex,
-    contentType: ContentType,
+    contentType: ContentType<*>,
     generation: UInt,
   ): Pair<Nonce, Secret>
 
   suspend fun getNonceAndKey(
     leafIndex: LeafIndex,
-    contentType: ContentType,
+    contentType: ContentType<*>,
   ): Triple<Nonce, Secret, UInt>
 
-  interface Lookup {
-    context(Raise<RatchetError>, Raise<EpochError>)
-    suspend fun getNonceAndKey(
-      epoch: ULong,
-      leafIndex: LeafIndex,
-      contentType: ContentType,
-      generation: UInt,
-    ): Pair<Nonce, Secret>
-  }
+  interface Lookup
 
   companion object {
     fun create(
@@ -56,7 +47,7 @@ class Ratchet(
     const val SKIP_LIMIT = 255U
     const val BACKLOG_LIMIT = 255U
 
-    fun ICipherSuite.deriveTreeSecret(
+    internal fun ICipherSuite.deriveTreeSecret(
       secret: Secret,
       label: String,
       generation: UInt,
@@ -140,7 +131,7 @@ internal class SecretTreeImpl private constructor(private val leaves: Array<Secr
   context(Raise<RatchetError>)
   override suspend fun getNonceAndKey(
     leafIndex: LeafIndex,
-    contentType: ContentType,
+    contentType: ContentType<*>,
     generation: UInt,
   ): Pair<Nonce, Secret> =
     when (contentType) {
@@ -151,7 +142,7 @@ internal class SecretTreeImpl private constructor(private val leaves: Array<Secr
 
   override suspend fun getNonceAndKey(
     leafIndex: LeafIndex,
-    contentType: ContentType,
+    contentType: ContentType<*>,
   ): Triple<Nonce, Secret, UInt> =
     when (contentType) {
       ContentType.Application -> leaves[leafIndex.value].consumeApplicationRatchet()
@@ -200,9 +191,9 @@ internal class SecretTreeImpl private constructor(private val leaves: Array<Secr
 
                     intermediate =
                       intermediate +
-                        generateSequence(stepRight) { expandWithLabel(it, "tree", "left") }
-                          .take(backTrack)
-                          .toList()
+                      generateSequence(stepRight) { expandWithLabel(it, "tree", "left") }
+                        .take(backTrack)
+                        .toList()
                   }
                 }
               }

@@ -34,12 +34,12 @@ import com.github.traderjoe95.mls.protocol.types.framing.enums.SenderType.NewMem
 import com.github.traderjoe95.mls.protocol.types.framing.enums.SenderType.NewMemberProposal
 import com.github.traderjoe95.mls.protocol.types.framing.enums.WireFormat
 
-data class PublicMessage<out C : Content>(
+data class PublicMessage<out C : Content<C>>(
   private val content: FramedContent<C>,
   val signature: Signature,
   val confirmationTag: Mac?,
   val membershipTag: Mac?,
-) : GroupMessage<PublicMessageRecipientError>, Struct4T.Shape<FramedContent<C>, Signature, Mac?, Mac?> {
+) : GroupMessage<C, PublicMessageRecipientError>, Struct4T.Shape<FramedContent<C>, Signature, Mac?, Mac?> {
   constructor(authContent: AuthenticatedContent<C>, membershipTag: Mac?) : this(
     authContent.content,
     authContent.signature,
@@ -51,14 +51,14 @@ data class PublicMessage<out C : Content>(
     get() = content.groupId
   override val epoch: ULong
     get() = content.epoch
-  override val contentType: ContentType
+  override val contentType: ContentType<C>
     get() = content.contentType
 
   private val authenticatedContent: AuthenticatedContent<C>
     get() = AuthenticatedContent(WireFormat.MlsPublicMessage, content, signature, confirmationTag)
 
   context(Raise<PublicMessageRecipientError>)
-  override suspend fun unprotect(groupState: GroupState.Active): AuthenticatedContent<*> =
+  override suspend fun unprotect(groupState: GroupState.Active): AuthenticatedContent<C> =
     unprotect(
       groupState.groupContext,
       groupState.keySchedule.membershipKey,
@@ -70,7 +70,7 @@ data class PublicMessage<out C : Content>(
     groupContext: GroupContext,
     membershipKey: Secret,
     signaturePublicKey: SignaturePublicKey,
-  ): AuthenticatedContent<*> {
+  ): AuthenticatedContent<C> {
     if (content.contentType == ContentType.Application) raise(PublicMessageError.ApplicationMessageMustNotBePublic)
 
     if (content.sender.type == SenderType.Member) {
@@ -100,7 +100,7 @@ data class PublicMessage<out C : Content>(
             }
         }.lift(
           up = { content, signature, confirmationTag, membershipTag ->
-            PublicMessage(
+            PublicMessage<Content<*>>(
               content,
               signature,
               confirmationTag,
@@ -119,12 +119,12 @@ data class PublicMessage<out C : Content>(
       }
 
     context(GroupState, Raise<PublicMessageSenderError>)
-    fun <C : Content> create(
+    fun <C : Content<C>> create(
       authContent: AuthenticatedContent<C>,
     ): PublicMessage<C> = create(groupContext, authContent, keySchedule.membershipKey)
 
     context(Raise<PublicMessageSenderError>)
-    fun <C : Content> create(
+    fun <C : Content<C>> create(
       groupContext: GroupContext,
       content: AuthenticatedContent<C>,
       membershipKey: Secret,

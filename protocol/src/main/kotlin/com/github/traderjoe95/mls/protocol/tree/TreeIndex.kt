@@ -32,7 +32,7 @@ fun lowestCommonAncestor(
   return n1
 }
 
-sealed interface TreeIndex {
+sealed interface TreeIndex : Comparable<TreeIndex> {
   val leafIndex: LeafIndex
   val nodeIndex: NodeIndex
 
@@ -45,10 +45,12 @@ sealed interface TreeIndex {
   val subtreeRange: NodeRange
 
   fun isInSubtreeOf(node: TreeIndex): Boolean = this in node.subtreeRange
+
+  override fun compareTo(other: TreeIndex): Int = nodeIndex.value.compareTo(other.nodeIndex.value)
 }
 
 @JvmInline
-value class LeafIndex(val value: UInt) : TreeIndex, Comparable<LeafIndex> {
+value class LeafIndex(val value: UInt) : TreeIndex {
   override val leafIndex: LeafIndex
     get() = this
   override val nodeIndex: NodeIndex
@@ -69,11 +71,13 @@ value class LeafIndex(val value: UInt) : TreeIndex, Comparable<LeafIndex> {
   override val subtreeRange: NodeRange
     get() = nodeIndex..nodeIndex
 
-  override fun compareTo(other: LeafIndex): Int = value.compareTo(other.value)
+  infix fun eq(other: LeafIndex) = value == other.value
 
-  fun eq(index: UInt): Boolean = value == index
+  infix fun neq(other: LeafIndex) = value != other.value
 
-  fun eq(index: Int): Boolean = value == index.toUInt()
+  infix fun eq(index: UInt): Boolean = value == index
+
+  infix fun eq(index: Int): Boolean = value == index.toUInt()
 
   companion object : Encodable<LeafIndex> {
     override val dataT: DataType<LeafIndex> = uint32.asUInt.derive({ LeafIndex(it) }, { it.value })
@@ -84,7 +88,7 @@ fun Iterable<LeafNode<*>?>.zipWithLeafIndex(): Iterable<Pair<LeafNode<*>?, LeafI
   zip(generateSequence(LeafIndex(0U)) { LeafIndex(it.value + 1U) }.asIterable())
 
 @JvmInline
-value class NodeIndex(val value: UInt) : TreeIndex, Comparable<NodeIndex> {
+value class NodeIndex(val value: UInt) : TreeIndex {
   override val leafIndex: LeafIndex
     get() = if (isLeaf) LeafIndex(value / 2U) else error("This is a parent node")
   override val nodeIndex: NodeIndex
@@ -128,8 +132,6 @@ value class NodeIndex(val value: UInt) : TreeIndex, Comparable<NodeIndex> {
   infix fun xor(other: UInt): NodeIndex = NodeIndex(value xor other)
 
   operator fun compareTo(other: UInt): Int = value.compareTo(other)
-
-  override fun compareTo(other: NodeIndex): Int = value.compareTo(other.value)
 
   operator fun plus(rhs: UInt): NodeIndex = NodeIndex(value + rhs)
 

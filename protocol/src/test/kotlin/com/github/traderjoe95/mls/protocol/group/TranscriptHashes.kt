@@ -50,7 +50,7 @@ class TranscriptHashes : VertxFunSpec({ vertx ->
             test(
               "should generate a correct confirmed transcript hash from the interim transcript hash ${v.interimTranscriptHashBefore.hex}",
             ) {
-              updateConfirmedTranscriptHash(
+              newConfirmedTranscriptHash(
                 cipherSuite,
                 v.interimTranscriptHashBefore,
                 v.authenticatedContent.wireFormat,
@@ -62,7 +62,7 @@ class TranscriptHashes : VertxFunSpec({ vertx ->
             test(
               "should generate a correct interim transcript hash from the confirmation tag ${v.authenticatedContent.confirmationTag!!.hex}",
             ) {
-              updateInterimTranscriptHash(
+              newInterimTranscriptHash(
                 cipherSuite,
                 v.confirmedTranscriptHashAfter,
                 v.authenticatedContent.confirmationTag!!,

@@ -6,7 +6,6 @@ import arrow.core.getOrElse
 import arrow.core.raise.Raise
 import arrow.core.raise.nullable
 import arrow.core.toOption
-import com.github.traderjoe95.mls.protocol.app.ApplicationCtx
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite.Companion.zeroesNh
 import com.github.traderjoe95.mls.protocol.crypto.KeySchedule
 import com.github.traderjoe95.mls.protocol.crypto.updatePskSecret
@@ -103,7 +102,7 @@ suspend fun <Identity : Any> GroupState.prepareCommit(
       )
 
     val (newKeySchedule, joinerSecret, welcomeSecret) =
-      keySchedule.next(
+      keySchedule.nextEpoch(
         commitSecret,
         updatedGroupContext,
         proposalResult.pskSecret,
@@ -116,7 +115,7 @@ suspend fun <Identity : Any> GroupState.prepareCommit(
     val updatedGroupState =
       proposalResult.createNextEpochState(
         updatedGroupContext.withInterimTranscriptHash(
-          updateInterimTranscriptHash(
+          newInterimTranscriptHash(
             cipherSuite,
             updatedGroupContext.confirmedTranscriptHash,
             confirmationTag,
@@ -160,69 +159,68 @@ suspend fun <Identity : Any> GroupState.prepareCommit(
     )
   }
 
-context(Raise<RecipientCommitError>, ApplicationCtx<Identity>)
-suspend fun <Identity : Any> GroupState.processCommit(
+context(Raise<RecipientCommitError>, AuthenticationService<Identity>)
+suspend fun <Identity : Any> GroupState.Active.processCommit(
   authenticatedCommit: AuthenticatedContent<Commit>,
   psks: PskLookup = PskLookup.EMPTY,
-): GroupState =
-  ensureActive {
-    val commit = authenticatedCommit.content
-    val proposalResult = commit.content.validateAndApply(commit.sender, psks)
-    val updatePath = commit.content.updatePath
+): GroupState {
+  val commit = authenticatedCommit.content
+  val proposalResult = commit.content.validateAndApply(commit.sender, psks)
+  val updatePath = commit.content.updatePath
 
-    val preTree = proposalResult.updatedTree ?: tree
+  val preTree = proposalResult.updatedTree ?: tree
 
-    with(preTree) {
-      if (this@ensureActive.leafIndex.isBlank) raise(RemovedFromGroup)
-    }
-
-    val (updatedTree, commitSecret) =
-      updatePath.map { path ->
-        preTree.applyCommitUpdatePath(
-          groupContext.withExtensions((proposalResult as? ProcessProposalsResult.CommitByMember)?.extensions),
-          path,
-          commit.sender,
-          proposalResult.newMemberLeafIndices(),
-        )
-      }.getOrElse { preTree to zeroesNh }
-
-    val updatedGroupContext =
-      groupContext.evolve(
-        authenticatedCommit.wireFormat,
-        commit,
-        authenticatedCommit.signature,
-        updatedTree,
-        newExtensions = (proposalResult as? ProcessProposalsResult.CommitByMember)?.extensions,
-      )
-
-    val (newKeySchedule, _, _) =
-      keySchedule.next(
-        commitSecret,
-        updatedGroupContext,
-        proposalResult.pskSecret,
-        (proposalResult as? ProcessProposalsResult.ExternalJoin)?.externalInitSecret,
-      )
-
-    verifyMac(
-      newKeySchedule.confirmationKey,
-      updatedGroupContext.confirmedTranscriptHash,
-      authenticatedCommit.confirmationTag!!,
-    )
-
-    proposalResult.createNextEpochState(
-      updatedGroupContext.withInterimTranscriptHash(
-        updateInterimTranscriptHash(
-          cipherSuite,
-          updatedGroupContext.confirmedTranscriptHash,
-          authenticatedCommit.confirmationTag,
-        ),
-      ),
-      updatedTree,
-      newKeySchedule,
-    )
+  with(preTree) {
+    if (leafIndex.isBlank) raise(RemovedFromGroup)
   }
 
-context(GroupState.Active, ApplicationCtx<Identity>, Raise<CommitError>)
+  val (updatedTree, commitSecret) =
+    updatePath.map { path ->
+      preTree.applyCommitUpdatePath(
+        groupContext.withExtensions((proposalResult as? ProcessProposalsResult.CommitByMember)?.extensions),
+        path,
+        commit.sender,
+        proposalResult.newMemberLeafIndices(),
+      )
+    }.getOrElse { preTree to zeroesNh }
+
+  val updatedGroupContext =
+    groupContext.evolve(
+      authenticatedCommit.wireFormat,
+      commit,
+      authenticatedCommit.signature,
+      updatedTree,
+      newExtensions = (proposalResult as? ProcessProposalsResult.CommitByMember)?.extensions,
+    )
+
+  val (newKeySchedule, _, _) =
+    keySchedule.nextEpoch(
+      commitSecret,
+      updatedGroupContext,
+      proposalResult.pskSecret,
+      (proposalResult as? ProcessProposalsResult.ExternalJoin)?.externalInitSecret,
+    )
+
+  verifyMac(
+    newKeySchedule.confirmationKey,
+    updatedGroupContext.confirmedTranscriptHash,
+    authenticatedCommit.confirmationTag!!,
+  )
+
+  return proposalResult.createNextEpochState(
+    updatedGroupContext.withInterimTranscriptHash(
+      newInterimTranscriptHash(
+        cipherSuite,
+        updatedGroupContext.confirmedTranscriptHash,
+        authenticatedCommit.confirmationTag,
+      ),
+    ),
+    updatedTree,
+    newKeySchedule,
+  )
+}
+
+context(GroupState.Active, AuthenticationService<Identity>, Raise<CommitError>)
 private suspend fun <Identity : Any> Commit.validateAndApply(
   sender: Sender,
   psks: PskLookup,

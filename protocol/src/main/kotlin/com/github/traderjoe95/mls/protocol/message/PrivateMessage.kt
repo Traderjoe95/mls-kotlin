@@ -37,6 +37,7 @@ import com.github.traderjoe95.mls.protocol.types.framing.Sender
 import com.github.traderjoe95.mls.protocol.types.framing.content.ApplicationData
 import com.github.traderjoe95.mls.protocol.types.framing.content.AuthenticatedContent
 import com.github.traderjoe95.mls.protocol.types.framing.content.Commit
+import com.github.traderjoe95.mls.protocol.types.framing.content.Content
 import com.github.traderjoe95.mls.protocol.types.framing.content.FramedContent
 import com.github.traderjoe95.mls.protocol.types.framing.content.Proposal
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ContentType
@@ -45,16 +46,16 @@ import com.github.traderjoe95.mls.protocol.types.framing.enums.WireFormat
 import com.github.traderjoe95.mls.protocol.types.framing.message.padding.PaddingStrategy
 import com.github.traderjoe95.mls.protocol.types.framing.message.padding.deterministic.Padme
 
-data class PrivateMessage(
+data class PrivateMessage<out C : Content<C>>(
   override val groupId: GroupId,
   override val epoch: ULong,
-  override val contentType: ContentType,
+  override val contentType: ContentType<C>,
   val authenticatedData: ByteArray,
   val encryptedSenderData: Ciphertext,
   val ciphertext: Ciphertext,
-) : GroupMessage<PrivateMessageRecipientError>,
-  Struct6T.Shape<GroupId, ULong, ContentType, ByteArray, Ciphertext, Ciphertext> {
-  constructor(framedContent: FramedContent<*>, encryptedSenderData: Ciphertext, ciphertext: Ciphertext) : this(
+) : GroupMessage<C, PrivateMessageRecipientError>,
+  Struct6T.Shape<GroupId, ULong, ContentType<C>, ByteArray, Ciphertext, Ciphertext> {
+  constructor(framedContent: FramedContent<C>, encryptedSenderData: Ciphertext, ciphertext: Ciphertext) : this(
     framedContent.groupId,
     framedContent.epoch,
     framedContent.contentType,
@@ -63,12 +64,13 @@ data class PrivateMessage(
     ciphertext,
   )
 
-  private fun privateContentAad(): Struct4<GroupId, ULong, ContentType, ByteArray> = Struct4(groupId, epoch, contentType, authenticatedData)
+  private fun privateContentAad(): Struct4<GroupId, ULong, ContentType<C>, ByteArray> =
+    Struct4(groupId, epoch, contentType, authenticatedData)
 
-  private fun senderDataAad(): Struct3<GroupId, ULong, ContentType> = Struct3(groupId, epoch, contentType)
+  private fun senderDataAad(): Struct3<GroupId, ULong, ContentType<C>> = Struct3(groupId, epoch, contentType)
 
   context(Raise<PrivateMessageRecipientError>)
-  override suspend fun unprotect(groupState: GroupState.Active): AuthenticatedContent<*> =
+  override suspend fun unprotect(groupState: GroupState.Active): AuthenticatedContent<C> =
     unprotect(
       groupState.groupContext,
       groupState.keySchedule.senderDataSecret,
@@ -82,12 +84,9 @@ data class PrivateMessage(
     senderDataSecret: Secret,
     secretTree: SecretTree,
     signaturePublicKeyLookup: SignaturePublicKeyLookup,
-  ): AuthenticatedContent<*> =
+  ): AuthenticatedContent<C> =
     with(groupContext.cipherSuite) {
-      val ciphertextSample = ciphertext.bytes.sliceArray(0..<minOf(ciphertext.size, hashLen.toInt()))
-
-      val senderDataKey = expandWithLabel(senderDataSecret, "key", ciphertextSample, keyLen)
-      val senderDataNonce = expandWithLabel(senderDataSecret, "nonce", ciphertextSample, nonceLen).asNonce
+      val (senderDataNonce, senderDataKey) = getSenderDataNonceAndKey(senderDataSecret, ciphertext)
 
       val senderData =
         try {
@@ -149,6 +148,7 @@ data class PrivateMessage(
           }
         }
 
+      @Suppress("UNCHECKED_CAST")
       return AuthenticatedContent(
         WireFormat.MlsPrivateMessage,
         FramedContent(
@@ -157,15 +157,15 @@ data class PrivateMessage(
           Sender.member(leafIndex),
           authenticatedData,
           contentType,
-          content,
+          content as C,
         ),
         authData.signature,
         authData.confirmationTag,
       ).apply { verify(groupContext, signaturePublicKeyLookup.getSignaturePublicKey(groupContext, this.content)) }
     }
 
-  companion object : Encodable<PrivateMessage> {
-    override val dataT: DataType<PrivateMessage> =
+  companion object : Encodable<PrivateMessage<*>> {
+    override val dataT: DataType<PrivateMessage<*>> =
       struct("PrivateMessage") {
         it.field("group_id", GroupId.dataT)
           .field("epoch", uint64.asULong)
@@ -173,22 +173,22 @@ data class PrivateMessage(
           .field("authenticated_data", opaque[V])
           .field("encrypted_sender_data", Ciphertext.dataT)
           .field("ciphertext", Ciphertext.dataT)
-      }.lift(::PrivateMessage)
+      }.lift { g, e, ct, aad, esd, ciph -> PrivateMessage(g, e, ct as ContentType<Content<*>>, aad, esd, ciph) }
 
     context(GroupState, Raise<PrivateMessageSenderError>)
-    suspend fun create(
-      authContent: AuthenticatedContent<*>,
+    suspend fun <C : Content<C>> create(
+      authContent: AuthenticatedContent<C>,
       paddingStrategy: PaddingStrategy = Padme,
-    ): PrivateMessage = create(cipherSuite, authContent, secretTree, keySchedule.senderDataSecret, paddingStrategy)
+    ): PrivateMessage<C> = create(cipherSuite, authContent, secretTree, keySchedule.senderDataSecret, paddingStrategy)
 
     context(Raise<PrivateMessageSenderError>)
-    suspend fun create(
+    suspend fun <C : Content<C>> create(
       cipherSuite: ICipherSuite,
-      authContent: AuthenticatedContent<*>,
+      authContent: AuthenticatedContent<C>,
       secretTree: SecretTree,
       senderDataSecret: Secret,
       paddingStrategy: PaddingStrategy = Padme,
-    ): PrivateMessage {
+    ): PrivateMessage<C> {
       if (authContent.senderType != SenderType.Member) {
         raise(
           MessageSenderError.InvalidSenderType(
@@ -285,7 +285,7 @@ data class PrivateMessage(
           .field("confirmation_tag", Mac.dataT)
       }
 
-    private fun aad(framedContent: FramedContent<*>): Struct4<GroupId, ULong, ContentType, ByteArray> =
+    private fun <C : Content<C>> aad(framedContent: FramedContent<C>): Struct4<GroupId, ULong, ContentType<C>, ByteArray> =
       Struct4(framedContent.groupId, framedContent.epoch, framedContent.contentType, framedContent.authenticatedData)
 
     private val AAD_T =
@@ -303,7 +303,7 @@ data class PrivateMessage(
           .field("reuse_guard", ReuseGuard.dataT)
       }
 
-    private fun senderDataAad(framedContent: FramedContent<*>): Struct3<GroupId, ULong, ContentType> =
+    private fun <C : Content<C>> senderDataAad(framedContent: FramedContent<C>): Struct3<GroupId, ULong, ContentType<C>> =
       Struct3(framedContent.groupId, framedContent.epoch, framedContent.contentType)
 
     private val SENDER_DATA_AAD_T =

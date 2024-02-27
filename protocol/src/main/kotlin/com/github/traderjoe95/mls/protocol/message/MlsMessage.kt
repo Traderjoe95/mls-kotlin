@@ -34,13 +34,13 @@ data class MlsMessage<out M : Message> internal constructor(
 ) : Struct3T.Shape<ProtocolVersion, WireFormat, M> {
   companion object : Encodable<MlsMessage<*>> {
     context(ICipherSuite, KeySchedule, Raise<PublicMessageSenderError>)
-    fun <C : Content> public(
+    fun <C : Content.Handshake<C>> public(
       groupContext: GroupContext,
       authenticatedContent: AuthenticatedContent<C>,
     ): MlsMessage<PublicMessage<C>> = public(PublicMessage.create(groupContext, authenticatedContent, membershipKey))
 
     context(GroupState, Raise<PublicMessageSenderError>)
-    fun <C : Content> public(
+    fun <C : Content.Handshake<C>> public(
       framedContent: FramedContent<C>,
       authData: FramedContent.AuthData,
     ): MlsMessage<PublicMessage<C>> =
@@ -54,7 +54,7 @@ data class MlsMessage<out M : Message> internal constructor(
       )
 
     context(Raise<PublicMessageSenderError>)
-    fun <C : Content> public(
+    internal fun <C : Content<C>> public(
       groupContext: GroupContext,
       framedContent: FramedContent<C>,
       authData: FramedContent.AuthData,
@@ -72,9 +72,7 @@ data class MlsMessage<out M : Message> internal constructor(
       )
 
     context(GroupState, Raise<PublicMessageSenderError>)
-    fun <C : Content> public(
-      authenticatedContent: AuthenticatedContent<C>,
-    ): MlsMessage<PublicMessage<C>> =
+    internal fun <C : Content<C>> public(authenticatedContent: AuthenticatedContent<C>): MlsMessage<PublicMessage<C>> =
       public(
         groupContext,
         authenticatedContent,
@@ -82,7 +80,7 @@ data class MlsMessage<out M : Message> internal constructor(
       )
 
     context(Raise<PublicMessageSenderError>)
-    fun <C : Content> public(
+    internal fun <C : Content<C>> public(
       groupContext: GroupContext,
       authenticatedContent: AuthenticatedContent<C>,
       membershipKey: Secret,
@@ -95,34 +93,14 @@ data class MlsMessage<out M : Message> internal constructor(
         ),
       )
 
-    context(GroupState, Raise<PublicMessageSenderError>)
-    fun public(
-      applicationData: ApplicationData,
-      authenticatedData: ByteArray = byteArrayOf(),
-    ): MlsMessage<PublicMessage<ApplicationData>> =
-      ensureActive {
-        createFramedContent(applicationData, authenticatedData).let { framedContent ->
-          public(
-            PublicMessage.create(
-              AuthenticatedContent(
-                WireFormat.MlsPublicMessage,
-                framedContent,
-                framedContent.sign(cipherSuite, WireFormat.MlsPublicMessage, groupContext, signaturePrivateKey),
-                null,
-              ),
-            ),
-          )
-        }
-      }
-
-    fun <C : Content> public(message: PublicMessage<C>): MlsMessage<PublicMessage<C>> =
+    internal fun <C : Content<C>> public(message: PublicMessage<C>): MlsMessage<PublicMessage<C>> =
       MlsMessage(MLS_1_0, WireFormat.MlsPublicMessage, message)
 
     context(GroupState, Raise<PrivateMessageSenderError>)
-    suspend fun private(
-      framedContent: FramedContent<*>,
+    suspend fun <C : Content<C>> private(
+      framedContent: FramedContent<C>,
       authData: FramedContent.AuthData,
-    ): MlsMessage<PrivateMessage> =
+    ): MlsMessage<PrivateMessage<C>> =
       private(
         PrivateMessage.create(
           AuthenticatedContent(
@@ -138,7 +116,7 @@ data class MlsMessage<out M : Message> internal constructor(
     suspend fun private(
       applicationData: ApplicationData,
       authenticatedData: ByteArray = byteArrayOf(),
-    ): MlsMessage<PrivateMessage> =
+    ): MlsMessage<ApplicationMessage> =
       ensureActive {
         private(
           createFramedContent(applicationData, authenticatedData).let { framedContent ->
@@ -155,13 +133,13 @@ data class MlsMessage<out M : Message> internal constructor(
       }
 
     context(Raise<PrivateMessageSenderError>)
-    suspend fun private(
+    suspend fun <C : Content<C>> private(
       cipherSuite: ICipherSuite,
-      framedContent: FramedContent<*>,
+      framedContent: FramedContent<C>,
       authData: FramedContent.AuthData,
       secretTree: SecretTree,
       senderDataSecret: Secret,
-    ): MlsMessage<PrivateMessage> =
+    ): MlsMessage<PrivateMessage<C>> =
       private(
         PrivateMessage.create(
           cipherSuite,
@@ -176,7 +154,8 @@ data class MlsMessage<out M : Message> internal constructor(
         ),
       )
 
-    fun private(message: PrivateMessage): MlsMessage<PrivateMessage> = MlsMessage(MLS_1_0, WireFormat.MlsPrivateMessage, message)
+    fun <C : Content<C>> private(message: PrivateMessage<C>): MlsMessage<PrivateMessage<C>> =
+      MlsMessage(MLS_1_0, WireFormat.MlsPrivateMessage, message)
 
     fun welcome(
       cipherSuite: CipherSuite,

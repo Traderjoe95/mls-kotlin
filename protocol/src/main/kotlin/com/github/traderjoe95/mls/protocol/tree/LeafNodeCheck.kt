@@ -22,7 +22,7 @@ suspend fun <Identity : Any> LeafNode<*>.validate(
   authenticateCredential(this@validate)
 
   // Verify leaf node signature
-  verifySignature(groupContext, leafIdx)
+  verifySignature(groupContext.cipherSuite, groupContext.groupId, leafIdx)
 
   // Check that leaf node is compatible with group requirements
   groupContext.extension<RequiredCapabilities>()?.let { requiredCapabilities ->

@@ -5,13 +5,15 @@ import com.github.traderjoe95.mls.codec.util.uSize
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
 import com.github.traderjoe95.mls.protocol.crypto.KeySchedule
-import com.github.traderjoe95.mls.protocol.error.EpochError
 import com.github.traderjoe95.mls.protocol.error.GroupSuspended
 import com.github.traderjoe95.mls.protocol.error.InvalidCommit
+import com.github.traderjoe95.mls.protocol.error.ProcessMessageError
 import com.github.traderjoe95.mls.protocol.error.PskError
-import com.github.traderjoe95.mls.protocol.error.RatchetError
+import com.github.traderjoe95.mls.protocol.message.AuthHandshakeContent
 import com.github.traderjoe95.mls.protocol.message.GroupInfo
+import com.github.traderjoe95.mls.protocol.message.HandshakeMessage
 import com.github.traderjoe95.mls.protocol.psk.PskLookup
+import com.github.traderjoe95.mls.protocol.service.AuthenticationService
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.tree.RatchetTree
 import com.github.traderjoe95.mls.protocol.tree.SecretTree
@@ -20,15 +22,16 @@ import com.github.traderjoe95.mls.protocol.types.ExternalPub
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtensions
 import com.github.traderjoe95.mls.protocol.types.GroupId
 import com.github.traderjoe95.mls.protocol.types.crypto.Mac
-import com.github.traderjoe95.mls.protocol.types.crypto.Nonce
 import com.github.traderjoe95.mls.protocol.types.crypto.PreSharedKeyId
 import com.github.traderjoe95.mls.protocol.types.crypto.ResumptionPskId
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret
 import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePrivateKey
+import com.github.traderjoe95.mls.protocol.types.framing.content.AuthenticatedContent
+import com.github.traderjoe95.mls.protocol.types.framing.content.Commit
 import com.github.traderjoe95.mls.protocol.types.framing.content.Proposal
 import com.github.traderjoe95.mls.protocol.types.framing.content.ReInit
-import com.github.traderjoe95.mls.protocol.types.framing.enums.ContentType
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
+import com.github.traderjoe95.mls.protocol.types.framing.enums.SenderType.Member
 import com.github.traderjoe95.mls.protocol.types.RatchetTree as RatchetTreeExt
 
 sealed class GroupState(
@@ -77,11 +80,10 @@ sealed class GroupState(
     val signaturePrivateKey: SignaturePrivateKey,
     private val storedProposals: Map<Int, CachedProposal> = mapOf(),
   ) : GroupState(groupContext, tree, keySchedule), SecretTree.Lookup, PskLookup {
-    context(Raise<GroupSuspended>)
     fun storeProposal(
       proposal: Proposal,
       sender: LeafIndex?,
-    ): GroupState =
+    ): Active =
       Active(
         groupContext,
         tree,
@@ -97,26 +99,21 @@ sealed class GroupState(
       storedProposals[proposalRef.hashCode]
         ?: raise(InvalidCommit.UnknownProposal(groupId, epoch, proposalRef))
 
-    fun groupInfo(public: Boolean): GroupInfo =
+    fun groupInfo(
+      inlineTree: Boolean = true,
+      public: Boolean = false,
+    ): GroupInfo =
       GroupInfo.create(
         leafIndex,
         signaturePrivateKey,
         groupContext,
         mac(keySchedule.confirmationKey, groupContext.confirmedTranscriptHash),
         listOfNotNull(
-          RatchetTreeExt(tree),
+          if (inlineTree) RatchetTreeExt(tree) else null,
           if (public) ExternalPub(deriveKeyPair(keySchedule.externalSecret).public) else null,
           *Extension.grease(),
         ),
       )
-
-    context(Raise<RatchetError>, Raise<EpochError>)
-    override suspend fun getNonceAndKey(
-      epoch: ULong,
-      leafIndex: LeafIndex,
-      contentType: ContentType,
-      generation: UInt,
-    ): Pair<Nonce, Secret> = secretTree.getNonceAndKey(leafIndex, contentType, generation)
 
     context(Raise<PskError>)
     override suspend fun getPreSharedKey(id: PreSharedKeyId): Secret =
@@ -124,6 +121,32 @@ sealed class GroupState(
         keySchedule.resumptionPsk
       } else {
         raise(PskError.PskNotFound(id))
+      }
+
+    context(Raise<ProcessMessageError>, AuthenticationService<Identity>)
+    suspend fun <Identity : Any, Err : ProcessMessageError> process(
+      message: HandshakeMessage<Err>,
+      psks: PskLookup = PskLookup.EMPTY,
+      cachedState: GroupState? = null,
+    ): GroupState = process(message.unprotect(this), psks, cachedState)
+
+    context(Raise<ProcessMessageError>, AuthenticationService<Identity>)
+    @Suppress("UNCHECKED_CAST")
+    internal suspend fun <Identity : Any> process(
+      message: AuthHandshakeContent,
+      psks: PskLookup = PskLookup.EMPTY,
+      cachedState: GroupState? = null,
+    ): GroupState =
+      when (val c = message.content.content) {
+        is Proposal ->
+          storeProposal(c, message.content.sender.takeIf { it.type == Member }?.index)
+
+        is Commit ->
+          if (message.sender.type == Member && message.sender.index == leafIndex) {
+            cachedState ?: raise(ProcessMessageError.MustUseCachedStateForOwnCommit)
+          } else {
+            processCommit(message as AuthenticatedContent<Commit>, psks)
+          }
       }
 
     fun nextEpoch(

@@ -71,7 +71,7 @@ data class KeyScheduleTestVector(
             val commitSecret = cipherSuite.generateSecret(cipherSuite.hashLen)
             val pskSecret = cipherSuite.generateSecret(cipherSuite.hashLen)
 
-            val (newKeySchedule, joinerSecret, welcomeSecret) = keySchedule.next(commitSecret, groupContext, pskSecret)
+            val (newKeySchedule, joinerSecret, welcomeSecret) = keySchedule.nextEpoch(commitSecret, groupContext, pskSecret)
             keySchedule = newKeySchedule
 
             val exporterLabel = Random.nextString()

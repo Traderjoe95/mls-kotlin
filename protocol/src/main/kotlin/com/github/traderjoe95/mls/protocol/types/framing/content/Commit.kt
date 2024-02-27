@@ -24,11 +24,11 @@ import com.github.traderjoe95.mls.protocol.util.zipWithIndex
 data class Commit(
   val proposals: List<ProposalOrRef>,
   val updatePath: Option<UpdatePath>,
-) : Content, Struct2T.Shape<List<ProposalOrRef>, Option<UpdatePath>> {
+) : Content.Handshake<Commit>, Struct2T.Shape<List<ProposalOrRef>, Option<UpdatePath>> {
   constructor(proposals: List<ProposalOrRef>, updatePath: UpdatePath) : this(proposals, updatePath.some())
   constructor(proposals: List<ProposalOrRef>) : this(proposals, None)
 
-  override val contentType: ContentType = ContentType.Commit
+  override val contentType: ContentType.Commit = ContentType.Commit
 
   companion object : Encodable<Commit> {
     override val dataT: DataType<Commit> =
@@ -50,7 +50,6 @@ data class Commit(
     if (proposals.size != other.proposals.size) return false
     if (proposals.zipWithIndex().any { (proposalOrRef, idx) -> proposalOrRef neq other.proposals[idx] }) return false
     if (updatePath != other.updatePath) return false
-    if (contentType != other.contentType) return false
 
     return true
   }

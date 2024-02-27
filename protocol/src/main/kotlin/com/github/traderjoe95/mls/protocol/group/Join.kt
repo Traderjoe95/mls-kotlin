@@ -4,8 +4,6 @@ import arrow.core.getOrElse
 import arrow.core.raise.Raise
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.crypto.KeySchedule
-import com.github.traderjoe95.mls.protocol.crypto.KeySchedule.Companion.init
-import com.github.traderjoe95.mls.protocol.crypto.KeyScheduleEpoch
 import com.github.traderjoe95.mls.protocol.crypto.calculatePskSecret
 import com.github.traderjoe95.mls.protocol.error.DecoderError
 import com.github.traderjoe95.mls.protocol.error.ExtensionSupportError
@@ -31,7 +29,7 @@ import com.github.traderjoe95.mls.protocol.tree.RatchetTree.Companion.join
 import com.github.traderjoe95.mls.protocol.tree.check
 import com.github.traderjoe95.mls.protocol.tree.createUpdatePath
 import com.github.traderjoe95.mls.protocol.tree.findEquivalentLeaf
-import com.github.traderjoe95.mls.protocol.tree.updateOnJoin
+import com.github.traderjoe95.mls.protocol.tree.insertPathSecrets
 import com.github.traderjoe95.mls.protocol.types.ExternalPub
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtension
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtensions
@@ -65,11 +63,18 @@ fun newGroup(
 
   keyPackage.leafNode.checkSupport(extensions.toList(), ownLeaf)
 
-  val keySchedule = KeyScheduleEpoch.new(keyPackage.cipherSuite)
   val tree = RatchetTree.new(keyPackage.cipherSuite, keyPackage.leafNode, keyPackage.encPrivateKey)
+  val groupContext = GroupContext.new(protocolVersion, cipherSuite, tree, *extensions, groupId = groupId)
+  val keySchedule = KeySchedule.init(keyPackage.cipherSuite, groupContext)
 
   return GroupState.Active(
-    GroupContext.new(protocolVersion, cipherSuite, keySchedule, tree, *extensions, groupId = groupId),
+    groupContext.withInterimTranscriptHash(
+      newInterimTranscriptHash(
+        keyPackage.cipherSuite,
+        groupContext.confirmedTranscriptHash,
+        cipherSuite.mac(keySchedule.confirmationKey, groupContext.confirmedTranscriptHash),
+      ),
+    ),
     tree,
     keySchedule,
     keyPackage.signaturePrivateKey,
@@ -119,7 +124,7 @@ suspend fun <Identity : Any> Welcome.joinGroup(
 
     tree =
       groupSecrets.pathSecret.map {
-        with(cipherSuite) { tree.updateOnJoin(ownLeaf, groupInfo.signer, it) }
+        with(cipherSuite) { tree.insertPathSecrets(ownLeaf, groupInfo.signer, it) }
       }.getOrElse { tree }
 
     val keySchedule =
@@ -133,7 +138,7 @@ suspend fun <Identity : Any> Welcome.joinGroup(
     cipherSuite.verifyMac(keySchedule.confirmationKey, groupContext.confirmedTranscriptHash, groupInfo.confirmationTag)
     groupContext =
       groupContext.withInterimTranscriptHash(
-        updateInterimTranscriptHash(
+        newInterimTranscriptHash(
           cipherSuite,
           groupContext.confirmedTranscriptHash,
           groupInfo.confirmationTag,
@@ -176,7 +181,7 @@ suspend fun <Identity : Any> GroupInfo.joinGroupExternal(
   publicTree.check(groupContext)
 
   val oldLeafIdx = if (resync) publicTree.findEquivalentLeaf(keyPackage.leafNode) else null
-  if (oldLeafIdx != null) publicTree -= oldLeafIdx
+  if (oldLeafIdx != null) publicTree = publicTree.remove(oldLeafIdx)
 
   val newTree = publicTree.insert(cipherSuite, keyPackage.leafNode, keyPackage.encPrivateKey)
 
@@ -184,7 +189,7 @@ suspend fun <Identity : Any> GroupInfo.joinGroupExternal(
 
   var groupContext =
     groupContext.withInterimTranscriptHash(
-      updateInterimTranscriptHash(
+      newInterimTranscriptHash(
         cipherSuite,
         groupContext.confirmedTranscriptHash,
         confirmationTag,
@@ -217,7 +222,7 @@ suspend fun <Identity : Any> GroupInfo.joinGroupExternal(
   val pskSecret = with(cipherSuite) { listOf<Pair<PreSharedKeyId, Secret>>().calculatePskSecret() }
 
   val keySchedule =
-    init(
+    KeySchedule.init(
       cipherSuite,
       groupContext,
       initSecret = externalInitSecret,
@@ -229,7 +234,7 @@ suspend fun <Identity : Any> GroupInfo.joinGroupExternal(
 
   groupContext =
     groupContext.withInterimTranscriptHash(
-      updateInterimTranscriptHash(
+      newInterimTranscriptHash(
         cipherSuite,
         groupContext.confirmedTranscriptHash,
         confirmationTag,

@@ -5,7 +5,6 @@ import arrow.core.raise.Raise
 import com.github.traderjoe95.mls.codec.util.uSize
 import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
 import com.github.traderjoe95.mls.protocol.error.JoinError
-import com.github.traderjoe95.mls.protocol.error.PublicKeyMismatch
 import com.github.traderjoe95.mls.protocol.error.RecipientTreeUpdateError
 import com.github.traderjoe95.mls.protocol.error.SenderTreeUpdateError
 import com.github.traderjoe95.mls.protocol.error.WrongParentHash
@@ -20,7 +19,6 @@ import com.github.traderjoe95.mls.protocol.types.tree.ParentNode
 import com.github.traderjoe95.mls.protocol.types.tree.UpdatePath
 import com.github.traderjoe95.mls.protocol.types.tree.UpdatePathNode
 import com.github.traderjoe95.mls.protocol.util.foldWith
-import com.github.traderjoe95.mls.protocol.util.zipWithIndex
 
 context(Raise<SenderTreeUpdateError>)
 internal fun createUpdatePath(
@@ -29,16 +27,26 @@ internal fun createUpdatePath(
   groupContext: GroupContext,
   signaturePrivateKey: SignaturePrivateKey,
 ): Triple<RatchetTree, UpdatePath, List<Secret>> =
+  createUpdatePath(originalTree, originalTree.leafIndex, excludeNewLeaves, groupContext, signaturePrivateKey)
+
+context(Raise<SenderTreeUpdateError>)
+internal fun createUpdatePath(
+  originalTree: RatchetTree,
+  from: LeafIndex,
+  excludeNewLeaves: Set<LeafIndex>,
+  groupContext: GroupContext,
+  signaturePrivateKey: SignaturePrivateKey,
+): Triple<RatchetTree, UpdatePath, List<Secret>> =
   with(originalTree.cipherSuite) {
-    val oldLeafNode = originalTree.leafNode(originalTree.leafIndex)
+    val oldLeafNode = originalTree.leafNode(from)
 
     val leafPathSecret = generateSecret(hashLen)
     val leafNodeSecret = deriveSecret(leafPathSecret, "node")
     val leafKp = deriveKeyPair(leafNodeSecret)
 
-    val directPath = originalTree.directPath(originalTree.leafIndex)
-    val directPathToCoPath = directPath.zip(originalTree.coPath(originalTree.leafIndex)).toMap()
-    val filteredDirectPath = originalTree.filteredDirectPath(originalTree.leafIndex)
+    val directPath = originalTree.directPath(from)
+    val directPathToCoPath = directPath.zip(originalTree.coPath(from)).toMap()
+    val filteredDirectPath = originalTree.filteredDirectPath(from)
 
     val pathSecrets = mutableListOf(leafPathSecret)
 
@@ -51,30 +59,31 @@ internal fun createUpdatePath(
           val nodeKp = deriveKeyPair(nodeSecret)
           nodeSecret.wipe()
 
-          set(nodeIdx, ParentNode.new(nodeKp.public), nodeKp.private)
+          set(nodeIdx, ParentNode.new(nodeKp.public), newPathSecret)
         }
         .foldWith(
-          originalTree.leafIndex.nodeIndex.prependTo(filteredDirectPath).zipWithNext().reversed(),
+          from.nodeIndex.prependTo(filteredDirectPath).zipWithNext().reversed(),
         ) { (nodeIdx, parent) ->
-          updateOrNull(nodeIdx) { withParentHash(parentHash = parentHash(parent, leafIndex)) }
+          updateOrNull(nodeIdx) { withParentHash(parentHash = parentHash(cipherSuite, parent, from)) }
         }
 
     val newLeafNode =
       LeafNode.commit(
-        groupContext.cipherSuite,
+        originalTree.cipherSuite,
         leafKp.public,
         oldLeafNode,
         updatedTreeWithoutLeaf.parentHash(
+          originalTree.cipherSuite,
           filteredDirectPath.firstOrNull() ?: originalTree.root,
-          originalTree.leafIndex,
+          from,
         ),
-        originalTree.leafIndex,
-        groupContext,
+        from,
+        groupContext.groupId,
         signaturePrivateKey,
       )
     val updatedTree =
       updatedTreeWithoutLeaf.set(
-        originalTree.leafIndex,
+        from,
         newLeafNode,
         leafKp.private,
       )
@@ -113,82 +122,24 @@ internal fun applyUpdatePath(
   fromLeafIndex: LeafIndex,
   updatePath: UpdatePath,
   excludeNewLeaves: Set<LeafIndex>,
-): Pair<RatchetTree, Secret> =
-  with(originalTree.cipherSuite) {
-    val directPath = originalTree.directPath(fromLeafIndex)
-    val directPathToCoPath = directPath.zip(originalTree.coPath(fromLeafIndex)).toMap()
-    val filteredDirectPath = originalTree.filteredDirectPath(fromLeafIndex)
+): Pair<RatchetTree, Secret> {
+  var updatedTree = originalTree.mergeUpdatePath(fromLeafIndex, updatePath)
 
-    if (filteredDirectPath.uSize != updatePath.size) {
-      raise(WrongUpdatePathLength(filteredDirectPath.uSize, updatePath.size))
-    }
+  val provisionalGroupCtx = groupContext.provisional(updatedTree)
 
-    val updatedTreeWithoutLeaf =
-      originalTree
-        .blank(directPath)
-        .foldWith(filteredDirectPath.zip(updatePath.nodes)) { (nodeIdx, updateNode) ->
-          set(nodeIdx, ParentNode.new(updateNode.encryptionKey))
-        }
-        .foldWith(filteredDirectPath.zipWithNext().reversed()) { (nodeIdx, parent) ->
-          updateOrNull(nodeIdx) { withParentHash(parentHash = parentHash(parent, fromLeafIndex)) }
-        }
+  val excludedNodeIndices = excludeNewLeaves.map { it.nodeIndex }.toSet()
+  val (commonAncestor, pathSecret) =
+    updatedTree.findPathSecret(
+      fromLeafIndex,
+      updatePath,
+      provisionalGroupCtx,
+      excludedNodeIndices,
+    )
 
-    val computedParentHash = updatedTreeWithoutLeaf.parentHash(filteredDirectPath.first(), fromLeafIndex)
-    if (updatePath.leafNode.parentHash neqNullable computedParentHash) {
-      raise(WrongParentHash(computedParentHash.bytes, updatePath.leafNode.parentHash!!.bytes))
-    }
+  updatedTree = updatedTree.insertPathSecrets(commonAncestor, pathSecret)
 
-    var updatedTree = updatedTreeWithoutLeaf.set(fromLeafIndex, updatePath.leafNode)
-
-    val provisionalGroupCtx = groupContext.provisional(updatedTree)
-    var pathSecret: Secret? = null
-
-    val excludedNodeIndices = excludeNewLeaves.map { it.nodeIndex }.toSet()
-
-    for ((nodeIdx, updateNode) in filteredDirectPath.zip(updatePath.nodes)) {
-      val nonUpdatedChild = directPathToCoPath[nodeIdx]!!
-
-      pathSecret =
-        if (pathSecret == null && updatedTree.leafIndex.isInSubtreeOf(nonUpdatedChild)) {
-          (updatedTree.resolution(nonUpdatedChild) - excludedNodeIndices)
-            .zipWithIndex()
-            .firstNotNullOfOrNull { (nodeIdx, idx) ->
-              updatedTree.getKeyPair(nodeIdx)?.let { idx to it }
-            }
-            ?.let { (resolutionIdx, keyPair) ->
-              decryptWithLabel(
-                keyPair,
-                "UpdatePathNode",
-                provisionalGroupCtx.encoded,
-                updateNode.encryptedPathSecret[resolutionIdx],
-              ).asSecret
-            }
-        } else if (pathSecret != null) {
-          val newPathSecret = deriveSecret(pathSecret, "path")
-          pathSecret.wipe()
-          newPathSecret
-        } else {
-          null
-        }
-
-      val nodePrivate =
-        pathSecret?.let {
-          val nodeSecret = deriveSecret(it, "node")
-
-          deriveKeyPair(nodeSecret).apply {
-            if (public.eq(updateNode.encryptionKey).not()) {
-              raise(PublicKeyMismatch(public, updateNode.encryptionKey))
-            }
-          }.private.also { nodeSecret.wipe() }
-        }
-
-      if (nodePrivate != null) {
-        updatedTree = updatedTree.set(nodeIdx, nodePrivate)
-      }
-    }
-
-    return updatedTree to deriveSecret(pathSecret!!, "path").also { pathSecret.wipe() }
-  }
+  return updatedTree to updatedTree.private.commitSecret
+}
 
 context(ICipherSuite, Raise<RecipientTreeUpdateError>)
 internal fun RatchetTree.applyUpdatePathExternalJoin(
@@ -200,43 +151,77 @@ internal fun RatchetTree.applyUpdatePathExternalJoin(
     applyUpdatePath(tree, groupContext, newLeaf, updatePath, excludeNewLeaves)
   }
 
+context(Raise<RecipientTreeUpdateError>)
+internal fun RatchetTree.mergeUpdatePath(
+  fromLeafIdx: LeafIndex,
+  updatePath: UpdatePath,
+): RatchetTree {
+  val directPath = directPath(fromLeafIdx)
+  val filteredDirectPath = filteredDirectPath(fromLeafIdx)
+
+  if (filteredDirectPath.uSize != updatePath.size) {
+    raise(WrongUpdatePathLength(filteredDirectPath.uSize, updatePath.size))
+  }
+
+  return blank(directPath)
+    .foldWith(filteredDirectPath.zip(updatePath.nodes)) { (nodeIdx, updateNode) ->
+      set(nodeIdx, ParentNode.new(updateNode.encryptionKey))
+    }
+    .foldWith(filteredDirectPath.zipWithNext().reversed()) { (nodeIdx, parent) ->
+      updateOrNull(nodeIdx) { withParentHash(parentHash = parentHash(cipherSuite, parent, fromLeafIdx)) }
+    }
+    .let { updatedWithoutLeaf ->
+      val computedParentHash = updatedWithoutLeaf.parentHash(cipherSuite, filteredDirectPath.first(), fromLeafIdx)
+
+      if (updatePath.leafNode.parentHash neqNullable computedParentHash) {
+        raise(WrongParentHash(computedParentHash.bytes, updatePath.leafNode.parentHash!!.bytes))
+      }
+
+      updatedWithoutLeaf.set(fromLeafIdx, updatePath.leafNode)
+    }
+}
+
+internal fun RatchetTree.findPathSecret(
+  fromLeafIdx: LeafIndex,
+  updatePath: UpdatePath,
+  groupContext: GroupContext,
+  excludeNewLeaves: Set<NodeIndex>,
+): Pair<NodeIndex, Secret> {
+  val filteredDirectPath = filteredDirectPath(fromLeafIdx)
+  val directPathToCoPath = directPath(fromLeafIdx).zip(coPath(fromLeafIdx)).toMap()
+
+  for ((nodeIdx, updateNode) in filteredDirectPath.zip(updatePath.nodes)) {
+    if (!leafIndex.isInSubtreeOf(nodeIdx)) continue
+
+    val nonUpdatedChild = directPathToCoPath[nodeIdx]!!
+
+    val pathSecret =
+      (resolution(nonUpdatedChild) - excludeNewLeaves)
+        .zip(updateNode.encryptedPathSecret)
+        .firstNotNullOf { (node, ciphertext) -> getKeyPair(node)?.let(ciphertext::to) }
+        .let { (ciphertext, keyPair) ->
+          cipherSuite.decryptWithLabel(
+            keyPair,
+            "UpdatePathNode",
+            groupContext.encoded,
+            ciphertext,
+          ).asSecret
+        }
+
+    return nodeIdx to pathSecret
+  }
+
+  error("Own node not found in update path")
+}
+
 context(ICipherSuite, Raise<JoinError>)
-internal fun RatchetTree.updateOnJoin(
+internal fun RatchetTree.insertPathSecrets(
   ownLeafIdx: LeafIndex,
   senderLeafIdx: LeafIndex,
   pathSecret: Secret,
 ): RatchetTree {
-  var currentIdx = lowestCommonAncestor(ownLeafIdx, senderLeafIdx)
-  var currentPathSecret = pathSecret
-  var currentTree = nodeKeyUpdate(currentIdx, currentPathSecret)
-
-  while (currentIdx != root) {
-    currentIdx = currentIdx.parent
-
-    if (!currentIdx.isBlank) {
-      currentPathSecret = deriveSecret(currentPathSecret, "path")
-
-      currentTree = currentTree.nodeKeyUpdate(currentIdx, currentPathSecret)
-    }
-  }
-
-  return currentTree
-}
-
-context(ICipherSuite, Raise<PublicKeyMismatch>)
-private fun RatchetTree.nodeKeyUpdate(
-  nodeIdx: NodeIndex,
-  pathSecret: Secret,
-): RatchetTree {
-  val nodeSecret = deriveSecret(pathSecret, "node")
-  val (nodePrivate, nodePublic) = deriveKeyPair(nodeSecret)
-  nodeSecret.wipe()
-
-  val node = parentNode(nodeIdx)
-
-  if (node.encryptionKey.eq(nodePublic).not()) {
-    raise(PublicKeyMismatch(nodePublic, node.encryptionKey))
-  }
-
-  return set(nodeIdx, nodePrivate)
+  return insertPathSecrets(
+    filteredDirectPath(senderLeafIdx).find { ownLeafIdx.isInSubtreeOf(it) && senderLeafIdx.isInSubtreeOf(it) }!!,
+    pathSecret,
+  )
 }

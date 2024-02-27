@@ -25,51 +25,52 @@ import com.github.traderjoe95.mls.protocol.types.tree.leaf.ParentHash
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.ParentHash.Companion.asParentHash
 
 val RatchetTree.treeHash: ByteArray
-  get() = with(cipherSuite) { treeHash(root) }
+  get() = treeHash(root, cipherSuite)
 
-context(ICipherSuite)
-val RatchetTreeOps.treeHash: ByteArray
-  get() = treeHash(root)
+fun RatchetTreeOps.treeHash(cipherSuite: ICipherSuite): ByteArray = treeHash(root, cipherSuite)
 
-fun RatchetTree.treeHash(subtreeRoot: TreeIndex): ByteArray = with(cipherSuite) { treeHash(subtreeRoot) }
+fun RatchetTree.treeHash(subtreeRoot: TreeIndex): ByteArray = treeHash(subtreeRoot, cipherSuite)
 
-context(ICipherSuite)
-fun RatchetTreeOps.treeHash(subtreeRoot: TreeIndex): ByteArray =
-  hash(
+fun RatchetTreeOps.treeHash(
+  subtreeRoot: TreeIndex,
+  cipherSuite: ICipherSuite,
+): ByteArray =
+  cipherSuite.hash(
     if (subtreeRoot.isLeaf) {
-      TreeHashInput.forLeaf(subtreeRoot.leafIndex, this@treeHash[subtreeRoot]?.asLeaf).encodeUnsafe()
+      TreeHashInput.forLeaf(subtreeRoot.leafIndex, this[subtreeRoot]?.asLeaf).encodeUnsafe()
     } else {
       val subtreeRootIdx = subtreeRoot.nodeIndex
       TreeHashInput.forParent(
         this@treeHash[subtreeRoot]?.asParent,
-        treeHash(subtreeRootIdx.leftChild),
-        treeHash(subtreeRootIdx.rightChild),
+        treeHash(subtreeRootIdx.leftChild, cipherSuite),
+        treeHash(subtreeRootIdx.rightChild, cipherSuite),
       ).encodeUnsafe()
     },
   )
 
-context(ICipherSuite)
 fun RatchetTreeOps.parentHash(
-  parentNode: NodeIndex,
-  leafNode: TreeIndex,
+  cipherSuite: ICipherSuite,
+  p: NodeIndex,
+  l: TreeIndex,
 ): ParentHash =
-  if (leafNode.nodeIndex == root && parentNode == root) {
+  if (l.nodeIndex == root) {
     ParentHash.empty
   } else {
-    hash(
-      (if (parentNode == root) root else parentNode.filteredParent).let { nextNode ->
-        ParentHashInput(
-          parentNode(parentNode).encryptionKey,
-          parentNode(nextNode).parentHash,
-          removeLeaves(parentNode(parentNode).unmergedLeaves.toSet()).treeHash(
-            if (leafNode.isInSubtreeOf(nextNode.leftChild)) {
-              nextNode.rightChild
-            } else {
-              nextNode.leftChild
-            },
-          ),
-        )
-      }.encodeUnsafe(),
+    val pNode = parentNode(p)
+
+    val s =
+      if (l < p) {
+        p.rightChild
+      } else {
+        p.leftChild
+      }
+
+    cipherSuite.hash(
+      ParentHashInput(
+        pNode.encryptionKey,
+        if (p == root) ParentHash.empty else pNode.parentHash,
+        removeLeaves(pNode.unmergedLeaves.toSet()).treeHash(s, cipherSuite),
+      ).encodeUnsafe(),
     ).asParentHash
   }
 

@@ -13,7 +13,6 @@ import com.github.traderjoe95.mls.codec.type.struct.member.then
 import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
 import com.github.traderjoe95.mls.protocol.error.SignatureError
-import com.github.traderjoe95.mls.protocol.group.GroupContext
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.types.Credential
 import com.github.traderjoe95.mls.protocol.types.Extension
@@ -80,13 +79,14 @@ data class LeafNode<S : LeafNodeSource>(
 
   context(Raise<SignatureError>)
   fun verifySignature(
-    groupContext: GroupContext,
+    cipherSuite: ICipherSuite,
+    groupId: GroupId,
     leafIndex: LeafIndex,
   ) {
-    groupContext.cipherSuite.verifyWithLabel(
+    cipherSuite.verifyWithLabel(
       signaturePublicKey,
       "LeafNodeTBS",
-      tbs(groupContext.groupId, leafIndex),
+      tbs(groupId, leafIndex),
       signature,
     )
   }
@@ -213,13 +213,13 @@ data class LeafNode<S : LeafNodeSource>(
       oldLeafNode: LeafNode<*>,
       parentHash: ParentHash,
       leafIndex: LeafIndex,
-      groupContext: GroupContext,
+      groupId: GroupId,
       signaturePrivateKey: SignaturePrivateKey,
     ): CommitLeafNode =
       cipherSuite.signWithLabel(
         signaturePrivateKey,
         "LeafNodeTBS",
-        Tbs.commit(encryptionKey, oldLeafNode, parentHash, leafIndex, groupContext).encodeUnsafe(),
+        Tbs.commit(encryptionKey, oldLeafNode, parentHash, leafIndex, groupId).encodeUnsafe(),
       ).let { signature ->
         LeafNode(
           encryptionKey,
@@ -238,13 +238,13 @@ data class LeafNode<S : LeafNodeSource>(
       encryptionKey: HpkePublicKey,
       oldLeafNode: LeafNode<*>,
       leafIndex: LeafIndex,
-      groupContext: GroupContext,
+      groupId: GroupId,
       signaturePrivateKey: SignaturePrivateKey,
     ): UpdateLeafNode =
       cipherSuite.signWithLabel(
         signaturePrivateKey,
         "LeafNodeTBS",
-        Tbs.update(encryptionKey, oldLeafNode, leafIndex, groupContext).encodeUnsafe(),
+        Tbs.update(encryptionKey, oldLeafNode, leafIndex, groupId).encodeUnsafe(),
       ).let { signature ->
         LeafNode(
           encryptionKey,
@@ -266,13 +266,13 @@ data class LeafNode<S : LeafNodeSource>(
       capabilities: Capabilities,
       extensions: LeafNodeExtensions,
       leafIndex: LeafIndex,
-      groupContext: GroupContext,
+      groupId: GroupId,
       signaturePrivateKey: SignaturePrivateKey,
     ): UpdateLeafNode =
       cipherSuite.signWithLabel(
         signaturePrivateKey,
         "LeafNodeTBS",
-        Tbs.update(encryptionKey, signaturePublicKey, credential, capabilities, extensions, leafIndex, groupContext)
+        Tbs.update(encryptionKey, signaturePublicKey, credential, capabilities, extensions, leafIndex, groupId)
           .encodeUnsafe(),
       ).let { signature ->
         LeafNode(
@@ -353,7 +353,7 @@ data class LeafNode<S : LeafNodeSource>(
         oldLeafNode: LeafNode<*>,
         parentHash: ParentHash,
         leafIndex: LeafIndex,
-        groupContext: GroupContext,
+        groupId: GroupId,
       ): Tbs =
         Tbs(
           encryptionKey,
@@ -363,14 +363,14 @@ data class LeafNode<S : LeafNodeSource>(
           LeafNodeSource.Commit,
           parentHash,
           oldLeafNode.extensions,
-          LeafNodeLocation(groupContext.groupId, leafIndex),
+          LeafNodeLocation(groupId, leafIndex),
         )
 
       internal fun update(
         encryptionKey: HpkePublicKey,
         oldLeafNode: LeafNode<*>,
         leafIndex: LeafIndex,
-        groupContext: GroupContext,
+        groupId: GroupId,
       ): Tbs =
         update(
           encryptionKey,
@@ -379,7 +379,7 @@ data class LeafNode<S : LeafNodeSource>(
           oldLeafNode.capabilities,
           oldLeafNode.extensions,
           leafIndex,
-          groupContext,
+          groupId,
         )
 
       internal fun update(
@@ -389,7 +389,7 @@ data class LeafNode<S : LeafNodeSource>(
         capabilities: Capabilities,
         extensions: LeafNodeExtensions,
         leafIndex: LeafIndex,
-        groupContext: GroupContext,
+        groupId: GroupId,
       ): Tbs =
         Tbs(
           encryptionKey,
@@ -399,7 +399,7 @@ data class LeafNode<S : LeafNodeSource>(
           LeafNodeSource.Update,
           null,
           extensions,
-          LeafNodeLocation(groupContext.groupId, leafIndex),
+          LeafNodeLocation(groupId, leafIndex),
         )
     }
   }

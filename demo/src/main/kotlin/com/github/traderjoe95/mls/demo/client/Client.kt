@@ -123,7 +123,7 @@ class Client(
 
   private suspend fun processMessage(message: MlsMessage<*>): GroupChat =
     when (val body = message.message) {
-      is GroupMessage<*> ->
+      is GroupMessage<*, *> ->
         when (val group = groups[body.groupId]) {
           null -> error("[$userName] Unknown group ${body.groupId}")
           else ->

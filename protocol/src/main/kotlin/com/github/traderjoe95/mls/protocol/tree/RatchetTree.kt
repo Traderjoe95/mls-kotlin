@@ -14,9 +14,11 @@ import com.github.traderjoe95.mls.codec.util.uSize
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.error.SignatureError
 import com.github.traderjoe95.mls.protocol.group.GroupContext
+import com.github.traderjoe95.mls.protocol.message.KeyPackage
 import com.github.traderjoe95.mls.protocol.tree.PublicRatchetTree.Companion.newTree
 import com.github.traderjoe95.mls.protocol.types.crypto.HpkeKeyPair
 import com.github.traderjoe95.mls.protocol.types.crypto.HpkePrivateKey
+import com.github.traderjoe95.mls.protocol.types.crypto.Secret
 import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePublicKey
 import com.github.traderjoe95.mls.protocol.types.framing.content.FramedContent
 import com.github.traderjoe95.mls.protocol.types.tree.KeyPackageLeafNode
@@ -28,12 +30,15 @@ import com.github.traderjoe95.mls.protocol.util.log2
 import com.github.traderjoe95.mls.protocol.util.shl
 import com.github.traderjoe95.mls.protocol.util.sliceArray
 import com.github.traderjoe95.mls.protocol.util.uSize
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentMap
 
 sealed interface RatchetTreeOps : SignaturePublicKeyLookup {
   val size: UInt
 
   val root: NodeIndex
 
+  val indices: NodeRange
   val leafNodeIndices: NodeProgression
   val parentNodeIndices: NodeProgression
 
@@ -91,7 +96,16 @@ class RatchetTree(
   ): RatchetTree = set(leafIndex, leafNode).blank(directPath(leafIndex).dropLast(1))
 
   fun remove(leafIndex: LeafIndex): RatchetTree =
-    (public - leafIndex).let { newPublic ->
+    (public.remove(leafIndex)).let { newPublic ->
+      RatchetTree(
+        cipherSuite,
+        newPublic,
+        private.truncateToSize(newPublic.size),
+      )
+    }
+
+  fun remove(leafIndices: List<LeafIndex>): RatchetTree =
+    (public.remove(leafIndices)).let { newPublic ->
       RatchetTree(
         cipherSuite,
         newPublic,
@@ -118,12 +132,33 @@ class RatchetTree(
   fun set(
     nodeIndex: TreeIndex,
     node: Node,
-    privateKey: HpkePrivateKey,
+    privateEncryptionKey: HpkePrivateKey,
   ): RatchetTree =
     RatchetTree(
       cipherSuite,
       public.set(nodeIndex, node),
-      private.add(nodeIndex, privateKey),
+      private.add(nodeIndex, privateEncryptionKey),
+    )
+
+  fun set(
+    nodeIndex: TreeIndex,
+    node: Node,
+    pathSecret: Secret,
+  ): RatchetTree =
+    RatchetTree(
+      cipherSuite,
+      public.set(nodeIndex, node),
+      private.add(nodeIndex, pathSecret),
+    )
+
+  fun insertPathSecrets(
+    from: TreeIndex,
+    pathSecret: Secret,
+  ): RatchetTree =
+    RatchetTree(
+      cipherSuite,
+      public,
+      private.insertPathSecrets(public, from, pathSecret),
     )
 
   fun set(
@@ -146,7 +181,7 @@ class RatchetTree(
     update: Node.() -> Node?,
   ): RatchetTree = update(nodeIndex) { this?.update() }
 
-  fun getPrivateKey(nodeIndex: TreeIndex): HpkePrivateKey? = private.privateKeys[nodeIndex.nodeIndex]
+  fun getPrivateKey(nodeIndex: TreeIndex): HpkePrivateKey? = private.getPrivateKey(nodeIndex)
 
   fun getKeyPair(nodeIndex: TreeIndex): HpkeKeyPair? = getPrivateKey(nodeIndex)?.let { HpkeKeyPair(it to node(nodeIndex).encryptionKey) }
 
@@ -162,6 +197,18 @@ class RatchetTree(
     }
 
   companion object {
+    fun new(keyPackage: KeyPackage.Private): RatchetTree =
+      RatchetTree(
+        keyPackage.cipherSuite,
+        keyPackage.leafNode.newTree(),
+        PrivateRatchetTree(
+          keyPackage.cipherSuite,
+          LeafIndex(0U),
+          mapOf(),
+          mapOf(NodeIndex(0U) to keyPackage.encPrivateKey).toMap(ConcurrentHashMap()),
+        ),
+      )
+
     fun new(
       cipherSuite: CipherSuite,
       leafNode: KeyPackageLeafNode,
@@ -170,7 +217,12 @@ class RatchetTree(
       RatchetTree(
         cipherSuite,
         leafNode.newTree(),
-        PrivateRatchetTree(LeafIndex(0U), mapOf(NodeIndex(0U) to decryptionKey)),
+        PrivateRatchetTree(
+          cipherSuite,
+          LeafIndex(0U),
+          mapOf(),
+          mapOf(NodeIndex(0U) to decryptionKey).toMap(ConcurrentHashMap()),
+        ),
       )
 
     fun PublicRatchetTree.insert(
@@ -182,7 +234,12 @@ class RatchetTree(
         RatchetTree(
           cipherSuite,
           newPublic,
-          PrivateRatchetTree(newLeaf, mapOf(newLeaf.nodeIndex to decryptionKey)),
+          PrivateRatchetTree(
+            cipherSuite,
+            newLeaf,
+            mapOf(),
+            mapOf(newLeaf.nodeIndex to decryptionKey).toMap(ConcurrentHashMap()),
+          ),
         )
       }
 
@@ -194,7 +251,12 @@ class RatchetTree(
       RatchetTree(
         cipherSuite,
         this,
-        PrivateRatchetTree(leafIndex, mapOf(leafIndex.nodeIndex to decryptionKey)),
+        PrivateRatchetTree(
+          cipherSuite,
+          leafIndex,
+          mapOf(),
+          mapOf(leafIndex.nodeIndex to decryptionKey).toMap(ConcurrentHashMap()),
+        ),
       )
   }
 }
@@ -206,8 +268,10 @@ value class PublicRatchetTree private constructor(private val nodes: Array<Node?
   override val root: NodeIndex
     get() = NodeIndex.root(size)
 
+  override val indices: NodeRange
+    get() = NodeIndex(0U)..<size
   override val leafNodeIndices: NodeProgression
-    get() = NodeIndex(0U)..<size step 2
+    get() = indices step 2
   override val parentNodeIndices: NodeProgression
     get() = NodeIndex(1U)..<size step 2
 
@@ -220,27 +284,32 @@ value class PublicRatchetTree private constructor(private val nodes: Array<Node?
 
   fun insert(newLeaf: LeafNode<*>): Pair<PublicRatchetTree, LeafIndex> =
     firstBlankLeaf
-      ?.let { newLeaf.insertAt(it.nodeIndex) }
+      ?.let { insertAt(newLeaf, it) }
       ?: extend().insert(newLeaf)
 
-  private fun LeafNode<*>.insertAt(nodeIdx: NodeIndex): Pair<PublicRatchetTree, LeafIndex> {
-    val leafIdx = nodeIdx.leafIndex
-    val intermediateDirectPath = directPath(nodeIdx).dropLast(1).map { it.value.toInt() }.toSet()
+  internal fun insertAt(
+    leafNode: LeafNode<*>,
+    leafIndex: LeafIndex,
+  ): Pair<PublicRatchetTree, LeafIndex> {
+    val nodeIndex = leafIndex.nodeIndex
+    val intermediateDirectPath = directPath(nodeIndex).dropLast(1).map { it.value.toInt() }.toSet()
 
     return PublicRatchetTree(
       Array(nodes.size) {
-        if (it.toUInt() == nodeIdx.value) {
-          this
+        if (it.toUInt() == nodeIndex.value) {
+          leafNode
         } else if (it in intermediateDirectPath) {
-          nodes[it]?.asParent?.run { copy(unmergedLeaves = unmergedLeaves + leafIdx) }
+          nodes[it]?.asParent?.run { copy(unmergedLeaves = unmergedLeaves + leafIndex) }
         } else {
           nodes[it]
         }
       },
-    ) to leafIdx
+    ) to leafIndex
   }
 
-  operator fun minus(leafIndex: LeafIndex): PublicRatchetTree {
+  fun remove(leafIndex: LeafIndex): PublicRatchetTree = remove(listOf(leafIndex))
+
+  fun remove(leafIndices: List<LeafIndex>): PublicRatchetTree {
     // The specification states that only the intermediate nodes along the path are to be blanked (commented line of
     // code). Still, other implementors, including the public test vectors, blank the entire direct path of the leaf.
     //
@@ -248,12 +317,12 @@ value class PublicRatchetTree private constructor(private val nodes: Array<Node?
     // path, which will always replace the root of the tree.
     //
     // val intermediateDirectPath = directPath(leafIndex).dropLast(1).map { it.value.toInt() }.toSet()
-    val directPath = directPath(leafIndex).map { it.value.toInt() }.toSet()
-    val nodeIdx = leafIndex.nodeIndex.value.toInt()
+    val directPath = leafIndices.flatMap(::directPath).map { it.value.toInt() }.toSet()
+    val nodeIndices = leafIndices.map { it.nodeIndex.value.toInt() }.toSet()
 
     return PublicRatchetTree(
       Array(nodes.size) {
-        if (it == nodeIdx || it in directPath) {
+        if (it in nodeIndices || it in directPath) {
           null
         } else {
           nodes[it]
@@ -284,17 +353,20 @@ value class PublicRatchetTree private constructor(private val nodes: Array<Node?
   internal fun removeLeaves(leaves: Set<LeafIndex>): PublicRatchetTree {
     if (leaves.isEmpty()) return this
 
-    val leafNodeIndices = leaves.map { it.nodeIndex.value.toInt() }.toSet()
+    val removedLeafIndices = leaves.map { it.value }.toSet()
+    val removedLeafNodeIndices = leaves.map { it.nodeIndex.value.toInt() }.toSet()
     val removedLeafParentNodes = leaves.flatMap(::directPath).map { it.value.toInt() }.toSet()
 
     return PublicRatchetTree(
-      Array(nodes.size) {
-        if (it in leafNodeIndices) {
-          null
-        } else if (it in removedLeafParentNodes) {
-          nodes[it]?.asParent?.run { copy(unmergedLeaves = unmergedLeaves - leaves) }
-        } else {
-          nodes[it]
+      Array(nodes.size) { idx ->
+        when (idx) {
+          in removedLeafNodeIndices -> null
+          in removedLeafParentNodes ->
+            nodes[idx]?.asParent?.run {
+              copy(unmergedLeaves = unmergedLeaves.filter { it.value !in removedLeafIndices })
+            }
+
+          else -> nodes[idx]
         }
       },
     )
@@ -426,17 +498,68 @@ value class PublicRatchetTree private constructor(private val nodes: Array<Node?
 }
 
 data class PrivateRatchetTree(
+  private val cipherSuite: CipherSuite,
   val leafIndex: LeafIndex,
-  val privateKeys: Map<NodeIndex, HpkePrivateKey>,
+  internal val pathSecrets: Map<NodeIndex, Secret>,
+  internal val privateKeyCache: ConcurrentMap<NodeIndex, HpkePrivateKey> = ConcurrentHashMap(),
+  internal val commitSecret: Secret = Secret.zeroes(0U),
 ) {
+  fun insertPathSecrets(
+    pub: PublicRatchetTree,
+    from: TreeIndex,
+    pathSecret: Secret,
+  ): PrivateRatchetTree {
+    val fdp = pub.filteredDirectPath(from)
+    val newPathSecrets =
+      generateSequence(pathSecret) { cipherSuite.deriveSecret(it, "path") }
+        .take(fdp.size + 1)
+        .toList()
+
+    return copy(
+      pathSecrets = pathSecrets + from.nodeIndex.prependTo(fdp).zip(newPathSecrets).toMap(),
+      privateKeyCache = (privateKeyCache - fdp.toSet() - from.nodeIndex).toMap(ConcurrentHashMap()),
+      commitSecret = cipherSuite.deriveSecret(newPathSecrets.last(), "path"),
+    )
+  }
+
+  fun add(
+    nodeIndex: TreeIndex,
+    pathSecret: Secret,
+  ): PrivateRatchetTree =
+    copy(
+      pathSecrets = pathSecrets + (nodeIndex.nodeIndex to pathSecret),
+      privateKeyCache = (privateKeyCache - nodeIndex.nodeIndex).toMap(ConcurrentHashMap()),
+    )
+
   fun add(
     nodeIndex: TreeIndex,
     privateKey: HpkePrivateKey,
-  ): PrivateRatchetTree = PrivateRatchetTree(leafIndex, privateKeys + (nodeIndex.nodeIndex to privateKey))
+  ): PrivateRatchetTree =
+    copy(
+      pathSecrets = pathSecrets - nodeIndex.nodeIndex,
+      privateKeyCache = (privateKeyCache + (nodeIndex.nodeIndex to privateKey)).toMap(ConcurrentHashMap()),
+    )
 
-  fun blank(indices: Iterable<TreeIndex>) = PrivateRatchetTree(leafIndex, privateKeys - indices.map { it.nodeIndex }.toSet())
+  fun blank(indices: Iterable<TreeIndex>) =
+    copy(
+      pathSecrets = pathSecrets - indices.map { it.nodeIndex }.toSet(),
+      privateKeyCache = (privateKeyCache - indices.map { it.nodeIndex }.toSet()).toMap(ConcurrentHashMap()),
+    )
 
-  fun blank(idx: TreeIndex) = PrivateRatchetTree(leafIndex, privateKeys - idx.nodeIndex)
+  fun blank(idx: TreeIndex) =
+    copy(
+      pathSecrets = pathSecrets - idx.nodeIndex,
+      privateKeyCache = (privateKeyCache - idx.nodeIndex).toMap(ConcurrentHashMap()),
+    )
 
-  fun truncateToSize(size: UInt): PrivateRatchetTree = PrivateRatchetTree(leafIndex, privateKeys.filterKeys { it < size })
+  fun truncateToSize(size: UInt): PrivateRatchetTree =
+    copy(
+      pathSecrets = pathSecrets.filterKeys { it < size },
+      privateKeyCache = privateKeyCache.filterKeys { it < size }.toMap(ConcurrentHashMap()),
+    )
+
+  fun getPrivateKey(nodeIndex: TreeIndex): HpkePrivateKey? =
+    privateKeyCache.computeIfAbsent(nodeIndex.nodeIndex) {
+      pathSecrets[it]?.let { cipherSuite.deriveKeyPair(cipherSuite.deriveSecret(it, "node")).private }
+    }
 }

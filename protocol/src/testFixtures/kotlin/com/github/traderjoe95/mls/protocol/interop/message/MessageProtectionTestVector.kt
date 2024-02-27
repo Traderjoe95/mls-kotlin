@@ -45,12 +45,12 @@ class MessageProtectionTestVector(
   val membershipKey: Secret,
   val proposal: Proposal,
   val proposalPub: MlsMessage<PublicMessage<Proposal>>,
-  val proposalPriv: MlsMessage<PrivateMessage>,
+  val proposalPriv: MlsMessage<PrivateMessage<Proposal>>,
   val commit: Commit,
   val commitPub: MlsMessage<PublicMessage<Commit>>,
-  val commitPriv: MlsMessage<PrivateMessage>,
+  val commitPriv: MlsMessage<PrivateMessage<Commit>>,
   val application: ApplicationData,
-  val applicationPriv: MlsMessage<PrivateMessage>,
+  val applicationPriv: MlsMessage<ApplicationMessage>,
 ) {
   val groupContext: GroupContext
     get() = GroupContext(ProtocolVersion.MLS_1_0, cipherSuite, groupId, epoch, treeHash, confirmedTranscriptHash)
@@ -69,12 +69,12 @@ class MessageProtectionTestVector(
     json.getSecret("membership_key"),
     Proposal.decodeUnsafe(json.getHexBinary("proposal")),
     MlsMessage.decodeUnsafe(json.getHexBinary("proposal_pub")) as MlsMessage<PublicMessage<Proposal>>,
-    MlsMessage.decodeUnsafe(json.getHexBinary("proposal_priv")) as MlsMessage<PrivateMessage>,
+    MlsMessage.decodeUnsafe(json.getHexBinary("proposal_priv")) as MlsMessage<PrivateMessage<Proposal>>,
     Commit.decodeUnsafe(json.getHexBinary("commit")),
     MlsMessage.decodeUnsafe(json.getHexBinary("commit_pub")) as MlsMessage<PublicMessage<Commit>>,
-    MlsMessage.decodeUnsafe(json.getHexBinary("commit_priv")) as MlsMessage<PrivateMessage>,
+    MlsMessage.decodeUnsafe(json.getHexBinary("commit_priv")) as MlsMessage<PrivateMessage<Commit>>,
     json.getApplicationData("application"),
-    MlsMessage.decodeUnsafe(json.getHexBinary("application_priv")) as MlsMessage<PrivateMessage>,
+    MlsMessage.decodeUnsafe(json.getHexBinary("application_priv")) as MlsMessage<ApplicationMessage>,
   )
 
   companion object {
@@ -114,8 +114,8 @@ class MessageProtectionTestVector(
           listOf(),
         )
 
-      val proposal = Random.nextProposal(cipherSuite, groupContext)
-      val commit = Random.nextCommit(cipherSuite, groupContext)
+      val proposal = Random.nextProposal(cipherSuite, groupContext.groupId)
+      val commit = Random.nextCommit(cipherSuite, groupContext.groupId)
       val application = ApplicationData(Random.nextBytes(Random.nextInt(1..1024)))
 
       val proposalContent = FramedContent.createMember(groupContext, proposal, LeafIndex(1U))

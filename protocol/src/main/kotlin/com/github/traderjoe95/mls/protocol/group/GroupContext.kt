@@ -12,10 +12,7 @@ import com.github.traderjoe95.mls.codec.type.struct.lift
 import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.codec.type.uint64
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
-import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
-import com.github.traderjoe95.mls.protocol.crypto.KeySchedule
 import com.github.traderjoe95.mls.protocol.error.GroupCreationError
-import com.github.traderjoe95.mls.protocol.group.GroupContext.InterimTranscriptHashInput.Companion.encodeUnsafe
 import com.github.traderjoe95.mls.protocol.tree.RatchetTree
 import com.github.traderjoe95.mls.protocol.tree.treeHash
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtension
@@ -30,7 +27,7 @@ import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
 import com.github.traderjoe95.mls.protocol.types.framing.enums.WireFormat
 import com.github.traderjoe95.mls.protocol.util.hex
 
-class GroupContext(
+data class GroupContext(
   val protocolVersion: ProtocolVersion,
   val cipherSuite: CipherSuite,
   val groupId: GroupId,
@@ -44,28 +41,13 @@ class GroupContext(
   inline val encoded: ByteArray
     get() = encodeUnsafe()
 
-  override fun component1(): ProtocolVersion = protocolVersion
-
-  override fun component2(): CipherSuite = cipherSuite
-
-  override fun component3(): GroupId = groupId
-
-  override fun component4(): ULong = epoch
-
-  override fun component5(): ByteArray = treeHash
-
-  override fun component6(): ByteArray = confirmedTranscriptHash
-
-  override fun component7(): List<GroupContextExtension<*>> = extensions
-
-  context(ICipherSuite)
   internal fun provisional(tree: RatchetTree): GroupContext =
     GroupContext(
       protocolVersion,
       cipherSuite,
       groupId,
       epoch + 1U,
-      tree.treeHash,
+      tree.treeHash(cipherSuite),
       confirmedTranscriptHash,
       extensions,
       interimTranscriptHash,
@@ -114,7 +96,6 @@ class GroupContext(
     fun new(
       protocolVersion: ProtocolVersion,
       cipherSuite: CipherSuite,
-      keySchedule: KeySchedule,
       tree: RatchetTree,
       vararg extensions: GroupContextExtension<*>,
       groupId: GroupId? = null,
@@ -124,14 +105,9 @@ class GroupContext(
         cipherSuite,
         groupId ?: GroupId.new(),
         0UL,
-        with(cipherSuite) { tree.treeHash },
+        tree.treeHash(cipherSuite),
         byteArrayOf(),
         extensions.toList(),
-        cipherSuite.hash(
-          InterimTranscriptHashInput(
-            cipherSuite.mac(keySchedule.confirmationKey, byteArrayOf()),
-          ).encodeUnsafe(),
-        ),
       )
   }
 

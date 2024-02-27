@@ -25,7 +25,7 @@ internal fun GroupContext.evolve(
   newExtensions: List<GroupContextExtension<*>>? = null,
 ): GroupContext {
   val newConfirmedTranscriptHash =
-    updateConfirmedTranscriptHash(cipherSuite, interimTranscriptHash, wireFormat, framedContent, signature)
+    newConfirmedTranscriptHash(cipherSuite, interimTranscriptHash, wireFormat, framedContent, signature)
 
   return GroupContext(
     protocolVersion,
@@ -38,7 +38,7 @@ internal fun GroupContext.evolve(
   )
 }
 
-internal fun updateConfirmedTranscriptHash(
+internal fun newConfirmedTranscriptHash(
   cipherSuite: ICipherSuite,
   interimTranscriptHash: ByteArray,
   wireFormat: WireFormat,
@@ -54,7 +54,7 @@ internal fun updateConfirmedTranscriptHash(
       ).encodeUnsafe(),
   )
 
-internal fun updateInterimTranscriptHash(
+internal fun newInterimTranscriptHash(
   cipherSuite: ICipherSuite,
   confirmedTranscriptHash: ByteArray,
   confirmationTag: Mac,

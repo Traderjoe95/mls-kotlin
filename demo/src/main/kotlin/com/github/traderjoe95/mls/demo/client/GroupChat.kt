@@ -157,7 +157,7 @@ class GroupChat(
       ).bind()
     }
 
-  suspend fun processMessage(message: GroupMessage<*>): GroupChat =
+  suspend fun processMessage(message: GroupMessage<*, *>): GroupChat =
     either {
       if (message.contentType == ContentType.Commit && message.epoch != state.epoch) {
         println("[${client.userName}] Received commit for wrong epoch, dropping")
@@ -179,7 +179,7 @@ class GroupChat(
           @Suppress("UNCHECKED_CAST")
           GroupChat(
             recover(
-              block = { state.processCommit(authContent as AuthenticatedContent<Commit>) },
+              block = { state.ensureActive { processCommit(authContent as AuthenticatedContent<Commit>) } },
               recover = {
 //              if (it == RemovedFromGroup) DeliveryService.unregisterGroup(groupId, client.applicationId)
                 raise(it)

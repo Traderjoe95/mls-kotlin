@@ -2,8 +2,8 @@ package com.github.traderjoe95.mls.protocol.interop.group
 
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.group.GroupContext
-import com.github.traderjoe95.mls.protocol.group.updateConfirmedTranscriptHash
-import com.github.traderjoe95.mls.protocol.group.updateInterimTranscriptHash
+import com.github.traderjoe95.mls.protocol.group.newConfirmedTranscriptHash
+import com.github.traderjoe95.mls.protocol.group.newInterimTranscriptHash
 import com.github.traderjoe95.mls.protocol.interop.util.choice
 import com.github.traderjoe95.mls.protocol.interop.util.getCipherSuite
 import com.github.traderjoe95.mls.protocol.interop.util.getHexBinary
@@ -70,13 +70,13 @@ data class TranscriptHashesTestVector(
           listOf(),
         )
 
-      val commit = Random.nextCommit(cipherSuite, groupContext)
+      val commit = Random.nextCommit(cipherSuite, groupContext.groupId)
       val commitContent = FramedContent.createMember(groupContext, commit, LeafIndex(1U))
 
       val signature = commitContent.sign(cipherSuite, wireFormat, groupContext, signingKey)
 
       val confirmedTranscriptHashAfter =
-        updateConfirmedTranscriptHash(
+        newConfirmedTranscriptHash(
           cipherSuite,
           interimTranscriptHashBefore,
           wireFormat,
@@ -88,7 +88,7 @@ data class TranscriptHashesTestVector(
 
       val commitAuthenticatedContent = AuthenticatedContent(wireFormat, commitContent, signature, confirmationTag)
       val interimTranscriptHashAfter =
-        updateInterimTranscriptHash(cipherSuite, confirmedTranscriptHashAfter, confirmationTag)
+        newInterimTranscriptHash(cipherSuite, confirmedTranscriptHashAfter, confirmationTag)
 
       return TranscriptHashesTestVector(
         cipherSuite,

@@ -28,6 +28,7 @@ import com.github.traderjoe95.mls.protocol.types.crypto.PreSharedKeyId
 import com.github.traderjoe95.mls.protocol.types.crypto.ResumptionPskId
 import com.github.traderjoe95.mls.protocol.types.crypto.ResumptionPskUsage
 import com.github.traderjoe95.mls.protocol.types.framing.content.Add
+import com.github.traderjoe95.mls.protocol.types.framing.content.Commit
 import com.github.traderjoe95.mls.protocol.types.framing.content.PreSharedKey
 import com.github.traderjoe95.mls.protocol.types.framing.content.ReInit
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
@@ -40,7 +41,7 @@ suspend fun <Identity : Any> GroupState.Active.reInitGroup(
   extensions: GroupContextExtensions = this.extensions,
   authenticatedData: ByteArray = byteArrayOf(),
   usePrivateMessage: Boolean = false,
-): Pair<GroupState.Suspended, MlsMessage<GroupMessage<*>>> {
+): Pair<GroupState.Suspended, MlsMessage<GroupMessage<Commit, *>>> {
   val newGroupId = groupId ?: GroupId.new()
 
   val oldGroupResult =

@@ -24,8 +24,8 @@ import com.github.traderjoe95.mls.protocol.types.tree.LeafNode
 
 sealed class Proposal(
   val type: ProposalType,
-) : Content, ProposalOrRef {
-  final override val contentType: ContentType = ContentType.Proposal
+) : Content.Handshake<Proposal>, ProposalOrRef {
+  final override val contentType: ContentType.Proposal = ContentType.Proposal
   final override val proposalOrRef: ProposalOrRefType = ProposalOrRefType.Proposal
 
   open val mayBeExternal: Boolean = false

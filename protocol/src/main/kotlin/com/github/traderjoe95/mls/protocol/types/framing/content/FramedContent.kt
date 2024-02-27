@@ -14,8 +14,6 @@ import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.codec.type.uint64
 import com.github.traderjoe95.mls.codec.util.throwAnyError
 import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
-import com.github.traderjoe95.mls.protocol.error.EpochError
-import com.github.traderjoe95.mls.protocol.error.MacError
 import com.github.traderjoe95.mls.protocol.error.SenderCommitError
 import com.github.traderjoe95.mls.protocol.error.SignatureError
 import com.github.traderjoe95.mls.protocol.group.GroupContext
@@ -33,14 +31,14 @@ import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
 import com.github.traderjoe95.mls.protocol.types.framing.enums.SenderType
 import com.github.traderjoe95.mls.protocol.types.framing.enums.WireFormat
 
-data class FramedContent<out T : Content>(
+data class FramedContent<out T : Content<T>>(
   val groupId: GroupId,
   val epoch: ULong,
   val sender: Sender,
   val authenticatedData: ByteArray,
-  val contentType: ContentType,
+  val contentType: ContentType<T>,
   val content: T,
-) : Struct6T.Shape<GroupId, ULong, Sender, ByteArray, ContentType, Content> {
+) : Struct6T.Shape<GroupId, ULong, Sender, ByteArray, ContentType<T>, Content<T>> {
   constructor(groupId: GroupId, epoch: ULong, sender: Sender, authenticatedData: ByteArray, content: T) : this(
     groupId,
     epoch,
@@ -59,15 +57,15 @@ data class FramedContent<out T : Content>(
             .field("sender", Sender.dataT)
             .field("authenticated_data", opaque[V])
             .field("content_type", ContentType.T)
-            .select<Content, _>(ContentType.T, "content_type") {
+            .select<Content<*>, _>(ContentType.T, "content_type") {
               case(ContentType.Application).then(ApplicationData.dataT, "application_data")
                 .case(ContentType.Proposal).then(Proposal.dataT, "proposal")
                 .case(ContentType.Commit).then(Commit.dataT, "commit")
             }
-        }.lift(::FramedContent)
+        }.lift { g, e, s, a, ct, c -> FramedContent(g, e, s, a, ct as ContentType<Content<*>>, c) }
       }
 
-    fun <C : Content> createMember(
+    fun <C : Content<C>> createMember(
       groupContext: GroupContext,
       content: C,
       leafIndex: LeafIndex,
@@ -111,7 +109,7 @@ data class FramedContent<out T : Content>(
       tbs(wireFormat, groupContext).encodeUnsafe(),
     )
 
-  context(Raise<SignatureError>, Raise<MacError>, Raise<EpochError>)
+  context(Raise<SignatureError>)
   fun verifySignature(
     authData: AuthData,
     wireFormat: WireFormat,

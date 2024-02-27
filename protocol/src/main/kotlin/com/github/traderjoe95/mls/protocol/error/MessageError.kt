@@ -9,3 +9,7 @@ sealed interface MessageSenderError : PrivateMessageSenderError, PublicMessageSe
 sealed interface MessageRecipientError : PrivateMessageRecipientError, PublicMessageRecipientError
 
 sealed interface MessageError : MessageSenderError, MessageRecipientError, PrivateMessageError, PublicMessageError
+
+sealed interface ProcessMessageError {
+  data object MustUseCachedStateForOwnCommit : ProcessMessageError
+}

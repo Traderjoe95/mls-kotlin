@@ -16,7 +16,11 @@ import io.kotest.core.spec.style.funSpec
 import io.kotest.matchers.shouldBe
 
 class TreeOperations : VertxFunSpec({ vertx ->
-  val testVectors = runBlocking { TreeOperationsTestVector.load(vertx) }
+  val testVectors =
+    runBlocking { TreeOperationsTestVector.load(vertx) } +
+      CipherSuite.validEntries.flatMap { cs ->
+        TreeOperationsTestVector.Scenario.entries.map { cs to it }
+      }.map { (cs, sc) -> TreeOperationsTestVector.generate(cs, sc) }
 
   testVectors.groupBy { it.cipherSuite }.toSortedMap().forEach { (cipherSuite, testVectors) ->
     include(testVectorTests(cipherSuite, testVectors))
@@ -36,9 +40,7 @@ class TreeOperations : VertxFunSpec({ vertx ->
               }
 
               test("should produce the expected tree hash for the initial tree") {
-                with(cipherSuite) {
-                  PublicRatchetTree.decodeUnsafe(v.treeBefore).treeHash
-                } shouldBe v.treeHashBefore
+                PublicRatchetTree.decodeUnsafe(v.treeBefore).treeHash(cipherSuite) shouldBe v.treeHashBefore
               }
 
               context("after applying an ${v.proposal.type} proposal sent by leaf ${v.proposalSender.value}") {
@@ -48,7 +50,7 @@ class TreeOperations : VertxFunSpec({ vertx ->
                   when (val prop = v.proposal) {
                     is Add -> treeBefore.insert(prop.keyPackage.leafNode).first
                     is Update -> treeBefore.update(v.proposalSender, prop.leafNode)
-                    is Remove -> treeBefore - prop.removed
+                    is Remove -> treeBefore.remove(prop.removed)
                     else -> error("Unsupported proposal type ${prop.type}: $prop")
                   }
 
@@ -57,7 +59,7 @@ class TreeOperations : VertxFunSpec({ vertx ->
                 }
 
                 test("the tree hash should be as expected") {
-                  with(cipherSuite) { treeAfter.treeHash } shouldBe v.treeHashAfter
+                  treeAfter.treeHash(cipherSuite) shouldBe v.treeHashAfter
                 }
               }
             }

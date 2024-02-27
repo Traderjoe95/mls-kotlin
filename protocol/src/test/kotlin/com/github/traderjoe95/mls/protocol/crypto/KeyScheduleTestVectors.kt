@@ -43,13 +43,14 @@ class KeyScheduleTestVectors : VertxFunSpec({ vertx ->
                     Secret.zeroes(cipherSuite.hashLen),
                   ),
                 ) { epoch, (keySchedule, _, _), epochV ->
-                  keySchedule.next(
+                  keySchedule.nextEpoch(
                     epochV.commitSecret,
                     epochV.groupContext(cipherSuite, v.groupId, epoch),
                     epochV.pskSecret,
                   )
                 }
                 .drop(1)
+                .map { Triple(it.first as KeySchedule, it.second, it.third) }
                 .forEachIndexed { epoch, (keySchedule, joinerSecret, welcomeSecret) ->
                   val epochV = v.epochs[epoch]
 

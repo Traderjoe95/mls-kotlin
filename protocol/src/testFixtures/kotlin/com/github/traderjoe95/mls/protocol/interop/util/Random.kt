@@ -12,6 +12,7 @@ import com.github.traderjoe95.mls.protocol.types.crypto.HashReference.Companion.
 import com.github.traderjoe95.mls.protocol.types.crypto.Nonce.Companion.asNonce
 import com.github.traderjoe95.mls.protocol.types.crypto.ResumptionPskId
 import com.github.traderjoe95.mls.protocol.types.crypto.ResumptionPskUsage
+import com.github.traderjoe95.mls.protocol.types.crypto.SignatureKeyPair
 import com.github.traderjoe95.mls.protocol.types.framing.content.Add
 import com.github.traderjoe95.mls.protocol.types.framing.content.Commit
 import com.github.traderjoe95.mls.protocol.types.framing.content.ExternalInit
@@ -29,6 +30,7 @@ import kotlin.random.Random
 import kotlin.random.nextInt
 import kotlin.random.nextUInt
 import kotlin.random.nextULong
+import kotlin.time.Duration.Companion.hours
 
 fun Random.nextString(
   length: UIntRange = 0U..64U,
@@ -72,16 +74,7 @@ fun Random.nextAdd(cipherSuite: CipherSuite): Add {
 
 fun Random.nextUpdate(
   cipherSuite: CipherSuite,
-  groupContext: GroupContext =
-    GroupContext(
-      ProtocolVersion.MLS_1_0,
-      cipherSuite,
-      GroupId.new(),
-      nextULong(),
-      cipherSuite.hash(nextBytes(32)),
-      cipherSuite.hash(nextBytes(32)),
-      listOf(),
-    ),
+  groupId: GroupId = GroupId.new(),
 ): Update {
   val (signaturePrivateKey, signaturePublicKey) = cipherSuite.generateSignatureKeyPair()
 
@@ -94,7 +87,7 @@ fun Random.nextUpdate(
       Capabilities.create(listOf(CredentialType.Basic), listOf(cipherSuite)),
       listOf(),
       LeafIndex(Random.nextUInt(0U..1U)),
-      groupContext,
+      groupId,
       signaturePrivateKey,
     ),
   )
@@ -129,12 +122,12 @@ fun Random.nextExternalInit(cipherSuite: CipherSuite): ExternalInit =
 
 fun Random.nextProposal(
   cipherSuite: CipherSuite,
-  groupContext: GroupContext,
+  groupId: GroupId,
 ): Proposal =
   choice(
     listOf(
       { nextAdd(cipherSuite) },
-      { nextUpdate(cipherSuite, groupContext) },
+      { nextUpdate(cipherSuite, groupId) },
       { nextRemove(0U..1U) },
       { nextPreSharedKey(cipherSuite) },
       { nextReInit() },
@@ -144,14 +137,39 @@ fun Random.nextProposal(
 
 fun Random.nextCommit(
   cipherSuite: CipherSuite,
-  groupContext: GroupContext,
+  groupId: GroupId,
 ): Commit =
   Commit(
     List(nextInt(1..4)) {
       if (nextDouble() < 0.5) {
-        nextProposal(cipherSuite, groupContext)
+        nextProposal(cipherSuite, groupId)
       } else {
         cipherSuite.hash(nextBytes(32)).asHashReference.asProposalRef
       }
     },
+  )
+
+fun Random.nextGroupContext(
+  cipherSuite: CipherSuite,
+  groupId: GroupId? = null,
+): GroupContext =
+  GroupContext(
+    ProtocolVersion.MLS_1_0,
+    cipherSuite,
+    groupId ?: GroupId.new(),
+    nextULong(),
+    nextBytes(cipherSuite.hashLen.toInt()),
+    nextBytes(cipherSuite.hashLen.toInt()),
+  )
+
+fun Random.nextKeyPackage(
+  cipherSuite: CipherSuite,
+  signatureKeyPair: SignatureKeyPair = cipherSuite.generateSignatureKeyPair(),
+): KeyPackage.Private =
+  KeyPackage.generate(
+    cipherSuite,
+    signatureKeyPair,
+    BasicCredential(Random.nextBytes(64)),
+    Capabilities.create(listOf(CredentialType.Basic)),
+    5.hours,
   )
