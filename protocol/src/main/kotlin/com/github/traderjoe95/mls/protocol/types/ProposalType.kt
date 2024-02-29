@@ -80,7 +80,8 @@ enum class ProposalType(ord: UInt, override val isValid: Boolean = true) : Proto
         .filter { it.name.startsWith("GREASE") && Random.nextDouble() < individualProbability }
         .map { it.asUShort }
 
-    val EXTERNAL: Set<ProposalType> = setOf(Remove, Psk, ExternalInit)
+    val EXTERNAL_SENDER: Set<ProposalType> = setOf(Add, Remove, Psk, ReInit, GroupContextExtensions)
+    val EXTERNAL_COMMIT: Set<ProposalType> = setOf(Remove, Psk, ExternalInit)
     val ORDER: List<ProposalType> =
       listOf(
         GroupContextExtensions,

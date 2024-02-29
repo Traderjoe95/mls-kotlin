@@ -14,17 +14,17 @@ import com.github.traderjoe95.mls.protocol.interop.util.nextCommit
 import com.github.traderjoe95.mls.protocol.interop.util.nextProposal
 import com.github.traderjoe95.mls.protocol.message.MlsMessage.Companion.coerceFormat
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
+import com.github.traderjoe95.mls.protocol.tree.PublicRatchetTree
 import com.github.traderjoe95.mls.protocol.tree.SecretTree
 import com.github.traderjoe95.mls.protocol.types.GroupId
+import com.github.traderjoe95.mls.protocol.types.crypto.Mac.Companion.asMac
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret
 import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePrivateKey
 import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePublicKey
 import com.github.traderjoe95.mls.protocol.types.framing.content.ApplicationData
 import com.github.traderjoe95.mls.protocol.types.framing.content.Commit
-import com.github.traderjoe95.mls.protocol.types.framing.content.FramedContent
 import com.github.traderjoe95.mls.protocol.types.framing.content.Proposal
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
-import com.github.traderjoe95.mls.protocol.types.framing.enums.WireFormat
 import com.github.traderjoe95.mls.protocol.util.unsafe
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonObject
@@ -93,10 +93,7 @@ class MessageProtectionTestVector(
       val encryptionSecret = cipherSuite.generateSecret(cipherSuite.hashLen)
       val senderDataSecret = cipherSuite.generateSecret(cipherSuite.hashLen)
       val membershipKey = cipherSuite.generateSecret(cipherSuite.hashLen)
-
-      val secretTreeProposal = SecretTree.create(cipherSuite, encryptionSecret.copy(), 2U)
-      val secretTreeCommit = SecretTree.create(cipherSuite, encryptionSecret.copy(), 2U)
-      val secretTreeApplication = SecretTree.create(cipherSuite, encryptionSecret.copy(), 2U)
+      val leafIndex = LeafIndex(1U)
 
       val groupId = GroupId.new()
       val epoch = Random.nextULong()
@@ -114,76 +111,33 @@ class MessageProtectionTestVector(
           listOf(),
         )
 
+      val messages = {
+        GroupMessageFactory(
+          PublicRatchetTree.blankWithLeaves(2U),
+          membershipKey,
+          senderDataSecret,
+          SecretTree.create(cipherSuite, encryptionSecret.copy(), 2U),
+          groupContext,
+          leafIndex,
+          signaturePriv,
+        )
+      }
+
       val proposal = Random.nextProposal(cipherSuite, groupContext.groupId)
       val commit = Random.nextCommit(cipherSuite, groupContext.groupId)
       val application = ApplicationData(Random.nextBytes(Random.nextInt(1..1024)))
 
-      val proposalContent = FramedContent.createMember(groupContext, proposal, LeafIndex(1U))
-      val proposalPublicAuthData =
-        FramedContent.AuthData(
-          proposalContent.sign(cipherSuite, WireFormat.MlsPublicMessage, groupContext, signaturePriv),
-          null,
-        )
-      val proposalPrivateAuthData =
-        FramedContent.AuthData(
-          proposalContent.sign(cipherSuite, WireFormat.MlsPrivateMessage, groupContext, signaturePriv),
-          null,
-        )
+      val proposalPub = unsafe { messages().protect(proposal, UsePublicMessage) }
+      val proposalPriv = unsafe { messages().protect(proposal, UsePrivateMessage()) }
 
-      val proposalPub =
-        unsafe { MlsMessage.public(groupContext, proposalContent, proposalPublicAuthData, membershipKey) }
-      val proposalPriv =
-        unsafe {
-          MlsMessage.private(
-            cipherSuite,
-            proposalContent,
-            proposalPrivateAuthData,
-            secretTreeProposal,
-            senderDataSecret,
-          )
-        }
+      val commitAuthPub = messages().createAuthenticatedContent(commit, UsePublicMessage, byteArrayOf())
+      val commitAuthPriv = messages().createAuthenticatedContent(commit, UsePrivateMessage(), byteArrayOf())
+      val confirmationTag = Random.nextBytes(cipherSuite.hashLen.toInt()).asMac
 
-      val commitContent = FramedContent.createMember(groupContext, commit, LeafIndex(1U))
-      val commitPublicAuthData =
-        FramedContent.AuthData(
-          commitContent.sign(cipherSuite, WireFormat.MlsPublicMessage, groupContext, signaturePriv),
-          cipherSuite.mac(cipherSuite.generateSecret(cipherSuite.hashLen), groupContext.confirmedTranscriptHash),
-        )
-      val commitPrivateAuthData =
-        FramedContent.AuthData(
-          commitContent.sign(cipherSuite, WireFormat.MlsPrivateMessage, groupContext, signaturePriv),
-          cipherSuite.mac(cipherSuite.generateSecret(cipherSuite.hashLen), groupContext.confirmedTranscriptHash),
-        )
+      val commitPub = unsafe { messages().protectCommit(commitAuthPub, confirmationTag, UsePublicMessage) }
+      val commitPriv = unsafe { messages().protectCommit(commitAuthPriv, confirmationTag, UsePrivateMessage()) }
 
-      val commitPub =
-        unsafe { MlsMessage.public(groupContext, commitContent, commitPublicAuthData, membershipKey) }
-      val commitPriv =
-        unsafe {
-          MlsMessage.private(
-            cipherSuite,
-            commitContent,
-            commitPrivateAuthData,
-            secretTreeCommit,
-            senderDataSecret,
-          )
-        }
-
-      val applicationContent = FramedContent.createMember(groupContext, application, LeafIndex(1U))
-      val applicationAuthData =
-        FramedContent.AuthData(
-          applicationContent.sign(cipherSuite, WireFormat.MlsPrivateMessage, groupContext, signaturePriv),
-          null,
-        )
-      val applicationPriv =
-        unsafe {
-          MlsMessage.private(
-            cipherSuite,
-            applicationContent,
-            applicationAuthData,
-            secretTreeApplication,
-            senderDataSecret,
-          )
-        }
+      val applicationPriv = unsafe { messages().applicationMessage(application) }
 
       return MessageProtectionTestVector(
         cipherSuite,
@@ -197,11 +151,11 @@ class MessageProtectionTestVector(
         senderDataSecret,
         membershipKey,
         proposal,
-        proposalPub,
-        proposalPriv,
+        proposalPub.coerceFormat(),
+        proposalPriv.coerceFormat(),
         commit,
-        commitPub,
-        commitPriv,
+        commitPub.coerceFormat(),
+        commitPriv.coerceFormat(),
         application,
         applicationPriv,
       )

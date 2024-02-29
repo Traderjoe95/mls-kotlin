@@ -22,7 +22,7 @@ data class EncoderError(
 
 data class DecoderError(
   val decoderError: BaseDecoderError,
-) : SignatureError, JoinError, MessageRecipientError, KeyPackageRetrievalError<Nothing> {
+) : SignatureError, JoinError, MessageRecipientError, KeyPackageRetrievalError<Nothing>, CreateMessageError {
   companion object {
     context(Raise<DecoderError>)
     inline fun <T> wrap(block: Raise<BaseDecoderError>.() -> T): T = wrapErrors(::DecoderError, block)
@@ -37,4 +37,6 @@ data class UnknownGroup(val groupId: GroupId) :
   SendToGroupError,
   GetGroupInfoError
 
-data class GroupSuspended(val groupId: GroupId) : CommitError, PrivateMessageSenderError, PublicMessageSenderError, GroupInfoError
+data class GroupSuspended(val groupId: GroupId) : CommitError, MessageError, GroupInfoError
+
+data class UnexpectedExtension(val target: String, val extensionType: String) : ReInitValidationError

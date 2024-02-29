@@ -1,11 +1,11 @@
 package com.github.traderjoe95.mls.protocol.crypto
 
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite.Companion.zeroesNh
+import com.github.traderjoe95.mls.protocol.psk.PreSharedKeyId
+import com.github.traderjoe95.mls.protocol.psk.PskLabel
+import com.github.traderjoe95.mls.protocol.psk.PskLabel.Companion.encodeUnsafe
 import com.github.traderjoe95.mls.protocol.types.crypto.Ciphertext
 import com.github.traderjoe95.mls.protocol.types.crypto.Nonce
-import com.github.traderjoe95.mls.protocol.types.crypto.PreSharedKeyId
-import com.github.traderjoe95.mls.protocol.types.crypto.PskLabel
-import com.github.traderjoe95.mls.protocol.types.crypto.PskLabel.Companion.encodeUnsafe
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret
 
 context(ICipherSuite)

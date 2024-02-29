@@ -39,7 +39,7 @@ data class PublicMessage<out C : Content<C>>(
   val signature: Signature,
   val confirmationTag: Mac?,
   val membershipTag: Mac?,
-) : GroupMessage<C, PublicMessageRecipientError>, Struct4T.Shape<FramedContent<C>, Signature, Mac?, Mac?> {
+) : GroupMessage<C>, Struct4T.Shape<FramedContent<C>, Signature, Mac?, Mac?> {
   constructor(authContent: AuthenticatedContent<C>, membershipTag: Mac?) : this(
     authContent.content,
     authContent.signature,
@@ -118,15 +118,10 @@ data class PublicMessage<out C : Content<C>>(
         )
       }
 
-    context(GroupState, Raise<PublicMessageSenderError>)
-    fun <C : Content<C>> create(
-      authContent: AuthenticatedContent<C>,
-    ): PublicMessage<C> = create(groupContext, authContent, keySchedule.membershipKey)
-
     context(Raise<PublicMessageSenderError>)
     fun <C : Content<C>> create(
-      groupContext: GroupContext,
       content: AuthenticatedContent<C>,
+      groupContext: GroupContext,
       membershipKey: Secret,
     ): PublicMessage<C> {
       if (content.contentType == ContentType.Application) raise(PublicMessageError.ApplicationMessageMustNotBePublic)

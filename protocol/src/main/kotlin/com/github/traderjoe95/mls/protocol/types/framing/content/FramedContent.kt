@@ -66,8 +66,8 @@ data class FramedContent<out T : Content<T>>(
       }
 
     fun <C : Content<C>> createMember(
-      groupContext: GroupContext,
       content: C,
+      groupContext: GroupContext,
       leafIndex: LeafIndex,
       authenticatedData: ByteArray = byteArrayOf(),
     ): FramedContent<C> =

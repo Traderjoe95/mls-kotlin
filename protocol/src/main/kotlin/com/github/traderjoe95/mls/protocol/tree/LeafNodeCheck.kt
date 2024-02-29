@@ -3,24 +3,19 @@ package com.github.traderjoe95.mls.protocol.tree
 import arrow.core.raise.Raise
 import com.github.traderjoe95.mls.protocol.error.LeafNodeCheckError
 import com.github.traderjoe95.mls.protocol.group.GroupContext
-import com.github.traderjoe95.mls.protocol.service.AuthenticationService
-import com.github.traderjoe95.mls.protocol.service.authenticateCredential
 import com.github.traderjoe95.mls.protocol.types.ExtensionType
 import com.github.traderjoe95.mls.protocol.types.RequiredCapabilities
 import com.github.traderjoe95.mls.protocol.types.tree.LeafNode
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.LeafNodeSource
 import java.time.Instant
 
-context(Raise<LeafNodeCheckError>, AuthenticationService<Identity>)
-suspend fun <Identity : Any> LeafNode<*>.validate(
+context(Raise<LeafNodeCheckError>)
+fun LeafNode<*>.validate(
   tree: RatchetTreeOps,
   groupContext: GroupContext,
   leafIdx: LeafIndex,
   expectedSource: LeafNodeSource? = null,
 ) {
-  // Authenticate Credential with AS
-  authenticateCredential(this@validate)
-
   // Verify leaf node signature
   verifySignature(groupContext.cipherSuite, groupContext.groupId, leafIdx)
 

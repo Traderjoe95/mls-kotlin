@@ -1,7 +1,7 @@
 package com.github.traderjoe95.mls.protocol.error
 
+import com.github.traderjoe95.mls.protocol.psk.ResumptionPskId
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtension
-import com.github.traderjoe95.mls.protocol.types.crypto.ResumptionPskId
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.Capabilities
 
 sealed interface WelcomeJoinError {

@@ -16,11 +16,11 @@ import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.error.DecoderError
 import com.github.traderjoe95.mls.protocol.error.WelcomeJoinError
+import com.github.traderjoe95.mls.protocol.psk.PreSharedKeyId
 import com.github.traderjoe95.mls.protocol.types.crypto.Aad
 import com.github.traderjoe95.mls.protocol.types.crypto.Ciphertext
 import com.github.traderjoe95.mls.protocol.types.crypto.HpkeCiphertext
 import com.github.traderjoe95.mls.protocol.types.crypto.HpkeKeyPair
-import com.github.traderjoe95.mls.protocol.types.crypto.PreSharedKeyId
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret
 
 data class Welcome(

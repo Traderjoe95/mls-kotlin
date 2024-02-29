@@ -62,6 +62,11 @@ data class Capabilities(
           .field("credentials", uint16.asUShort[V])
       }.lift(::Capabilities)
 
+    fun default(): Capabilities =
+      create(
+        listOf(CredentialType.Basic, CredentialType.X509),
+      )
+
     fun create(
       credentials: List<CredentialType>,
       cipherSuites: List<CipherSuite>? = null,

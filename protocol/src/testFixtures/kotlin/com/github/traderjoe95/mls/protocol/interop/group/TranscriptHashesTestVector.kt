@@ -71,7 +71,7 @@ data class TranscriptHashesTestVector(
         )
 
       val commit = Random.nextCommit(cipherSuite, groupContext.groupId)
-      val commitContent = FramedContent.createMember(groupContext, commit, LeafIndex(1U))
+      val commitContent = FramedContent.createMember(commit, groupContext, LeafIndex(1U))
 
       val signature = commitContent.sign(cipherSuite, wireFormat, groupContext, signingKey)
 

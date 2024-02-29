@@ -4,14 +4,17 @@ import arrow.core.raise.either
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.error.PublicMessageError
 import com.github.traderjoe95.mls.protocol.error.PublicMessageSenderError
+import com.github.traderjoe95.mls.protocol.message.MlsMessage.Companion.coerceFormat
 import com.github.traderjoe95.mls.protocol.testing.VertxFunSpec
 import com.github.traderjoe95.mls.protocol.testing.shouldBeEq
 import com.github.traderjoe95.mls.protocol.testing.shouldRaise
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
+import com.github.traderjoe95.mls.protocol.tree.PublicRatchetTree
 import com.github.traderjoe95.mls.protocol.tree.SecretTree
 import com.github.traderjoe95.mls.protocol.tree.SignaturePublicKeyLookup
 import com.github.traderjoe95.mls.protocol.types.crypto.Mac.Companion.asMac
 import com.github.traderjoe95.mls.protocol.types.framing.content.ApplicationData
+import com.github.traderjoe95.mls.protocol.types.framing.content.AuthenticatedContent
 import com.github.traderjoe95.mls.protocol.types.framing.content.Commit
 import com.github.traderjoe95.mls.protocol.types.framing.content.FramedContent
 import com.github.traderjoe95.mls.protocol.types.framing.content.Proposal
@@ -44,6 +47,18 @@ class MessageProtection : VertxFunSpec({ vertx ->
           testVectors.forEach { v ->
             val groupContext = v.groupContext
 
+            val messages = {
+              GroupMessageFactory(
+                PublicRatchetTree.blankWithLeaves(2U),
+                v.membershipKey,
+                v.senderDataSecret,
+                SecretTree.create(v.cipherSuite, v.encryptionSecret.copy(), 2U),
+                groupContext,
+                LeafIndex(1U),
+                v.signaturePriv,
+              )
+            }
+
             context("with group context ${groupContext.toShortString()}") {
               test("should be able to unprotect a public message containing a Proposal") {
                 either {
@@ -52,22 +67,8 @@ class MessageProtection : VertxFunSpec({ vertx ->
               }
 
               test("should be able to protect a public message containing a Proposal, which can be unprotected again") {
-                val pub =
-                  unsafe {
-                    val content = FramedContent.createMember(groupContext, v.proposal, LeafIndex(1U))
-                    val authData =
-                      FramedContent.AuthData(
-                        content.sign(cipherSuite, WireFormat.MlsPublicMessage, groupContext, v.signaturePriv),
-                        null,
-                      )
-
-                    MlsMessage.public(
-                      groupContext,
-                      content,
-                      authData,
-                      v.membershipKey,
-                    )
-                  }
+                val pub: MlsMessage<PublicMessage<Proposal>> =
+                  unsafe { messages().protect(v.proposal, UsePublicMessage) }.coerceFormat()
 
                 either {
                   pub.message.unprotect(groupContext, v.membershipKey, v.signaturePub)
@@ -81,22 +82,17 @@ class MessageProtection : VertxFunSpec({ vertx ->
               }
 
               test("should be able to protect a public message containing a Commit, which can be unprotected again") {
-                val pub =
+                val pub: MlsMessage<PublicMessage<Commit>> =
                   unsafe {
-                    val content = FramedContent.createMember(groupContext, v.commit, LeafIndex(1U))
-                    val authData =
-                      FramedContent.AuthData(
-                        content.sign(cipherSuite, WireFormat.MlsPublicMessage, groupContext, v.signaturePriv),
-                        cipherSuite.generateSecret(cipherSuite.hashLen).bytes.asMac,
-                      )
+                    val factory = messages()
+                    val options = UsePublicMessage
 
-                    MlsMessage.public(
-                      groupContext,
-                      content,
-                      authData,
-                      v.membershipKey,
+                    factory.protectCommit(
+                      factory.createAuthenticatedContent(v.commit, options, byteArrayOf()),
+                      cipherSuite.generateSecret(cipherSuite.hashLen).bytes.asMac,
+                      options,
                     )
-                  }
+                  }.coerceFormat()
 
                 either {
                   pub.message.unprotect(groupContext, v.membershipKey, v.signaturePub)
@@ -117,25 +113,8 @@ class MessageProtection : VertxFunSpec({ vertx ->
               }
 
               test("should be able to protect a private message containing a Proposal, which can be unprotected again") {
-                val senderSecretTree = SecretTree.create(v.cipherSuite, v.encryptionSecret.copy(), 2U)
-
-                val priv =
-                  unsafe {
-                    val content = FramedContent.createMember(groupContext, v.proposal, LeafIndex(1U))
-                    val authData =
-                      FramedContent.AuthData(
-                        content.sign(cipherSuite, WireFormat.MlsPrivateMessage, groupContext, v.signaturePriv),
-                        null,
-                      )
-
-                    MlsMessage.private(
-                      v.cipherSuite,
-                      content,
-                      authData,
-                      senderSecretTree,
-                      v.senderDataSecret,
-                    )
-                  }
+                val priv: MlsMessage<PrivateMessage<Proposal>> =
+                  unsafe { messages().protect(v.proposal, UsePrivateMessage()) }.coerceFormat()
 
                 val recipientSecretTree = SecretTree.create(v.cipherSuite, v.encryptionSecret.copy(), 2U)
 
@@ -163,25 +142,17 @@ class MessageProtection : VertxFunSpec({ vertx ->
               }
 
               test("should be able to protect a private message containing a Commit, which can be unprotected again") {
-                val senderSecretTree = SecretTree.create(v.cipherSuite, v.encryptionSecret.copy(), 2U)
-
-                val priv =
+                val priv: MlsMessage<PrivateMessage<Commit>> =
                   unsafe {
-                    val content = FramedContent.createMember(groupContext, v.commit, LeafIndex(1U))
-                    val authData =
-                      FramedContent.AuthData(
-                        content.sign(cipherSuite, WireFormat.MlsPrivateMessage, groupContext, v.signaturePriv),
-                        cipherSuite.generateSecret(cipherSuite.hashLen).bytes.asMac,
-                      )
+                    val factory = messages()
+                    val options = UsePrivateMessage()
 
-                    MlsMessage.private(
-                      v.cipherSuite,
-                      content,
-                      authData,
-                      senderSecretTree,
-                      v.senderDataSecret,
+                    factory.protectCommit(
+                      factory.createAuthenticatedContent(v.commit, options, byteArrayOf()),
+                      cipherSuite.generateSecret(cipherSuite.hashLen).bytes.asMac,
+                      options,
                     )
-                  }
+                  }.coerceFormat()
 
                 val recipientSecretTree = SecretTree.create(v.cipherSuite, v.encryptionSecret.copy(), 2U)
 
@@ -209,25 +180,7 @@ class MessageProtection : VertxFunSpec({ vertx ->
               }
 
               test("should be able to protect a private message containing application data, which can be unprotected again") {
-                val senderSecretTree = SecretTree.create(v.cipherSuite, v.encryptionSecret.copy(), 2U)
-
-                val priv =
-                  unsafe {
-                    val content = FramedContent.createMember(groupContext, v.application, LeafIndex(1U))
-                    val authData =
-                      FramedContent.AuthData(
-                        content.sign(cipherSuite, WireFormat.MlsPrivateMessage, groupContext, v.signaturePriv),
-                        null,
-                      )
-
-                    MlsMessage.private(
-                      v.cipherSuite,
-                      content,
-                      authData,
-                      senderSecretTree,
-                      v.senderDataSecret,
-                    )
-                  }
+                val priv = unsafe { messages().applicationMessage(v.application) }
 
                 val recipientSecretTree = SecretTree.create(v.cipherSuite, v.encryptionSecret.copy(), 2U)
 
@@ -243,17 +196,21 @@ class MessageProtection : VertxFunSpec({ vertx ->
 
               test("should raise an error when trying to protect a public message containing application data") {
                 shouldRaise<PublicMessageSenderError> {
-                  val content = FramedContent.createMember(groupContext, v.application, LeafIndex(1U))
+                  val content = FramedContent.createMember(v.application, groupContext, LeafIndex(1U))
                   val authData =
                     FramedContent.AuthData(
                       content.sign(cipherSuite, WireFormat.MlsPublicMessage, groupContext, v.signaturePriv),
                       null,
                     )
 
-                  MlsMessage.public(
+                  PublicMessage.create(
+                    AuthenticatedContent(
+                      WireFormat.MlsPublicMessage,
+                      content,
+                      authData.signature,
+                      authData.confirmationTag,
+                    ),
                     groupContext,
-                    content,
-                    authData,
                     v.membershipKey,
                   )
                 } shouldBe PublicMessageError.ApplicationMessageMustNotBePublic

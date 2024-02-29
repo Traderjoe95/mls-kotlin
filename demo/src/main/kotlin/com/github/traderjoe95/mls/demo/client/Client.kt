@@ -15,11 +15,9 @@ import com.github.traderjoe95.mls.demo.util.get
 import com.github.traderjoe95.mls.demo.util.getOrElse
 import com.github.traderjoe95.mls.demo.util.plus
 import com.github.traderjoe95.mls.demo.util.set
-import com.github.traderjoe95.mls.protocol.app.ApplicationCtx
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.error.EpochError
 import com.github.traderjoe95.mls.protocol.error.ExternalJoinError
-import com.github.traderjoe95.mls.protocol.error.ExternalPskError
 import com.github.traderjoe95.mls.protocol.error.GroupCreationError
 import com.github.traderjoe95.mls.protocol.error.PskError
 import com.github.traderjoe95.mls.protocol.error.UnknownGroup
@@ -32,17 +30,17 @@ import com.github.traderjoe95.mls.protocol.message.GroupMessage
 import com.github.traderjoe95.mls.protocol.message.KeyPackage
 import com.github.traderjoe95.mls.protocol.message.MlsMessage
 import com.github.traderjoe95.mls.protocol.message.Welcome
+import com.github.traderjoe95.mls.protocol.psk.ExternalPskId
+import com.github.traderjoe95.mls.protocol.psk.PreSharedKeyId
 import com.github.traderjoe95.mls.protocol.psk.PskLookup
+import com.github.traderjoe95.mls.protocol.psk.ResumptionPskId
+import com.github.traderjoe95.mls.protocol.psk.ResumptionPskUsage
 import com.github.traderjoe95.mls.protocol.types.ApplicationId
 import com.github.traderjoe95.mls.protocol.types.BasicCredential
 import com.github.traderjoe95.mls.protocol.types.Credential
 import com.github.traderjoe95.mls.protocol.types.CredentialType
 import com.github.traderjoe95.mls.protocol.types.GroupId
 import com.github.traderjoe95.mls.protocol.types.RequiredCapabilities
-import com.github.traderjoe95.mls.protocol.types.crypto.ExternalPskId
-import com.github.traderjoe95.mls.protocol.types.crypto.PreSharedKeyId
-import com.github.traderjoe95.mls.protocol.types.crypto.ResumptionPskId
-import com.github.traderjoe95.mls.protocol.types.crypto.ResumptionPskUsage
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret
 import com.github.traderjoe95.mls.protocol.types.crypto.SignatureKeyPair
 import com.github.traderjoe95.mls.protocol.types.tree.LeafNode
@@ -59,8 +57,7 @@ class Client(
   val userName: String,
   val applicationId: ULID = ULID.new(),
   private val credential: Credential = BasicCredential(userName.encodeToByteArray()),
-) : ApplicationCtx<String>,
-  PskLookup,
+) : PskLookup,
   com.github.traderjoe95.mls.protocol.service.AuthenticationService<String> by AuthenticationService,
   com.github.traderjoe95.mls.protocol.service.DeliveryService<String> by DeliveryService {
   private val messages: Channel<Pair<ULID, ByteArray>> = DeliveryService.registerUser(userName)
@@ -123,7 +120,7 @@ class Client(
 
   private suspend fun processMessage(message: MlsMessage<*>): GroupChat =
     when (val body = message.message) {
-      is GroupMessage<*, *> ->
+      is GroupMessage<*> ->
         when (val group = groups[body.groupId]) {
           null -> error("[$userName] Unknown group ${body.groupId}")
           else ->
@@ -166,11 +163,11 @@ class Client(
       groups[groupChat.state.groupId] = groupChat
     }
 
-  override fun groupIdExists(id: GroupId): Boolean = id in groups
+  fun groupIdExists(id: GroupId): Boolean = id in groups
 
-  override fun getKeyPackage(ref: KeyPackage.Ref): KeyPackage.Private? = keyPackages[ref.hashCode]
+  fun getKeyPackage(ref: KeyPackage.Ref): KeyPackage.Private? = keyPackages[ref.hashCode]
 
-  override fun newKeyPackage(cipherSuite: CipherSuite): KeyPackage.Private {
+  fun newKeyPackage(cipherSuite: CipherSuite): KeyPackage.Private {
     val initKeyPair = cipherSuite.generateHpkeKeyPair()
     val encryptionKeyPair = cipherSuite.generateHpkeKeyPair()
     val signingKeyPair = signatureKeyPairs.computeIfAbsent(cipherSuite, CipherSuite::generateSignatureKeyPair)
@@ -217,11 +214,11 @@ class Client(
           .run {
             when {
               id.pskEpoch == epoch -> keySchedule.resumptionPsk
-              id.pskEpoch < epoch -> raise(EpochError.PastEpoch)
-              else -> raise(EpochError.FutureEpoch)
+              id.pskEpoch < epoch -> raise(EpochError.EpochNotAvailable(id.pskGroupId, id.pskEpoch))
+              else -> raise(EpochError.FutureEpoch(id.pskGroupId, id.pskEpoch, epoch))
             }
           }
 
-      is ExternalPskId -> externalPsks[id.pskId.hex] ?: raise(ExternalPskError.UnknownExternalPsk(id.pskId))
+      is ExternalPskId -> externalPsks[id.pskId.hex] ?: raise(PskError.PskNotFound(id))
     }
 }

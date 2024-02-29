@@ -15,7 +15,12 @@ import com.github.traderjoe95.mls.protocol.group.newGroup
 import com.github.traderjoe95.mls.protocol.group.prepareCommit
 import com.github.traderjoe95.mls.protocol.message.GroupMessage
 import com.github.traderjoe95.mls.protocol.message.KeyPackage
+import com.github.traderjoe95.mls.protocol.message.MessageOptions
 import com.github.traderjoe95.mls.protocol.message.MlsMessage
+import com.github.traderjoe95.mls.protocol.message.UsePublicMessage
+import com.github.traderjoe95.mls.protocol.psk.PreSharedKeyId
+import com.github.traderjoe95.mls.protocol.psk.ResumptionPskId
+import com.github.traderjoe95.mls.protocol.psk.ResumptionPskUsage
 import com.github.traderjoe95.mls.protocol.service.AuthenticationService
 import com.github.traderjoe95.mls.protocol.service.DeliveryService
 import com.github.traderjoe95.mls.protocol.service.authenticateCredentials
@@ -25,9 +30,6 @@ import com.github.traderjoe95.mls.protocol.tree.nonBlankLeafNodeIndices
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtension
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtensions
 import com.github.traderjoe95.mls.protocol.types.GroupId
-import com.github.traderjoe95.mls.protocol.types.crypto.PreSharedKeyId
-import com.github.traderjoe95.mls.protocol.types.crypto.ResumptionPskId
-import com.github.traderjoe95.mls.protocol.types.crypto.ResumptionPskUsage
 import com.github.traderjoe95.mls.protocol.types.framing.content.Add
 import com.github.traderjoe95.mls.protocol.types.framing.content.Commit
 import com.github.traderjoe95.mls.protocol.types.framing.content.PreSharedKey
@@ -41,15 +43,15 @@ suspend fun <Identity : Any> GroupState.Active.reInitGroup(
   cipherSuite: CipherSuite = this.cipherSuite,
   extensions: GroupContextExtensions = this.extensions,
   authenticatedData: ByteArray = byteArrayOf(),
-  usePrivateMessage: Boolean = false,
-): Pair<GroupState.Suspended, MlsMessage<GroupMessage<Commit, *>>> {
+  messageOptions: MessageOptions = UsePublicMessage,
+): Pair<GroupState.Suspended, MlsMessage<GroupMessage<Commit>>> {
   val newGroupId = groupId ?: GroupId.new()
 
   val oldGroupResult =
     prepareCommit(
       listOf(ReInit(newGroupId, protocolVersion, cipherSuite, extensions)),
       authenticatedData = authenticatedData,
-      usePrivateMessage = usePrivateMessage,
+      messageOptions = messageOptions,
     )
   val suspended = oldGroupResult.newGroupState as GroupState.Suspended
 

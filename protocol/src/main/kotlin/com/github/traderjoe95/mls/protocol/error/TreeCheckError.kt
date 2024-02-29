@@ -12,15 +12,16 @@ sealed interface TreeCheckError : JoinError {
 
   data class NotParentHashValid(val nodeIdx: NodeIndex) : TreeCheckError
 
-  data class BadUnmergedLeaf(val parentIdx: NodeIndex, val unmergedLeafIdx: LeafIndex, val reason: String) : TreeCheckError
+  data class BadUnmergedLeaf(val parentIdx: NodeIndex, val unmergedLeafIdx: LeafIndex, val reason: String) :
+    TreeCheckError
 }
 
-sealed interface LeafNodeCheckError : TreeCheckError, InvalidCommit {
+sealed interface LeafNodeCheckError : TreeCheckError, InvalidCommit, KeyPackageValidationError, UpdateValidationError {
   data class UnsupportedCapabilities(
     val leafIdx: LeafIndex,
     val requiredCapabilities: RequiredCapabilities,
     val capabilities: Capabilities,
-  ) : LeafNodeCheckError, ExtensionSupportError
+  ) : LeafNodeCheckError, ExtensionSupportError, GroupContextExtensionsValidationError
 
   data class UnsupportedMemberCredential(val leafIndices: List<LeafIndex>) : LeafNodeCheckError
 
@@ -28,7 +29,9 @@ sealed interface LeafNodeCheckError : TreeCheckError, InvalidCommit {
 
   data class LifetimeExceeded(val notBefore: Instant, val notAfter: Instant, val now: Instant) : LeafNodeCheckError
 
-  data class UnsupportedExtensions(val leafIdx: LeafIndex, val extensions: Set<Any>) : LeafNodeCheckError
+  data class UnsupportedExtensions(val leafIdx: LeafIndex, val extensions: Set<Any>) :
+    LeafNodeCheckError,
+    GroupContextExtensionsValidationError
 
   data class WrongSource(val expected: LeafNodeSource, val actual: LeafNodeSource) : LeafNodeCheckError
 

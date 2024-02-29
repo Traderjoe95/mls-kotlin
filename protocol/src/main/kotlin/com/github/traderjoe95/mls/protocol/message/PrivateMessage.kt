@@ -23,6 +23,8 @@ import com.github.traderjoe95.mls.protocol.error.PrivateMessageRecipientError
 import com.github.traderjoe95.mls.protocol.error.PrivateMessageSenderError
 import com.github.traderjoe95.mls.protocol.group.GroupContext
 import com.github.traderjoe95.mls.protocol.group.GroupState
+import com.github.traderjoe95.mls.protocol.message.padding.PaddingStrategy
+import com.github.traderjoe95.mls.protocol.message.padding.deterministic.Padme
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.tree.SecretTree
 import com.github.traderjoe95.mls.protocol.tree.SignaturePublicKeyLookup
@@ -43,8 +45,6 @@ import com.github.traderjoe95.mls.protocol.types.framing.content.Proposal
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ContentType
 import com.github.traderjoe95.mls.protocol.types.framing.enums.SenderType
 import com.github.traderjoe95.mls.protocol.types.framing.enums.WireFormat
-import com.github.traderjoe95.mls.protocol.types.framing.message.padding.PaddingStrategy
-import com.github.traderjoe95.mls.protocol.types.framing.message.padding.deterministic.Padme
 
 data class PrivateMessage<out C : Content<C>>(
   override val groupId: GroupId,
@@ -53,7 +53,7 @@ data class PrivateMessage<out C : Content<C>>(
   val authenticatedData: ByteArray,
   val encryptedSenderData: Ciphertext,
   val ciphertext: Ciphertext,
-) : GroupMessage<C, PrivateMessageRecipientError>,
+) : GroupMessage<C>,
   Struct6T.Shape<GroupId, ULong, ContentType<C>, ByteArray, Ciphertext, Ciphertext> {
   constructor(framedContent: FramedContent<C>, encryptedSenderData: Ciphertext, ciphertext: Ciphertext) : this(
     framedContent.groupId,
@@ -174,12 +174,6 @@ data class PrivateMessage<out C : Content<C>>(
           .field("encrypted_sender_data", Ciphertext.dataT)
           .field("ciphertext", Ciphertext.dataT)
       }.lift { g, e, ct, aad, esd, ciph -> PrivateMessage(g, e, ct as ContentType<Content<*>>, aad, esd, ciph) }
-
-    context(GroupState, Raise<PrivateMessageSenderError>)
-    suspend fun <C : Content<C>> create(
-      authContent: AuthenticatedContent<C>,
-      paddingStrategy: PaddingStrategy = Padme,
-    ): PrivateMessage<C> = create(cipherSuite, authContent, secretTree, keySchedule.senderDataSecret, paddingStrategy)
 
     context(Raise<PrivateMessageSenderError>)
     suspend fun <C : Content<C>> create(

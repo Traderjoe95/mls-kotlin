@@ -1,6 +1,6 @@
-package com.github.traderjoe95.mls.protocol.types.framing.message.padding.randomized
+package com.github.traderjoe95.mls.protocol.message.padding.randomized
 
-import com.github.traderjoe95.mls.protocol.types.framing.message.padding.PaddingStrategy
+import com.github.traderjoe95.mls.protocol.message.padding.PaddingStrategy
 import com.github.traderjoe95.mls.protocol.util.wipe
 import java.security.SecureRandom
 

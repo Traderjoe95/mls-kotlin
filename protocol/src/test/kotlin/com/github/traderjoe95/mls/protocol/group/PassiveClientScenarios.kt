@@ -7,24 +7,21 @@ import arrow.core.right
 import com.github.traderjoe95.mls.protocol.crypto.KeySchedule
 import com.github.traderjoe95.mls.protocol.error.CredentialIdentityValidationError
 import com.github.traderjoe95.mls.protocol.error.CredentialValidationError
-import com.github.traderjoe95.mls.protocol.error.ExternalPskError
 import com.github.traderjoe95.mls.protocol.error.IsSameClientError
-import com.github.traderjoe95.mls.protocol.error.ProcessMessageError
 import com.github.traderjoe95.mls.protocol.error.PskError
-import com.github.traderjoe95.mls.protocol.error.UnknownGroup
 import com.github.traderjoe95.mls.protocol.interop.group.PassiveClientTestVector
 import com.github.traderjoe95.mls.protocol.message.CommitMessage
 import com.github.traderjoe95.mls.protocol.message.MlsMessage.Companion.coerceFormat
 import com.github.traderjoe95.mls.protocol.message.ProposalMessage
+import com.github.traderjoe95.mls.protocol.psk.ExternalPskId
+import com.github.traderjoe95.mls.protocol.psk.PreSharedKeyId
 import com.github.traderjoe95.mls.protocol.psk.PskLookup
+import com.github.traderjoe95.mls.protocol.psk.ResumptionPskId
 import com.github.traderjoe95.mls.protocol.service.AuthenticationService
 import com.github.traderjoe95.mls.protocol.testing.VertxFunSpec
 import com.github.traderjoe95.mls.protocol.testing.shouldBeEq
 import com.github.traderjoe95.mls.protocol.types.Credential
 import com.github.traderjoe95.mls.protocol.types.GroupId
-import com.github.traderjoe95.mls.protocol.types.crypto.ExternalPskId
-import com.github.traderjoe95.mls.protocol.types.crypto.PreSharedKeyId
-import com.github.traderjoe95.mls.protocol.types.crypto.ResumptionPskId
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret
 import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePublicKey
 import com.github.traderjoe95.mls.protocol.util.foldWith
@@ -77,7 +74,7 @@ class PassiveClientScenarios : VertxFunSpec({ vertx ->
                             state.foldWith(epoch.proposals) {
                               unsafe {
                                 with(AuthenticationSvc) {
-                                  process(it.coerceFormat<ProposalMessage<ProcessMessageError>>().message)
+                                  process(it.coerceFormat<ProposalMessage>().message)
                                 }
                               }.shouldBeInstanceOf<GroupState.Active>()
                             }
@@ -86,7 +83,7 @@ class PassiveClientScenarios : VertxFunSpec({ vertx ->
                             unsafe {
                               with(AuthenticationSvc) {
                                 state.process(
-                                  epoch.commit.coerceFormat<CommitMessage<ProcessMessageError>>().message,
+                                  epoch.commit.coerceFormat<CommitMessage>().message,
                                   pskLookup,
                                 )
                               }
@@ -120,7 +117,7 @@ class PassiveClientScenarios : VertxFunSpec({ vertx ->
               this@asPskLookup
                 .find { it.pskId.contentEquals(id.pskId) }
                 ?.psk
-                ?: raise(ExternalPskError.UnknownExternalPsk(id.pskId))
+                ?: raise(PskError.PskNotFound(id))
 
             is ResumptionPskId ->
               if (groupId != null && id.pskGroupId eq groupId) {
@@ -128,7 +125,7 @@ class PassiveClientScenarios : VertxFunSpec({ vertx ->
                   ?.resumptionPsk
                   ?: raise(PskError.PskNotFound(id))
               } else {
-                raise(UnknownGroup(id.pskGroupId))
+                raise(PskError.PskNotFound(id))
               }
           }
       }

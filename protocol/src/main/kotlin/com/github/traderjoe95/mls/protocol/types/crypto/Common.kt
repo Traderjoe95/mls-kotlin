@@ -7,18 +7,19 @@ import com.github.traderjoe95.mls.codec.type.asUtf8String
 import com.github.traderjoe95.mls.codec.type.opaque
 import com.github.traderjoe95.mls.codec.type.struct.Struct2T
 import com.github.traderjoe95.mls.codec.type.struct.struct
+import com.github.traderjoe95.mls.protocol.types.MoveCopyWipe
 import com.github.traderjoe95.mls.protocol.types.RefinedBytes
 import com.github.traderjoe95.mls.protocol.types.crypto.Nonce.Companion.asNonce
 import com.github.traderjoe95.mls.protocol.util.wipe
 
 @JvmInline
-value class Secret(override val bytes: ByteArray) : RefinedBytes<Secret> {
-  fun copy(): Secret = Secret(bytes.copyOf())
+value class Secret(override val bytes: ByteArray) : RefinedBytes<Secret>, MoveCopyWipe<Secret> {
+  override fun copy(): Secret = Secret(bytes.copyOf())
 
   val asNonce: Nonce
     get() = bytes.asNonce
 
-  fun wipe(): Unit = bytes.wipe()
+  override fun wipe(): Unit = bytes.wipe()
 
   companion object : Encodable<Secret> {
     override val dataT: DataType<Secret> = RefinedBytes.dataT(::Secret)

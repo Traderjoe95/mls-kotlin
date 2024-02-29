@@ -18,6 +18,7 @@ import com.github.traderjoe95.mls.protocol.types.crypto.HpkePublicKey
 import com.github.traderjoe95.mls.protocol.types.crypto.KemOutput
 import com.github.traderjoe95.mls.protocol.types.crypto.KemOutput.Companion.asKemOutput
 import com.github.traderjoe95.mls.protocol.types.crypto.Nonce
+import com.github.traderjoe95.mls.protocol.types.crypto.Nonce.Companion.asNonce
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret.Companion.asSecret
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair
@@ -161,7 +162,9 @@ internal class Hpke(
       null,
     )
 
-  override fun generateSecret(len: UShort): Secret = ByteArray(len.toInt()).also { rand.nextBytes(it) }.asSecret
+  override fun generateSecret(len: UShort): Secret = ByteArray(len.toInt()).also(rand::nextBytes).asSecret
+
+  override fun generateNonce(len: UShort): Nonce = ByteArray(len.toInt()).also(rand::nextBytes).asNonce
 
   override fun generateHpkeKeyPair(): HpkeKeyPair = dhKem.generatePrivateKey().asHpkeKeyPair
 

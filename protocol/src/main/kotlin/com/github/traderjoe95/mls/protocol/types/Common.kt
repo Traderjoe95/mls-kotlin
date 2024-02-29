@@ -7,6 +7,22 @@ import com.github.traderjoe95.mls.codec.type.derive
 import com.github.traderjoe95.mls.codec.type.opaque
 import java.security.SecureRandom
 
+interface Movable<T : Movable<T>> {
+  fun move(): T
+}
+
+interface Copyable<T : Copyable<T>> {
+  fun copy(): T
+}
+
+interface Wipable {
+  fun wipe()
+}
+
+interface MoveCopyWipe<T : MoveCopyWipe<T>> : Movable<T>, Copyable<T>, Wipable {
+  override fun move(): T = copy().also { wipe() }
+}
+
 interface RefinedBytes<T : RefinedBytes<T>> {
   val bytes: ByteArray
 

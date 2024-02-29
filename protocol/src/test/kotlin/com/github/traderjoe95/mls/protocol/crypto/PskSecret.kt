@@ -1,9 +1,9 @@
 package com.github.traderjoe95.mls.protocol.crypto
 
 import com.github.traderjoe95.mls.protocol.interop.crypto.PskSecretTestVector
+import com.github.traderjoe95.mls.protocol.psk.ExternalPskId
 import com.github.traderjoe95.mls.protocol.testing.VertxFunSpec
 import com.github.traderjoe95.mls.protocol.testing.shouldBeEq
-import com.github.traderjoe95.mls.protocol.types.crypto.ExternalPskId
 import com.github.traderjoe95.mls.protocol.util.hex
 import io.kotest.common.runBlocking
 import io.kotest.core.factory.TestFactory

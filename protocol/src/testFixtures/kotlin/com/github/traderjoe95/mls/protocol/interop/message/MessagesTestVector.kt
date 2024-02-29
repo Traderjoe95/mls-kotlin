@@ -25,6 +25,9 @@ import com.github.traderjoe95.mls.protocol.message.PrivateMessage
 import com.github.traderjoe95.mls.protocol.message.PrivateMessage.Companion.encodeUnsafe
 import com.github.traderjoe95.mls.protocol.message.PublicMessage
 import com.github.traderjoe95.mls.protocol.message.Welcome
+import com.github.traderjoe95.mls.protocol.psk.ExternalPskId
+import com.github.traderjoe95.mls.protocol.psk.ResumptionPskId
+import com.github.traderjoe95.mls.protocol.psk.ResumptionPskUsage
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.tree.PublicRatchetTree.Companion.encodeUnsafe
 import com.github.traderjoe95.mls.protocol.tree.SecretTree
@@ -33,12 +36,9 @@ import com.github.traderjoe95.mls.protocol.types.ExternalPub
 import com.github.traderjoe95.mls.protocol.types.GroupId
 import com.github.traderjoe95.mls.protocol.types.RatchetTree
 import com.github.traderjoe95.mls.protocol.types.crypto.Aad
-import com.github.traderjoe95.mls.protocol.types.crypto.ExternalPskId
 import com.github.traderjoe95.mls.protocol.types.crypto.Mac
 import com.github.traderjoe95.mls.protocol.types.crypto.Mac.Companion.asMac
 import com.github.traderjoe95.mls.protocol.types.crypto.Nonce.Companion.asNonce
-import com.github.traderjoe95.mls.protocol.types.crypto.ResumptionPskId
-import com.github.traderjoe95.mls.protocol.types.crypto.ResumptionPskUsage
 import com.github.traderjoe95.mls.protocol.types.framing.content.Add
 import com.github.traderjoe95.mls.protocol.types.framing.content.ApplicationData
 import com.github.traderjoe95.mls.protocol.types.framing.content.AuthenticatedContent
@@ -212,7 +212,7 @@ data class MessagesTestVector(
       val commit = Random.nextCommit(cipherSuite, groupId)
 
       val applicationData = Random.nextBytes(64)
-      val applicationContent = FramedContent.createMember(groupContext, ApplicationData(applicationData), leafIndex)
+      val applicationContent = FramedContent.createMember(ApplicationData(applicationData), groupContext, leafIndex)
       val applicationPublicMessage =
         MlsMessage(
           ProtocolVersion.MLS_1_0,
@@ -227,8 +227,8 @@ data class MessagesTestVector(
 
       val proposalContent =
         FramedContent.createMember(
-          groupContext,
           Random.choice(listOf(add, update, remove, preSharedKey, remove, externalInit, groupContextExtensions)),
+          groupContext,
           leafIndex,
         )
       val proposalPublicMessage =
@@ -243,7 +243,7 @@ data class MessagesTestVector(
           ),
         )
 
-      val commitContent = FramedContent.createMember(groupContext, commit, leafIndex)
+      val commitContent = FramedContent.createMember(commit, groupContext, leafIndex)
       val commitPublicMessage =
         MlsMessage(
           ProtocolVersion.MLS_1_0,

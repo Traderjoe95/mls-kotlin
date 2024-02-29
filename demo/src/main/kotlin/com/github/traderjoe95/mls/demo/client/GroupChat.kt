@@ -21,7 +21,6 @@ import com.github.traderjoe95.mls.protocol.group.resumption.createWelcome
 import com.github.traderjoe95.mls.protocol.group.resumption.reInitGroup
 import com.github.traderjoe95.mls.protocol.message.GroupMessage
 import com.github.traderjoe95.mls.protocol.message.HandshakeMessage
-import com.github.traderjoe95.mls.protocol.message.MlsMessage
 import com.github.traderjoe95.mls.protocol.tree.findLeaf
 import com.github.traderjoe95.mls.protocol.types.framing.content.Add
 import com.github.traderjoe95.mls.protocol.types.framing.content.ApplicationData
@@ -40,11 +39,13 @@ class GroupChat(
   suspend fun addMember(user: String): Either<SenderCommitError, GroupChat> =
     either {
       with(client) {
-        state.prepareCommit(
-          listOf(
-            Add(DeliveryService.getKeyPackage(Config.protocolVersion, Config.cipherSuite, user).getOrThrow()),
-          ),
-        ).let { (ctx, commit, newMemberWelcome) ->
+        state.ensureActive {
+          prepareCommit(
+            listOf(
+              Add(DeliveryService.getKeyPackage(Config.protocolVersion, Config.cipherSuite, user).getOrThrow()),
+            ),
+          )
+        }.let { (ctx, commit, newMemberWelcome) ->
           DeliveryService.sendMessageToGroup(commit, state.groupId, userName).getOrThrow()
 
           newMemberWelcome.forEach { (welcome, to) ->
@@ -68,9 +69,9 @@ class GroupChat(
             client.authenticateCredentialIdentity(user, signaturePublicKey, credential).isRight()
           } ?: error("User $user is not member of the group")
 
-        state.prepareCommit(
-          listOf(Remove(leafIndex)),
-        ).let { (ctx, commit, _) ->
+        state.ensureActive {
+          prepareCommit(listOf(Remove(leafIndex)))
+        }.let { (ctx, commit, _) ->
           DeliveryService.sendMessageToGroup(commit, state.groupId, userName).getOrThrow()
 
           GroupChat(ctx, client).register()
@@ -150,14 +151,14 @@ class GroupChat(
   suspend fun sendTextMessage(message: String) =
     either {
       DeliveryService.sendMessageToGroup(
-        with(state) { MlsMessage.private(ApplicationData(message.encodeToByteArray())) },
+        state.coerceActive().messages.applicationMessage(ApplicationData(message.encodeToByteArray())),
         state.groupId,
         client.userName,
       ).bind()
     }
 
   @Suppress("UNCHECKED_CAST")
-  suspend fun processMessage(message: GroupMessage<*, *>): GroupChat =
+  suspend fun processMessage(message: GroupMessage<*>): GroupChat =
     either {
       if (message.contentType == ContentType.Commit && message.epoch != state.epoch) {
         println("[${client.userName}] Received commit for wrong epoch, dropping")
@@ -166,22 +167,21 @@ class GroupChat(
         println("[${client.userName}] Received proposal for wrong epoch, dropping")
         this@GroupChat
       } else if (message.contentType is ContentType.Handshake) {
-        processHandshakeMessage(message as HandshakeMessage<*>)
+        processHandshakeMessage(message as HandshakeMessage)
       } else {
         processApplicationData(
-          state.ensureActive { message.unprotect(this) } as AuthenticatedContent<ApplicationData>
+          state.ensureActive { message.unprotect(this) } as AuthenticatedContent<ApplicationData>,
         )
       }
     }.getOrThrow()
 
   context(Raise<ProcessMessageError>)
-  private suspend fun processHandshakeMessage(message: HandshakeMessage<*>): GroupChat =
+  private suspend fun processHandshakeMessage(message: HandshakeMessage): GroupChat =
     with(client) {
-      @Suppress("UNCHECKED_CAST")
       GroupChat(
         recover(
           block = {
-            state.coerceActive().process(message as HandshakeMessage<ProcessMessageError>, psks = client)
+            state.coerceActive().process(message, psks = client)
           },
           recover = {
 //              if (it == RemovedFromGroup) DeliveryService.unregisterGroup(groupId, client.applicationId)

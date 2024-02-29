@@ -28,5 +28,7 @@ data class Lifetime(
         it.field("not_before", uint64.asULong)
           .field("not_after", uint64.asULong)
       }.lift(::Lifetime)
+
+    fun always(): Lifetime = Lifetime(0U, ULong.MAX_VALUE)
   }
 }

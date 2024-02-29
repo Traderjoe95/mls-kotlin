@@ -10,6 +10,7 @@ import com.github.traderjoe95.mls.codec.type.struct.member.then
 import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.message.KeyPackage
+import com.github.traderjoe95.mls.protocol.psk.PreSharedKeyId
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.types.Extension
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtension
@@ -17,7 +18,6 @@ import com.github.traderjoe95.mls.protocol.types.GroupId
 import com.github.traderjoe95.mls.protocol.types.ProposalType
 import com.github.traderjoe95.mls.protocol.types.RefinedBytes
 import com.github.traderjoe95.mls.protocol.types.crypto.KemOutput
-import com.github.traderjoe95.mls.protocol.types.crypto.PreSharedKeyId
 import com.github.traderjoe95.mls.protocol.types.extensionList
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ContentType
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion

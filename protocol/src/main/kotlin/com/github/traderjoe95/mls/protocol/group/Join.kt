@@ -19,7 +19,9 @@ import com.github.traderjoe95.mls.protocol.message.KeyPackage
 import com.github.traderjoe95.mls.protocol.message.MlsMessage
 import com.github.traderjoe95.mls.protocol.message.PublicMessage
 import com.github.traderjoe95.mls.protocol.message.Welcome
+import com.github.traderjoe95.mls.protocol.psk.PreSharedKeyId
 import com.github.traderjoe95.mls.protocol.psk.PskLookup
+import com.github.traderjoe95.mls.protocol.psk.ResumptionPskId
 import com.github.traderjoe95.mls.protocol.service.AuthenticationService
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.tree.PublicRatchetTree
@@ -35,8 +37,6 @@ import com.github.traderjoe95.mls.protocol.types.GroupContextExtension
 import com.github.traderjoe95.mls.protocol.types.GroupContextExtensions
 import com.github.traderjoe95.mls.protocol.types.GroupId
 import com.github.traderjoe95.mls.protocol.types.RequiredCapabilities
-import com.github.traderjoe95.mls.protocol.types.crypto.PreSharedKeyId
-import com.github.traderjoe95.mls.protocol.types.crypto.ResumptionPskId
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret
 import com.github.traderjoe95.mls.protocol.types.framing.Sender
 import com.github.traderjoe95.mls.protocol.types.framing.content.AuthenticatedContent
@@ -56,7 +56,7 @@ fun newGroup(
   protocolVersion: ProtocolVersion = keyPackage.version,
   cipherSuite: CipherSuite = keyPackage.cipherSuite,
   groupId: GroupId? = null,
-): GroupState {
+): GroupState.Active {
   keyPackage.checkParametersCompatible(protocolVersion, cipherSuite)
 
   val ownLeaf = LeafIndex(0U)
@@ -246,15 +246,9 @@ suspend fun <Identity : Any> GroupInfo.joinGroupExternal(
     updatedTree,
     keySchedule,
     keyPackage.signaturePrivateKey,
-  ) to
-    with(cipherSuite) {
-      with(keySchedule) {
-        MlsMessage.public(
-          groupContext,
-          AuthenticatedContent(WireFormat.MlsPublicMessage, framedContent, signature, confirmationTag),
-        )
-      }
-    }
+  ).let { state ->
+    state to state.messages.protectPublic(AuthenticatedContent(WireFormat.MlsPublicMessage, framedContent, signature, confirmationTag))
+  }
 }
 
 context(Raise<ExtensionSupportError>)

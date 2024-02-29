@@ -87,6 +87,9 @@ value class LeafIndex(val value: UInt) : TreeIndex {
 fun Iterable<LeafNode<*>?>.zipWithLeafIndex(): Iterable<Pair<LeafNode<*>?, LeafIndex>> =
   zip(generateSequence(LeafIndex(0U)) { LeafIndex(it.value + 1U) }.asIterable())
 
+fun Sequence<LeafNode<*>?>.zipWithLeafIndex(): Sequence<Pair<LeafNode<*>?, LeafIndex>> =
+  zip(generateSequence(LeafIndex(0U)) { LeafIndex(it.value + 1U) })
+
 @JvmInline
 value class NodeIndex(val value: UInt) : TreeIndex {
   override val leafIndex: LeafIndex

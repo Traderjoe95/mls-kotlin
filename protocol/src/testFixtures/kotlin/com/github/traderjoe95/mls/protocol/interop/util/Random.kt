@@ -3,6 +3,9 @@ package com.github.traderjoe95.mls.protocol.interop.util
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.group.GroupContext
 import com.github.traderjoe95.mls.protocol.message.KeyPackage
+import com.github.traderjoe95.mls.protocol.psk.ExternalPskId
+import com.github.traderjoe95.mls.protocol.psk.ResumptionPskId
+import com.github.traderjoe95.mls.protocol.psk.ResumptionPskUsage
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.types.BasicCredential
 import com.github.traderjoe95.mls.protocol.types.CredentialType
@@ -11,11 +14,8 @@ import com.github.traderjoe95.mls.protocol.types.ExternalSenders
 import com.github.traderjoe95.mls.protocol.types.GroupId
 import com.github.traderjoe95.mls.protocol.types.ProposalType
 import com.github.traderjoe95.mls.protocol.types.RequiredCapabilities
-import com.github.traderjoe95.mls.protocol.types.crypto.ExternalPskId
 import com.github.traderjoe95.mls.protocol.types.crypto.HashReference.Companion.asHashReference
 import com.github.traderjoe95.mls.protocol.types.crypto.Nonce.Companion.asNonce
-import com.github.traderjoe95.mls.protocol.types.crypto.ResumptionPskId
-import com.github.traderjoe95.mls.protocol.types.crypto.ResumptionPskUsage
 import com.github.traderjoe95.mls.protocol.types.crypto.SignatureKeyPair
 import com.github.traderjoe95.mls.protocol.types.framing.content.Add
 import com.github.traderjoe95.mls.protocol.types.framing.content.Commit
@@ -81,19 +81,16 @@ fun Random.nextUpdate(
   cipherSuite: CipherSuite,
   groupId: GroupId = GroupId.new(),
 ): Update {
-  val (signaturePrivateKey, signaturePublicKey) = cipherSuite.generateSignatureKeyPair()
-
   return Update(
     LeafNode.update(
       cipherSuite,
-      signaturePublicKey,
+      cipherSuite.generateSignatureKeyPair(),
       cipherSuite.generateHpkeKeyPair().public,
       BasicCredential(Random.nextBytes(32)),
       Capabilities.create(listOf(CredentialType.Basic), listOf(cipherSuite)),
       listOf(),
       LeafIndex(Random.nextUInt(0U..1U)),
       groupId,
-      signaturePrivateKey,
     ),
   )
 }

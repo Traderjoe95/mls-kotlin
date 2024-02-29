@@ -23,6 +23,7 @@ import com.github.traderjoe95.mls.protocol.types.LeafNodeExtensions
 import com.github.traderjoe95.mls.protocol.types.RefinedBytes.Companion.neqNullable
 import com.github.traderjoe95.mls.protocol.types.crypto.HpkePublicKey
 import com.github.traderjoe95.mls.protocol.types.crypto.Signature
+import com.github.traderjoe95.mls.protocol.types.crypto.SignatureKeyPair
 import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePrivateKey
 import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePublicKey
 import com.github.traderjoe95.mls.protocol.types.extensionList
@@ -260,24 +261,23 @@ data class LeafNode<S : LeafNodeSource>(
 
     fun update(
       cipherSuite: ICipherSuite,
-      signaturePublicKey: SignaturePublicKey,
+      signatureKeyPair: SignatureKeyPair,
       encryptionKey: HpkePublicKey,
       credential: Credential,
       capabilities: Capabilities,
       extensions: LeafNodeExtensions,
       leafIndex: LeafIndex,
       groupId: GroupId,
-      signaturePrivateKey: SignaturePrivateKey,
     ): UpdateLeafNode =
       cipherSuite.signWithLabel(
-        signaturePrivateKey,
+        signatureKeyPair.private,
         "LeafNodeTBS",
-        Tbs.update(encryptionKey, signaturePublicKey, credential, capabilities, extensions, leafIndex, groupId)
+        Tbs.update(encryptionKey, signatureKeyPair.public, credential, capabilities, extensions, leafIndex, groupId)
           .encodeUnsafe(),
       ).let { signature ->
         LeafNode(
           encryptionKey,
-          signaturePublicKey,
+          signatureKeyPair.public,
           credential,
           capabilities,
           LeafNodeSource.Update,

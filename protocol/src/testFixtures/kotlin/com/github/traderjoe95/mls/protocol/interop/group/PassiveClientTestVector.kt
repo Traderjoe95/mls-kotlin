@@ -69,8 +69,8 @@ data class PassiveClientTestVector(
   }
 
   data class GroupEpoch(
-    val proposals: List<MlsProposalMessage<*>>,
-    val commit: MlsCommitMessage<*>,
+    val proposals: List<MlsProposalMessage>,
+    val commit: MlsCommitMessage,
     val epochAuthenticator: Secret,
   ) {
     @OptIn(ExperimentalStdlibApi::class)

@@ -7,7 +7,7 @@ import com.github.traderjoe95.mls.protocol.interop.util.getHexBinary
 import com.github.traderjoe95.mls.protocol.interop.util.getNonce
 import com.github.traderjoe95.mls.protocol.interop.util.getSecret
 import com.github.traderjoe95.mls.protocol.interop.util.nextUShort
-import com.github.traderjoe95.mls.protocol.types.crypto.ExternalPskId
+import com.github.traderjoe95.mls.protocol.psk.ExternalPskId
 import com.github.traderjoe95.mls.protocol.types.crypto.Nonce
 import com.github.traderjoe95.mls.protocol.types.crypto.Nonce.Companion.asNonce
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret

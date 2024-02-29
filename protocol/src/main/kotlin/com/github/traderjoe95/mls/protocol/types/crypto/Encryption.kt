@@ -10,18 +10,17 @@ import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.codec.util.fromBytes
 import com.github.traderjoe95.mls.codec.util.toBytes
 import com.github.traderjoe95.mls.codec.util.uSize
+import com.github.traderjoe95.mls.protocol.types.MoveCopyWipe
 import com.github.traderjoe95.mls.protocol.types.RefinedBytes
 import com.github.traderjoe95.mls.protocol.util.wipe
 import java.security.SecureRandom
 import kotlin.experimental.xor
 
 @JvmInline
-value class HpkePrivateKey(override val bytes: ByteArray) : RefinedBytes<HpkePrivateKey> {
-  fun move() = copy().also { wipe() }
+value class HpkePrivateKey(override val bytes: ByteArray) : RefinedBytes<HpkePrivateKey>, MoveCopyWipe<HpkePrivateKey> {
+  override fun copy() = HpkePrivateKey(bytes.copyOf())
 
-  fun copy() = HpkePrivateKey(bytes.copyOf())
-
-  fun wipe() = bytes.wipe()
+  override fun wipe() = bytes.wipe()
 
   companion object {
     val ByteArray.asHpkePrivateKey: HpkePrivateKey
@@ -40,8 +39,14 @@ value class HpkePublicKey(override val bytes: ByteArray) : RefinedBytes<HpkePubl
 }
 
 @JvmInline
-value class HpkeKeyPair(private val keyPair: Pair<HpkePrivateKey, HpkePublicKey>) {
+value class HpkeKeyPair(private val keyPair: Pair<HpkePrivateKey, HpkePublicKey>) : MoveCopyWipe<HpkeKeyPair> {
   constructor(privateKey: HpkePrivateKey, publicKey: HpkePublicKey) : this(privateKey to publicKey)
+
+  override fun copy(): HpkeKeyPair = HpkeKeyPair(private.copy(), public)
+
+  override fun wipe() {
+    private.wipe()
+  }
 
   val private: HpkePrivateKey
     get() = keyPair.first

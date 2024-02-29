@@ -2,7 +2,7 @@ package com.github.traderjoe95.mls.protocol.error
 
 import com.github.traderjoe95.mls.protocol.types.CredentialType
 
-sealed interface IsSameClientError : CommitError, JoinError, ResumptionJoinError
+sealed interface IsSameClientError : CommitError, JoinError, ResumptionJoinError, RemoveValidationError
 
 sealed interface CredentialValidationError : LeafNodeCheckError, ResumptionError, CredentialIdentityValidationError {
   data object InvalidCredential : CredentialValidationError

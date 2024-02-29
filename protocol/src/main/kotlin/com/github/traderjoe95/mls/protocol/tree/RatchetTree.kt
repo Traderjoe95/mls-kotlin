@@ -91,7 +91,23 @@ class RatchetTree(
   fun update(
     leafIndex: LeafIndex,
     leafNode: LeafNode<*>,
-  ): RatchetTree = set(leafIndex, leafNode).blank(directPath(leafIndex).dropLast(1))
+  ): RatchetTree =
+    RatchetTree(
+      cipherSuite,
+      public.update(leafIndex, leafNode),
+      private.blank(directPath(leafIndex)),
+    )
+
+  fun update(
+    leafIndex: LeafIndex,
+    leafNode: LeafNode<*>,
+    privateKey: HpkePrivateKey,
+  ): RatchetTree =
+    RatchetTree(
+      cipherSuite,
+      public.update(leafIndex, leafNode),
+      private.blank(directPath(leafIndex)).add(leafIndex, privateKey),
+    )
 
   fun remove(leafIndex: LeafIndex): RatchetTree =
     (public.remove(leafIndex)).let { newPublic ->

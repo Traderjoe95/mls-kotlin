@@ -12,6 +12,7 @@ import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.codec.util.throwAnyError
 import com.github.traderjoe95.mls.protocol.error.SignatureError
 import com.github.traderjoe95.mls.protocol.group.GroupContext
+import com.github.traderjoe95.mls.protocol.types.GroupId
 import com.github.traderjoe95.mls.protocol.types.crypto.Mac
 import com.github.traderjoe95.mls.protocol.types.crypto.Signature
 import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePublicKey
@@ -45,6 +46,8 @@ data class AuthenticatedContent<out C : Content<C>>(
     get() = sender.type
   val contentType: ContentType<C>
     get() = content.contentType
+  val groupId: GroupId
+    get() = content.groupId
   val epoch: ULong
     get() = content.epoch
 

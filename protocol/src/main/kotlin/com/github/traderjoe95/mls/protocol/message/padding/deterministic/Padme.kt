@@ -1,6 +1,6 @@
-package com.github.traderjoe95.mls.protocol.types.framing.message.padding.deterministic
+package com.github.traderjoe95.mls.protocol.message.padding.deterministic
 
-import com.github.traderjoe95.mls.protocol.types.framing.message.padding.PaddingStrategy
+import com.github.traderjoe95.mls.protocol.message.padding.PaddingStrategy
 import com.github.traderjoe95.mls.protocol.util.log2
 import com.github.traderjoe95.mls.protocol.util.wipe
 

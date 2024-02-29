@@ -1,4 +1,4 @@
-package com.github.traderjoe95.mls.protocol.types.crypto
+package com.github.traderjoe95.mls.protocol.psk
 
 import arrow.core.raise.Raise
 import com.github.traderjoe95.mls.codec.Encodable
@@ -23,6 +23,7 @@ import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
 import com.github.traderjoe95.mls.protocol.error.PskError
 import com.github.traderjoe95.mls.protocol.group.GroupState
 import com.github.traderjoe95.mls.protocol.types.GroupId
+import com.github.traderjoe95.mls.protocol.types.crypto.Nonce
 import com.github.traderjoe95.mls.protocol.util.hex
 
 enum class PskType(ord: UInt, override val isValid: Boolean = true) : ProtocolEnum<PskType> {
@@ -68,13 +69,22 @@ sealed interface PreSharedKeyId : Struct2T.Shape<PskType, PreSharedKeyId> {
 
   override fun component2(): PreSharedKeyId = this
 
-  context(ICipherSuite, Raise<PskError>)
+  context(Raise<PskError>)
   fun validate(
+    cipherSuite: ICipherSuite,
     inReInit: Boolean,
     inBranch: Boolean,
   ): PreSharedKeyId =
     apply {
-      if (pskNonce.size != hashLen.toUInt()) raise(PskError.BadPskNonce(this, hashLen.toUInt(), pskNonce.size))
+      if (pskNonce.size != cipherSuite.hashLen.toUInt()) {
+        raise(
+          PskError.BadPskNonce(
+            this,
+            cipherSuite.hashLen.toUInt(),
+            pskNonce.size,
+          ),
+        )
+      }
     }
 
   companion object : Encodable<PreSharedKeyId> {
@@ -137,13 +147,14 @@ class ResumptionPskId(
 ) : PreSharedKeyId {
   override val pskType: PskType = PskType.Resumption
 
-  context(ICipherSuite, Raise<PskError>)
+  context(Raise<PskError>)
   override fun validate(
+    cipherSuite: ICipherSuite,
     inReInit: Boolean,
     inBranch: Boolean,
   ): PreSharedKeyId =
     apply {
-      super.validate(inReInit, inBranch)
+      super.validate(cipherSuite, inReInit, inBranch)
 
       if (usage == ResumptionPskUsage.ReInit && !inReInit) raise(PskError.InvalidPskUsage(this))
       if (usage == ResumptionPskUsage.Branch && !inBranch) raise(PskError.InvalidPskUsage(this))
@@ -194,7 +205,7 @@ class ResumptionPskId(
         ResumptionPskUsage.ReInit,
         resumptionEpoch.groupId,
         resumptionEpoch.epoch,
-        cipherSuite.generateSecret(cipherSuite.hashLen).asNonce,
+        cipherSuite.generateNonce(cipherSuite.hashLen),
       )
 
     fun branch(resumptionEpoch: GroupState.Active): ResumptionPskId =
@@ -202,7 +213,7 @@ class ResumptionPskId(
         ResumptionPskUsage.Branch,
         resumptionEpoch.groupId,
         resumptionEpoch.epoch,
-        resumptionEpoch.generateSecret(resumptionEpoch.cipherSuite.hashLen).asNonce,
+        resumptionEpoch.generateNonce(resumptionEpoch.cipherSuite.hashLen),
       )
   }
 }

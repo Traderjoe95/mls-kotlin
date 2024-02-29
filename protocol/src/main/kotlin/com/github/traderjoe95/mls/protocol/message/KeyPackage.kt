@@ -105,6 +105,25 @@ data class KeyPackage(
       lifetime: Duration,
       keyPackageExtensions: KeyPackageExtensions = listOf(),
       leafNodeExtensions: LeafNodeExtensions = listOf(),
+    ): Private =
+      generate(
+        cipherSuite,
+        signatureKeyPair,
+        credential,
+        capabilities,
+        Lifetime(Instant.now(), Instant.now() + lifetime),
+        keyPackageExtensions,
+        leafNodeExtensions,
+      )
+
+    fun generate(
+      cipherSuite: CipherSuite,
+      signatureKeyPair: SignatureKeyPair,
+      credential: Credential,
+      capabilities: Capabilities,
+      lifetime: Lifetime,
+      keyPackageExtensions: KeyPackageExtensions = listOf(),
+      leafNodeExtensions: LeafNodeExtensions = listOf(),
     ): Private {
       val initKeyPair = cipherSuite.generateHpkeKeyPair()
       val encKeyPair = cipherSuite.generateHpkeKeyPair()
@@ -119,7 +138,7 @@ data class KeyPackage(
             signatureKeyPair.public,
             credential,
             capabilities,
-            Lifetime(Instant.now(), Instant.now() + lifetime),
+            lifetime,
             extensions = leafNodeExtensions,
             signaturePrivateKey = signatureKeyPair.private,
           ),
