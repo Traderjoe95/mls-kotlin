@@ -34,15 +34,13 @@ class WelcomeTestVectors : VertxFunSpec({ vertx ->
                 either {
                   v.welcome.message.decryptGroupSecrets(
                     v.keyPackage.message.ref,
-                    cipherSuite.reconstructPublicKey(v.initPriv),
-                  )
+                    cipherSuite.reconstructPublicKey(v.initPriv).bind(),
+                  ).bind()
                 }.shouldBeRight()
 
               val pskSecret = Secret.zeroes(cipherSuite.hashLen)
               val groupInfo =
-                either {
-                  v.welcome.message.decryptGroupInfo(groupSecrets.joinerSecret, pskSecret)
-                }.shouldBeRight()
+                v.welcome.message.decryptGroupInfo(groupSecrets.joinerSecret, pskSecret).shouldBeRight()
 
               val keySchedule =
                 KeySchedule.join(
@@ -52,13 +50,11 @@ class WelcomeTestVectors : VertxFunSpec({ vertx ->
                   groupInfo.groupContext,
                 )
 
-              either {
-                cipherSuite.verifyMac(
-                  keySchedule.confirmationKey,
-                  groupInfo.groupContext.confirmedTranscriptHash,
-                  groupInfo.confirmationTag,
-                )
-              }.shouldBeRight()
+              cipherSuite.verifyMac(
+                keySchedule.confirmationKey,
+                groupInfo.groupContext.confirmedTranscriptHash,
+                groupInfo.confirmationTag,
+              ).shouldBeRight()
             }
           }
         }

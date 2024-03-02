@@ -81,14 +81,12 @@ class CryptoBasics : VertxFunSpec({ vertx ->
               checkAll(exhaustive(testVectors)) { testVector ->
                 val signWithLabel = testVector.signWithLabel
 
-                either {
-                  cipherSuite.verifyWithLabel(
-                    signWithLabel.pub,
-                    signWithLabel.label,
-                    signWithLabel.content,
-                    signWithLabel.signature,
-                  )
-                }.shouldBeRight()
+                cipherSuite.verifyWithLabel(
+                  signWithLabel.pub,
+                  signWithLabel.label,
+                  signWithLabel.content,
+                  signWithLabel.signature,
+                ).shouldBeRight()
               }
             }
 
@@ -101,8 +99,8 @@ class CryptoBasics : VertxFunSpec({ vertx ->
                     signWithLabel.pub,
                     signWithLabel.label,
                     signWithLabel.content,
-                    cipherSuite.signWithLabel(signWithLabel.priv, signWithLabel.label, signWithLabel.content),
-                  )
+                    cipherSuite.signWithLabel(signWithLabel.priv, signWithLabel.label, signWithLabel.content).bind(),
+                  ).bind()
                 }.shouldBeRight()
               }
             }
@@ -117,7 +115,7 @@ class CryptoBasics : VertxFunSpec({ vertx ->
                   encryptWithLabel.label,
                   encryptWithLabel.context,
                   encryptWithLabel.hpkeCiphertext,
-                ) shouldBe encryptWithLabel.plaintext
+                ) shouldBeRight encryptWithLabel.plaintext
               }
             }
 
@@ -125,17 +123,19 @@ class CryptoBasics : VertxFunSpec({ vertx ->
               checkAll(exhaustive(testVectors)) { testVector ->
                 val encryptWithLabel = testVector.encryptWithLabel
 
-                cipherSuite.decryptWithLabel(
-                  encryptWithLabel.keyPair,
-                  encryptWithLabel.label,
-                  encryptWithLabel.context,
-                  cipherSuite.encryptWithLabel(
-                    encryptWithLabel.pub,
+                either {
+                  cipherSuite.decryptWithLabel(
+                    encryptWithLabel.keyPair,
                     encryptWithLabel.label,
                     encryptWithLabel.context,
-                    encryptWithLabel.plaintext,
-                  ),
-                ) shouldBe encryptWithLabel.plaintext
+                    cipherSuite.encryptWithLabel(
+                      encryptWithLabel.pub,
+                      encryptWithLabel.label,
+                      encryptWithLabel.context,
+                      encryptWithLabel.plaintext,
+                    ).bind(),
+                  ).bind()
+                } shouldBeRight encryptWithLabel.plaintext
               }
             }
           }

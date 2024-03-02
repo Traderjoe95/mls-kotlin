@@ -6,7 +6,7 @@ import arrow.core.raise.Raise
 import arrow.core.raise.nullable
 import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
 import com.github.traderjoe95.mls.protocol.error.IsSameClientError
-import com.github.traderjoe95.mls.protocol.error.SignatureError
+import com.github.traderjoe95.mls.protocol.error.VerifySignatureError
 import com.github.traderjoe95.mls.protocol.group.GroupContext
 import com.github.traderjoe95.mls.protocol.message.KeyPackage
 import com.github.traderjoe95.mls.protocol.service.AuthenticationService
@@ -116,7 +116,7 @@ val RatchetTreeOps.nonBlankNodeIndices: List<NodeIndex>
   get() = nonBlankParentNodeIndices + nonBlankLeafNodeIndices
 
 interface SignaturePublicKeyLookup {
-  context(Raise<SignatureError.SignaturePublicKeyKeyNotFound>)
+  context(Raise<VerifySignatureError.SignaturePublicKeyKeyNotFound>)
   fun getSignaturePublicKey(
     groupContext: GroupContext,
     framedContent: FramedContent<*>,
@@ -126,7 +126,7 @@ interface SignaturePublicKeyLookup {
     // For testing purposes
     internal fun only(signaturePublicKey: SignaturePublicKey): SignaturePublicKeyLookup =
       object : SignaturePublicKeyLookup {
-        context(Raise<SignatureError.SignaturePublicKeyKeyNotFound>)
+        context(Raise<VerifySignatureError.SignaturePublicKeyKeyNotFound>)
         override fun getSignaturePublicKey(
           groupContext: GroupContext,
           framedContent: FramedContent<*>,
@@ -135,7 +135,7 @@ interface SignaturePublicKeyLookup {
   }
 }
 
-context(Raise<SignatureError.SignaturePublicKeyKeyNotFound>)
+context(Raise<VerifySignatureError.SignaturePublicKeyKeyNotFound>)
 fun findSignaturePublicKey(
   framedContent: FramedContent<*>,
   groupContext: GroupContext,
@@ -165,4 +165,4 @@ fun findSignaturePublicKey(
         ?.signaturePublicKey
 
     else -> error("Unreachable")
-  } ?: raise(SignatureError.SignaturePublicKeyKeyNotFound(framedContent.sender))
+  } ?: raise(VerifySignatureError.SignaturePublicKeyKeyNotFound(framedContent.sender))

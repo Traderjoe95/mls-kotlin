@@ -1,6 +1,7 @@
 package com.github.traderjoe95.mls.protocol.crypto
 
-import arrow.core.raise.Raise
+import arrow.core.Either
+import arrow.core.raise.either
 import com.github.traderjoe95.mls.protocol.error.MacError
 import com.github.traderjoe95.mls.protocol.types.crypto.Mac
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret
@@ -11,12 +12,17 @@ interface Auth {
     content: ByteArray,
   ): Mac
 
-  context(Raise<MacError>)
   fun verifyMac(
     secret: Secret,
     content: ByteArray,
     mac: Mac,
-  ) {
-    if (mac(secret, content).bytes.contentEquals(mac.bytes).not()) raise(MacError.BadMac)
-  }
+  ): Either<MacError, Unit> =
+    either {
+      val equal =
+        mac(secret, content).bytes
+          .zip(mac.bytes)
+          .fold(true) { eq, (l, r) -> eq && l == r }
+
+      if (!equal) raise(MacError.BadMac)
+    }
 }

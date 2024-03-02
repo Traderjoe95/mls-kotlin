@@ -57,7 +57,7 @@ class TreeValidation : VertxFunSpec({ vertx ->
               context("the signature of") {
                 v.tree.nonBlankLeafIndices.forEach { leaf ->
                   test("leaf ${leaf.value} should be correct") {
-                    either { v.tree.leafNode(leaf).verifySignature(cipherSuite, v.groupId, leaf) }.shouldBeRight()
+                    v.tree.leafNode(leaf).verifySignature(cipherSuite, v.groupId, leaf).shouldBeRight()
                   }
                 }
               }

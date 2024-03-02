@@ -61,56 +61,57 @@ data class TreeOperationsTestVector(
     fun generate(
       cipherSuite: CipherSuite,
       scenario: Scenario,
-    ): TreeOperationsTestVector {
-      val treeBefore = generateTree(cipherSuite, scenario)
-      val nonBlank = treeBefore.nonBlankLeafIndices
+    ): TreeOperationsTestVector =
+      unsafe {
+        val treeBefore = generateTree(cipherSuite, scenario)
+        val nonBlank = treeBefore.nonBlankLeafIndices
 
-      val (proposal, sender) =
-        when (scenario) {
-          Scenario.AddRightFlank, Scenario.AddInternal, Scenario.AddExpand ->
-            Add(Random.nextKeyPackage(cipherSuite).public) to Random.choice(nonBlank)
+        val (proposal, sender) =
+          when (scenario) {
+            Scenario.AddRightFlank, Scenario.AddInternal, Scenario.AddExpand ->
+              Add(Random.nextKeyPackage(cipherSuite).public) to Random.choice(nonBlank)
 
-          Scenario.RemoveRightFlank, Scenario.RemoveTruncate ->
-            Remove(nonBlank.last()) to Random.choice(nonBlank.dropLast(1))
+            Scenario.RemoveRightFlank, Scenario.RemoveTruncate ->
+              Remove(nonBlank.last()) to Random.choice(nonBlank.dropLast(1))
 
-          Scenario.RemoveInternal ->
-            Remove(Random.choice(nonBlank.dropLast(1))).let { remove ->
-              remove to Random.choice(nonBlank.filter { it neq remove.removed })
-            }
+            Scenario.RemoveInternal ->
+              Remove(Random.choice(nonBlank.dropLast(1))).let { remove ->
+                remove to Random.choice(nonBlank.filter { it neq remove.removed })
+              }
 
-          Scenario.Update ->
-            Random.choice(nonBlank).let { leaf ->
-              Update(
-                LeafNode.update(
-                  cipherSuite,
-                  cipherSuite.generateHpkeKeyPair().public,
-                  treeBefore.leafNode(leaf),
-                  leaf,
-                  GroupId.new(),
-                  cipherSuite.generateSignatureKeyPair().private,
-                ),
-              ) to leaf
-            }
-        }
+            Scenario.Update ->
+              Random.choice(nonBlank).let { leaf ->
+                Update(
+                  LeafNode.update(
+                    cipherSuite,
+                    cipherSuite.generateHpkeKeyPair().public,
+                    treeBefore.leafNode(leaf),
+                    leaf,
+                    GroupId.new(),
+                    cipherSuite.generateSignatureKeyPair().private,
+                  ).bind(),
+                ) to leaf
+              }
+          }
 
-      val treeAfter =
-        when (proposal) {
-          is Add -> treeBefore.insert(proposal.keyPackage.leafNode).first
-          is Update -> treeBefore.update(sender, proposal.leafNode)
-          is Remove -> treeBefore.remove(proposal.removed)
-          else -> error("unreachable")
-        }
+        val treeAfter =
+          when (proposal) {
+            is Add -> treeBefore.insert(proposal.keyPackage.leafNode).first
+            is Update -> treeBefore.update(sender, proposal.leafNode)
+            is Remove -> treeBefore.remove(proposal.removed)
+            else -> error("unreachable")
+          }
 
-      return TreeOperationsTestVector(
-        cipherSuite,
-        treeBefore.encodeUnsafe(),
-        proposal,
-        sender,
-        treeBefore.treeHash(cipherSuite),
-        treeAfter.encodeUnsafe(),
-        treeAfter.treeHash(cipherSuite),
-      )
-    }
+        return TreeOperationsTestVector(
+          cipherSuite,
+          treeBefore.encodeUnsafe(),
+          proposal,
+          sender,
+          treeBefore.treeHash(cipherSuite),
+          treeAfter.encodeUnsafe(),
+          treeAfter.treeHash(cipherSuite),
+        )
+      }
 
     internal fun generateTree(
       cipherSuite: CipherSuite,

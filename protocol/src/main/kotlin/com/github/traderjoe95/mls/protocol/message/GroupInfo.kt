@@ -1,14 +1,15 @@
 package com.github.traderjoe95.mls.protocol.message
 
-import arrow.core.raise.Raise
+import arrow.core.Either
+import arrow.core.raise.either
 import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.type.DataType
 import com.github.traderjoe95.mls.codec.type.struct.Struct4T
 import com.github.traderjoe95.mls.codec.type.struct.Struct5T
 import com.github.traderjoe95.mls.codec.type.struct.lift
 import com.github.traderjoe95.mls.codec.type.struct.struct
-import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
-import com.github.traderjoe95.mls.protocol.error.SignatureError
+import com.github.traderjoe95.mls.protocol.error.GroupInfoError
+import com.github.traderjoe95.mls.protocol.error.VerifySignatureError
 import com.github.traderjoe95.mls.protocol.group.GroupContext
 import com.github.traderjoe95.mls.protocol.message.GroupInfo.Tbs.Companion.encodeUnsafe
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
@@ -30,17 +31,22 @@ data class GroupInfo(
 ) : HasExtensions<GroupInfoExtension<*>>(),
   Message,
   Struct5T.Shape<GroupContext, GroupInfoExtensions, Mac, LeafIndex, Signature> {
-  context(ICipherSuite, Raise<SignatureError>)
-  fun verifySignature(tree: RatchetTreeOps) {
-    val verificationKey = tree.leafNode(signer).signaturePublicKey
+  @get:JvmName("encoded")
+  val encoded: ByteArray by lazy { encodeUnsafe() }
 
-    verifyWithLabel(
-      verificationKey,
-      "GroupInfoTBS",
-      Tbs(groupContext, extensions, confirmationTag, signer).encodeUnsafe(),
-      signature,
-    )
-  }
+  fun verifySignature(tree: RatchetTreeOps): Either<VerifySignatureError, GroupInfo> =
+    either {
+      this@GroupInfo.apply {
+        val verificationKey = tree.leafNode(signer).signaturePublicKey
+
+        groupContext.cipherSuite.verifyWithLabel(
+          verificationKey,
+          "GroupInfoTBS",
+          Tbs(groupContext, extensions, confirmationTag, signer).encodeUnsafe(),
+          signature,
+        )
+      }
+    }
 
   companion object : Encodable<GroupInfo> {
     @Suppress("kotlin:S6531")
@@ -59,18 +65,20 @@ data class GroupInfo(
       extensions: List<GroupInfoExtension<*>> = listOf(),
       ownLeafIndex: LeafIndex,
       signaturePrivateKey: SignaturePrivateKey,
-    ): GroupInfo =
-      GroupInfo(
-        groupContext,
-        extensions,
-        confirmationTag,
-        ownLeafIndex,
-        groupContext.cipherSuite.signWithLabel(
-          signaturePrivateKey,
-          "GroupInfoTBS",
-          Tbs(groupContext, extensions, confirmationTag, ownLeafIndex).encodeUnsafe(),
-        ),
-      )
+    ): Either<GroupInfoError, GroupInfo> =
+      either {
+        GroupInfo(
+          groupContext,
+          extensions,
+          confirmationTag,
+          ownLeafIndex,
+          groupContext.cipherSuite.signWithLabel(
+            signaturePrivateKey,
+            "GroupInfoTBS",
+            Tbs(groupContext, extensions, confirmationTag, ownLeafIndex).encodeUnsafe(),
+          ).bind(),
+        )
+      }
   }
 
   data class Tbs(

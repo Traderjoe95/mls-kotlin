@@ -29,9 +29,10 @@ class PskSecret : VertxFunSpec({ vertx ->
         context("Cipher Suite $cipherSuite") {
           testVectors.forEach { v ->
             test("for ${v.psks.size} PSKs the calculated PSK secret should be ${v.pskSecret.hex}") {
-              with(cipherSuite) {
-                v.psks.map { ExternalPskId(it.pskId, it.pskNonce) to it.psk }.calculatePskSecret()
-              } shouldBeEq v.pskSecret
+              calculatePskSecret(
+                cipherSuite,
+                v.psks.map { ExternalPskId(it.pskId, it.pskNonce) to it.psk },
+              ) shouldBeEq v.pskSecret
             }
           }
         }

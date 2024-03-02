@@ -17,8 +17,8 @@ import com.github.traderjoe95.mls.protocol.error.SenderCommitError
 import com.github.traderjoe95.mls.protocol.group.GroupState
 import com.github.traderjoe95.mls.protocol.group.prepareCommit
 import com.github.traderjoe95.mls.protocol.group.resumption.branchGroup
-import com.github.traderjoe95.mls.protocol.group.resumption.createWelcome
-import com.github.traderjoe95.mls.protocol.group.resumption.reInitGroup
+import com.github.traderjoe95.mls.protocol.group.resumption.resumeReInit
+import com.github.traderjoe95.mls.protocol.group.resumption.triggerReInit
 import com.github.traderjoe95.mls.protocol.message.GroupMessage
 import com.github.traderjoe95.mls.protocol.message.HandshakeMessage
 import com.github.traderjoe95.mls.protocol.tree.findLeaf
@@ -44,7 +44,8 @@ class GroupChat(
             listOf(
               Add(DeliveryService.getKeyPackage(Config.protocolVersion, Config.cipherSuite, user).getOrThrow()),
             ),
-          )
+            client,
+          ).bind()
         }.let { (ctx, commit, newMemberWelcome) ->
           DeliveryService.sendMessageToGroup(commit, state.groupId, userName).getOrThrow()
 
@@ -70,7 +71,7 @@ class GroupChat(
           } ?: error("User $user is not member of the group")
 
         state.ensureActive {
-          prepareCommit(listOf(Remove(leafIndex)))
+          prepareCommit(listOf(Remove(leafIndex)), client).bind()
         }.let { (ctx, commit, _) ->
           DeliveryService.sendMessageToGroup(commit, state.groupId, userName).getOrThrow()
 
@@ -82,7 +83,7 @@ class GroupChat(
   fun makePublic(): Either<GroupInfoError, Unit> =
     either {
       state.ensureActive {
-        DeliveryService.storeGroupInfo(groupInfo(public = true))
+        DeliveryService.storeGroupInfo(groupInfo(public = true).bind())
       }
     }
 
@@ -91,7 +92,7 @@ class GroupChat(
       with(client) {
         val (suspended, commit) =
           state.ensureActive {
-            reInitGroup(cipherSuite = cipherSuite)
+            triggerReInit(client, cipherSuite = cipherSuite).bind()
           }
 
         DeliveryService.sendMessageToGroup(commit, state.groupId, userName)
@@ -112,7 +113,9 @@ class GroupChat(
                   client.authenticateCredentialIdentity(user, signaturePublicKey, credential).isRight()
                 }?.second!!
               },
-            )
+              client,
+              client,
+            ).bind()
           }
 
         newMemberWelcome.forEach { (welcome, to) ->
@@ -132,9 +135,11 @@ class GroupChat(
       with(client) {
         val suspended = state as GroupState.Suspended
         val (newGroup, newMemberWelcome) =
-          suspended.createWelcome(
+          suspended.resumeReInit(
             newKeyPackage(suspended.reInit.cipherSuite),
-          )
+            client,
+            client,
+          ).bind()
 
         newMemberWelcome.forEach { (welcome, to) ->
           DeliveryService.sendMessageToIdentities(
@@ -151,7 +156,7 @@ class GroupChat(
   suspend fun sendTextMessage(message: String) =
     either {
       DeliveryService.sendMessageToGroup(
-        state.coerceActive().messages.applicationMessage(ApplicationData(message.encodeToByteArray())),
+        state.coerceActive().messages.applicationMessage(ApplicationData(message.encodeToByteArray())).bind(),
         state.groupId,
         client.userName,
       ).bind()
@@ -170,7 +175,7 @@ class GroupChat(
         processHandshakeMessage(message as HandshakeMessage)
       } else {
         processApplicationData(
-          state.ensureActive { message.unprotect(this) } as AuthenticatedContent<ApplicationData>,
+          state.ensureActive { message.unprotect(this).bind() } as AuthenticatedContent<ApplicationData>,
         )
       }
     }.getOrThrow()
@@ -181,7 +186,7 @@ class GroupChat(
       GroupChat(
         recover(
           block = {
-            state.coerceActive().process(message, psks = client)
+            state.coerceActive().process(message, client, psks = client).bind()
           },
           recover = {
 //              if (it == RemovedFromGroup) DeliveryService.unregisterGroup(groupId, client.applicationId)

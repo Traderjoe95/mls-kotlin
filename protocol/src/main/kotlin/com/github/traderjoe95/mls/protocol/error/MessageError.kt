@@ -22,7 +22,7 @@ sealed interface MessageRecipientError : PrivateMessageRecipientError, PublicMes
   data class UnexpectedWireFormat(
     val wireFormat: WireFormat,
     val expectedWireFormat: WireFormat,
-  ) : MessageRecipientError, CreateAddError
+  ) : MessageRecipientError, CreateAddError, WelcomeJoinError, ExternalJoinError
 
   data class UnexpectedContent(
     val contentType: ContentType<*>,

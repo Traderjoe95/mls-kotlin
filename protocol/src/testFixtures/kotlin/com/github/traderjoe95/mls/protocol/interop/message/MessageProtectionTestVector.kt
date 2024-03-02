@@ -88,77 +88,78 @@ class MessageProtectionTestVector(
         .toJsonArray()
         .map { MessageProtectionTestVector(it as JsonObject) }
 
-    suspend fun generate(cipherSuite: CipherSuite): MessageProtectionTestVector {
-      val (signaturePriv, signaturePub) = cipherSuite.generateSignatureKeyPair()
-      val encryptionSecret = cipherSuite.generateSecret(cipherSuite.hashLen)
-      val senderDataSecret = cipherSuite.generateSecret(cipherSuite.hashLen)
-      val membershipKey = cipherSuite.generateSecret(cipherSuite.hashLen)
-      val leafIndex = LeafIndex(1U)
+    suspend fun generate(cipherSuite: CipherSuite): MessageProtectionTestVector =
+      unsafe {
+        val (signaturePriv, signaturePub) = cipherSuite.generateSignatureKeyPair()
+        val encryptionSecret = cipherSuite.generateSecret(cipherSuite.hashLen)
+        val senderDataSecret = cipherSuite.generateSecret(cipherSuite.hashLen)
+        val membershipKey = cipherSuite.generateSecret(cipherSuite.hashLen)
+        val leafIndex = LeafIndex(1U)
 
-      val groupId = GroupId.new()
-      val epoch = Random.nextULong()
-      val treeHash = cipherSuite.hash(Random.nextBytes(32))
-      val confirmedTranscriptHash = cipherSuite.hash(Random.nextBytes(32))
+        val groupId = GroupId.new()
+        val epoch = Random.nextULong()
+        val treeHash = cipherSuite.hash(Random.nextBytes(32))
+        val confirmedTranscriptHash = cipherSuite.hash(Random.nextBytes(32))
 
-      val groupContext =
-        GroupContext(
-          ProtocolVersion.MLS_1_0,
+        val groupContext =
+          GroupContext(
+            ProtocolVersion.MLS_1_0,
+            cipherSuite,
+            groupId,
+            epoch,
+            treeHash,
+            confirmedTranscriptHash,
+            listOf(),
+          )
+
+        val messages = {
+          GroupMessageFactory(
+            PublicRatchetTree.blankWithLeaves(2U),
+            membershipKey,
+            senderDataSecret,
+            SecretTree.create(cipherSuite, encryptionSecret.copy(), 2U),
+            groupContext,
+            leafIndex,
+            signaturePriv,
+          )
+        }
+
+        val proposal = Random.nextProposal(cipherSuite, groupContext.groupId)
+        val commit = Random.nextCommit(cipherSuite, groupContext.groupId)
+        val application = ApplicationData(Random.nextBytes(Random.nextInt(1..1024)))
+
+        val proposalPub = messages().protect(proposal, UsePublicMessage)
+        val proposalPriv = messages().protect(proposal, UsePrivateMessage())
+
+        val commitAuthPub = messages().createAuthenticatedContent(commit, UsePublicMessage, byteArrayOf())
+        val commitAuthPriv = messages().createAuthenticatedContent(commit, UsePrivateMessage(), byteArrayOf())
+        val confirmationTag = Random.nextBytes(cipherSuite.hashLen.toInt()).asMac
+
+        val commitPub = messages().protectCommit(commitAuthPub, confirmationTag, UsePublicMessage)
+        val commitPriv = messages().protectCommit(commitAuthPriv, confirmationTag, UsePrivateMessage())
+
+        val applicationPriv = messages().applicationMessage(application).bind()
+
+        return MessageProtectionTestVector(
           cipherSuite,
           groupId,
           epoch,
           treeHash,
           confirmedTranscriptHash,
-          listOf(),
-        )
-
-      val messages = {
-        GroupMessageFactory(
-          PublicRatchetTree.blankWithLeaves(2U),
-          membershipKey,
-          senderDataSecret,
-          SecretTree.create(cipherSuite, encryptionSecret.copy(), 2U),
-          groupContext,
-          leafIndex,
           signaturePriv,
+          signaturePub,
+          encryptionSecret,
+          senderDataSecret,
+          membershipKey,
+          proposal,
+          proposalPub.coerceFormat(),
+          proposalPriv.coerceFormat(),
+          commit,
+          commitPub.coerceFormat(),
+          commitPriv.coerceFormat(),
+          application,
+          applicationPriv,
         )
       }
-
-      val proposal = Random.nextProposal(cipherSuite, groupContext.groupId)
-      val commit = Random.nextCommit(cipherSuite, groupContext.groupId)
-      val application = ApplicationData(Random.nextBytes(Random.nextInt(1..1024)))
-
-      val proposalPub = unsafe { messages().protect(proposal, UsePublicMessage) }
-      val proposalPriv = unsafe { messages().protect(proposal, UsePrivateMessage()) }
-
-      val commitAuthPub = messages().createAuthenticatedContent(commit, UsePublicMessage, byteArrayOf())
-      val commitAuthPriv = messages().createAuthenticatedContent(commit, UsePrivateMessage(), byteArrayOf())
-      val confirmationTag = Random.nextBytes(cipherSuite.hashLen.toInt()).asMac
-
-      val commitPub = unsafe { messages().protectCommit(commitAuthPub, confirmationTag, UsePublicMessage) }
-      val commitPriv = unsafe { messages().protectCommit(commitAuthPriv, confirmationTag, UsePrivateMessage()) }
-
-      val applicationPriv = unsafe { messages().applicationMessage(application) }
-
-      return MessageProtectionTestVector(
-        cipherSuite,
-        groupId,
-        epoch,
-        treeHash,
-        confirmedTranscriptHash,
-        signaturePriv,
-        signaturePub,
-        encryptionSecret,
-        senderDataSecret,
-        membershipKey,
-        proposal,
-        proposalPub.coerceFormat(),
-        proposalPriv.coerceFormat(),
-        commit,
-        commitPub.coerceFormat(),
-        commitPriv.coerceFormat(),
-        application,
-        applicationPriv,
-      )
-    }
   }
 }

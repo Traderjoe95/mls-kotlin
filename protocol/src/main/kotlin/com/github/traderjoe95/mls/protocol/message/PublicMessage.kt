@@ -1,6 +1,8 @@
 package com.github.traderjoe95.mls.protocol.message
 
+import arrow.core.Either
 import arrow.core.raise.Raise
+import arrow.core.raise.either
 import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.Struct4
 import com.github.traderjoe95.mls.codec.type.DataType
@@ -57,32 +59,33 @@ data class PublicMessage<out C : Content<C>>(
   private val authenticatedContent: AuthenticatedContent<C>
     get() = AuthenticatedContent(WireFormat.MlsPublicMessage, content, signature, confirmationTag)
 
-  context(Raise<PublicMessageRecipientError>)
-  override suspend fun unprotect(groupState: GroupState.Active): AuthenticatedContent<C> =
-    unprotect(
-      groupState.groupContext,
-      groupState.keySchedule.membershipKey,
-      groupState.tree.getSignaturePublicKey(groupState.groupContext, content),
-    )
+  override suspend fun unprotect(groupState: GroupState.Active): Either<PublicMessageRecipientError, AuthenticatedContent<C>> =
+    either {
+      unprotect(
+        groupState.groupContext,
+        groupState.keySchedule.membershipKey,
+        groupState.tree.getSignaturePublicKey(groupState.groupContext, content),
+      ).bind()
+    }
 
-  context(Raise<PublicMessageRecipientError>)
   internal fun unprotect(
     groupContext: GroupContext,
     membershipKey: Secret,
     signaturePublicKey: SignaturePublicKey,
-  ): AuthenticatedContent<C> {
-    if (content.contentType == ContentType.Application) raise(PublicMessageError.ApplicationMessageMustNotBePublic)
+  ): Either<PublicMessageRecipientError, AuthenticatedContent<C>> =
+    either {
+      if (content.contentType == ContentType.Application) raise(PublicMessageError.ApplicationMessageMustNotBePublic)
 
-    if (content.sender.type == SenderType.Member) {
-      groupContext.cipherSuite.verifyMac(
-        membershipKey,
-        authenticatedContent.tbm(groupContext).encodeUnsafe(),
-        membershipTag!!,
-      )
+      if (content.sender.type == SenderType.Member) {
+        groupContext.cipherSuite.verifyMac(
+          membershipKey,
+          authenticatedContent.tbm(groupContext).encodeUnsafe(),
+          membershipTag!!,
+        )
+      }
+
+      authenticatedContent.apply { verify(groupContext, signaturePublicKey) }
     }
-
-    return authenticatedContent.apply { verify(groupContext, signaturePublicKey) }
-  }
 
   companion object : Encodable<PublicMessage<*>> {
     override val dataT: DataType<PublicMessage<*>> =

@@ -30,6 +30,7 @@ import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
 import com.github.traderjoe95.mls.protocol.types.tree.LeafNode
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.Capabilities
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.Lifetime
+import com.github.traderjoe95.mls.protocol.util.unsafe
 import java.time.Instant
 import kotlin.random.Random
 import kotlin.random.nextInt
@@ -54,46 +55,48 @@ fun Random.nextUShort(range: UIntRange): UShort = nextUInt(range).toUShort()
 
 fun <T> Random.choice(from: List<T>): T = from[nextInt(from.indices)]
 
-fun Random.nextAdd(cipherSuite: CipherSuite): Add {
-  val (signaturePrivate, signaturePublic) = cipherSuite.generateSignatureKeyPair()
+fun Random.nextAdd(cipherSuite: CipherSuite): Add =
+  unsafe {
+    val (signaturePrivate, signaturePublic) = cipherSuite.generateSignatureKeyPair()
 
-  return Add(
-    KeyPackage.create(
-      cipherSuite,
-      cipherSuite.generateHpkeKeyPair().public,
-      LeafNode.keyPackage(
+    Add(
+      KeyPackage.create(
         cipherSuite,
         cipherSuite.generateHpkeKeyPair().public,
-        signaturePublic,
-        BasicCredential(nextBytes(32)),
-        Capabilities.create(listOf(CredentialType.Basic), listOf(cipherSuite)),
-        Lifetime(Instant.now(), Instant.now().plusSeconds(3600)),
+        LeafNode.keyPackage(
+          cipherSuite,
+          cipherSuite.generateHpkeKeyPair().public,
+          signaturePublic,
+          BasicCredential(nextBytes(32)),
+          Capabilities.create(listOf(CredentialType.Basic), listOf(cipherSuite)),
+          Lifetime(Instant.now(), Instant.now().plusSeconds(3600)),
+          listOf(),
+          signaturePrivate,
+        ).bind(),
         listOf(),
         signaturePrivate,
-      ),
-      listOf(),
-      signaturePrivate,
-    ),
-  )
-}
+      ).bind(),
+    )
+  }
 
 fun Random.nextUpdate(
   cipherSuite: CipherSuite,
   groupId: GroupId = GroupId.new(),
-): Update {
-  return Update(
-    LeafNode.update(
-      cipherSuite,
-      cipherSuite.generateSignatureKeyPair(),
-      cipherSuite.generateHpkeKeyPair().public,
-      BasicCredential(Random.nextBytes(32)),
-      Capabilities.create(listOf(CredentialType.Basic), listOf(cipherSuite)),
-      listOf(),
-      LeafIndex(Random.nextUInt(0U..1U)),
-      groupId,
-    ),
-  )
-}
+): Update =
+  unsafe {
+    Update(
+      LeafNode.update(
+        cipherSuite,
+        cipherSuite.generateSignatureKeyPair(),
+        cipherSuite.generateHpkeKeyPair().public,
+        BasicCredential(Random.nextBytes(32)),
+        Capabilities.create(listOf(CredentialType.Basic), listOf(cipherSuite)),
+        listOf(),
+        LeafIndex(Random.nextUInt(0U..1U)),
+        groupId,
+      ).bind(),
+    )
+  }
 
 fun Random.nextRemove(leafRange: UIntRange): Remove = Remove(LeafIndex(nextUInt(leafRange)))
 
@@ -120,7 +123,11 @@ fun Random.nextReInit(): ReInit =
   )
 
 fun Random.nextExternalInit(cipherSuite: CipherSuite): ExternalInit =
-  ExternalInit(cipherSuite.export(cipherSuite.generateHpkeKeyPair().public, "MLS 1.0 external init secret").first)
+  unsafe {
+    ExternalInit(
+      cipherSuite.export(cipherSuite.generateHpkeKeyPair().public, "MLS 1.0 external init secret").bind().first,
+    )
+  }
 
 fun Random.nextGroupContextExtensions(cipherSuite: CipherSuite): GroupContextExtensions =
   GroupContextExtensions(
@@ -195,10 +202,12 @@ fun Random.nextKeyPackage(
   cipherSuite: CipherSuite,
   signatureKeyPair: SignatureKeyPair = cipherSuite.generateSignatureKeyPair(),
 ): KeyPackage.Private =
-  KeyPackage.generate(
-    cipherSuite,
-    signatureKeyPair,
-    BasicCredential(Random.nextBytes(64)),
-    Capabilities.create(listOf(CredentialType.Basic)),
-    5.hours,
-  )
+  unsafe {
+    KeyPackage.generate(
+      cipherSuite,
+      signatureKeyPair,
+      BasicCredential(Random.nextBytes(64)),
+      Capabilities.create(listOf(CredentialType.Basic)),
+      5.hours,
+    ).bind()
+  }

@@ -1,6 +1,8 @@
 package com.github.traderjoe95.mls.protocol.message
 
+import arrow.core.Either
 import arrow.core.raise.Raise
+import arrow.core.raise.either
 import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.Struct2
 import com.github.traderjoe95.mls.codec.Struct3
@@ -69,8 +71,7 @@ data class PrivateMessage<out C : Content<C>>(
 
   private fun senderDataAad(): Struct3<GroupId, ULong, ContentType<C>> = Struct3(groupId, epoch, contentType)
 
-  context(Raise<PrivateMessageRecipientError>)
-  override suspend fun unprotect(groupState: GroupState.Active): AuthenticatedContent<C> =
+  override suspend fun unprotect(groupState: GroupState.Active): Either<PrivateMessageRecipientError, AuthenticatedContent<C>> =
     unprotect(
       groupState.groupContext,
       groupState.keySchedule.senderDataSecret,
@@ -78,90 +79,91 @@ data class PrivateMessage<out C : Content<C>>(
       groupState.tree,
     )
 
-  context(Raise<PrivateMessageRecipientError>)
-  internal suspend fun unprotect(
+  suspend fun unprotect(
     groupContext: GroupContext,
     senderDataSecret: Secret,
     secretTree: SecretTree,
     signaturePublicKeyLookup: SignaturePublicKeyLookup,
-  ): AuthenticatedContent<C> =
-    with(groupContext.cipherSuite) {
-      val (senderDataNonce, senderDataKey) = getSenderDataNonceAndKey(senderDataSecret, ciphertext)
+  ): Either<PrivateMessageRecipientError, AuthenticatedContent<C>> =
+    either {
+      with(groupContext.cipherSuite) {
+        val (senderDataNonce, senderDataKey) = getSenderDataNonceAndKey(this, senderDataSecret, ciphertext)
 
-      val senderData =
-        try {
-          DecoderError.wrap {
+        val senderData =
+          try {
+            DecoderError.wrap {
+              decryptAead(
+                senderDataKey,
+                senderDataNonce,
+                SENDER_DATA_AAD_T.encodeUnsafe(senderDataAad()).asAad,
+                encryptedSenderData,
+              ).bind().decodeAs(SENDER_DATA_T)
+            }
+          } finally {
+            senderDataNonce.wipe()
+            senderDataKey.wipe()
+          }
+
+        val leafIndex = senderData.field1
+        val generation = senderData.field2
+        val reuseGuard = senderData.field3
+
+        val (nonce, key) = secretTree.getNonceAndKey(leafIndex, contentType, generation)
+        val guardedNonce = nonce xor reuseGuard
+
+        val plaintextContent =
+          try {
             decryptAead(
-              senderDataKey,
-              senderDataNonce,
-              SENDER_DATA_AAD_T.encodeUnsafe(senderDataAad()).asAad,
-              encryptedSenderData,
-            ).decodeAs(SENDER_DATA_T)
+              key,
+              guardedNonce,
+              AAD_T.encodeUnsafe(privateContentAad()).asAad,
+              ciphertext,
+            ).bind()
+          } finally {
+            nonce.wipe()
+            guardedNonce.wipe()
+            key.wipe()
           }
-        } finally {
-          senderDataNonce.wipe()
-          senderDataKey.wipe()
-        }
 
-      val leafIndex = senderData.field1
-      val generation = senderData.field2
-      val reuseGuard = senderData.field3
+        val (content, authData) =
+          DecoderError.wrap {
+            when (contentType) {
+              ContentType.Application ->
+                plaintextContent.decodeWithPadding(APPLICATION_CONTENT_T)
+                  .let { (content, signature) ->
+                    content to FramedContent.AuthData(signature, null)
+                  }
 
-      val (nonce, key) = secretTree.getNonceAndKey(leafIndex, contentType, generation)
-      val guardedNonce = nonce xor reuseGuard
-
-      val plaintextContent =
-        try {
-          decryptAead(
-            key,
-            guardedNonce,
-            AAD_T.encodeUnsafe(privateContentAad()).asAad,
-            ciphertext,
-          )
-        } finally {
-          nonce.wipe()
-          guardedNonce.wipe()
-          key.wipe()
-        }
-
-      val (content, authData) =
-        DecoderError.wrap {
-          when (contentType) {
-            ContentType.Application ->
-              plaintextContent.decodeWithPadding(APPLICATION_CONTENT_T)
-                .let { (content, signature) ->
-                  content to FramedContent.AuthData(signature, null)
+              ContentType.Proposal ->
+                plaintextContent.decodeWithPadding(PROPOSAL_CONTENT_T).let { (proposal, signature) ->
+                  proposal to FramedContent.AuthData(signature, null)
                 }
 
-            ContentType.Proposal ->
-              plaintextContent.decodeWithPadding(PROPOSAL_CONTENT_T).let { (proposal, signature) ->
-                proposal to FramedContent.AuthData(signature, null)
-              }
+              ContentType.Commit ->
+                plaintextContent.decodeWithPadding(COMMIT_CONTENT_T)
+                  .let { (commit, signature, confirmationTag) ->
+                    commit to FramedContent.AuthData(signature, confirmationTag)
+                  }
 
-            ContentType.Commit ->
-              plaintextContent.decodeWithPadding(COMMIT_CONTENT_T)
-                .let { (commit, signature, confirmationTag) ->
-                  commit to FramedContent.AuthData(signature, confirmationTag)
-                }
-
-            else -> error("Bad content type")
+              else -> error("Bad content type")
+            }
           }
-        }
 
-      @Suppress("UNCHECKED_CAST")
-      return AuthenticatedContent(
-        WireFormat.MlsPrivateMessage,
-        FramedContent(
-          groupId,
-          epoch,
-          Sender.member(leafIndex),
-          authenticatedData,
-          contentType,
-          content as C,
-        ),
-        authData.signature,
-        authData.confirmationTag,
-      ).apply { verify(groupContext, signaturePublicKeyLookup.getSignaturePublicKey(groupContext, this.content)) }
+        @Suppress("UNCHECKED_CAST")
+        AuthenticatedContent(
+          WireFormat.MlsPrivateMessage,
+          FramedContent(
+            groupId,
+            epoch,
+            Sender.member(leafIndex),
+            authenticatedData,
+            contentType,
+            content as C,
+          ),
+          authData.signature,
+          authData.confirmationTag,
+        ).apply { verify(groupContext, signaturePublicKeyLookup.getSignaturePublicKey(groupContext, this.content)) }
+      }
     }
 
   companion object : Encodable<PrivateMessage<*>> {
@@ -214,7 +216,7 @@ data class PrivateMessage<out C : Content<C>>(
 
       val senderData =
         SENDER_DATA_T.encodeUnsafe(Struct3(leafIndex, generation, reuseGuard))
-      val (senderDataNonce, senderDataKey) = cipherSuite.getSenderDataNonceAndKey(senderDataSecret, ciphertext)
+      val (senderDataNonce, senderDataKey) = getSenderDataNonceAndKey(cipherSuite, senderDataSecret, ciphertext)
       val encryptedSenderData =
         try {
           cipherSuite.encryptAead(

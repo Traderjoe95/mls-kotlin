@@ -9,29 +9,6 @@ import com.github.traderjoe95.mls.protocol.util.log2
 import com.github.traderjoe95.mls.protocol.util.shl
 import com.github.traderjoe95.mls.protocol.util.shr
 
-fun lowestCommonAncestor(
-  node1: TreeIndex,
-  node2: TreeIndex,
-): NodeIndex {
-  var n1 = node1.nodeIndex
-  var n2 = node2.nodeIndex
-
-  while (n1.level != n2.level) {
-    if (n1.level < n2.level) {
-      n1 = n1.parent
-    } else {
-      n2 = n2.parent
-    }
-  }
-
-  while (n1 != n2) {
-    n1 = n1.parent
-    n2 = n2.parent
-  }
-
-  return n1
-}
-
 sealed interface TreeIndex : Comparable<TreeIndex> {
   val leafIndex: LeafIndex
   val nodeIndex: NodeIndex

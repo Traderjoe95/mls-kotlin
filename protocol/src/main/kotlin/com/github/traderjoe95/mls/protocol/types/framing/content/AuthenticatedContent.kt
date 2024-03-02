@@ -1,6 +1,6 @@
 package com.github.traderjoe95.mls.protocol.types.framing.content
 
-import arrow.core.raise.Raise
+import arrow.core.Either
 import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.type.DataType
 import com.github.traderjoe95.mls.codec.type.struct.Struct3T
@@ -10,7 +10,7 @@ import com.github.traderjoe95.mls.codec.type.struct.member.orElseNothing
 import com.github.traderjoe95.mls.codec.type.struct.member.then
 import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.codec.util.throwAnyError
-import com.github.traderjoe95.mls.protocol.error.SignatureError
+import com.github.traderjoe95.mls.protocol.error.VerifySignatureError
 import com.github.traderjoe95.mls.protocol.group.GroupContext
 import com.github.traderjoe95.mls.protocol.types.GroupId
 import com.github.traderjoe95.mls.protocol.types.crypto.Mac
@@ -27,18 +27,16 @@ data class AuthenticatedContent<out C : Content<C>>(
   val signature: Signature,
   val confirmationTag: Mac?,
 ) : Struct4T.Shape<WireFormat, FramedContent<C>, Signature, Mac?> {
-  context(Raise<SignatureError>)
   fun verify(
     groupContext: GroupContext,
     signaturePublicKey: SignaturePublicKey,
-  ) {
+  ): Either<VerifySignatureError, Unit> =
     content.verifySignature(
       FramedContent.AuthData(signature, confirmationTag),
       wireFormat,
       groupContext,
       signaturePublicKey,
     )
-  }
 
   val sender: Sender
     get() = content.sender

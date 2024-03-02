@@ -1,7 +1,10 @@
 package com.github.traderjoe95.mls.protocol.interop.message
 
+import arrow.core.raise.Raise
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.crypto.KeySchedule
+import com.github.traderjoe95.mls.protocol.error.CreateSignatureError
+import com.github.traderjoe95.mls.protocol.error.HpkeEncryptError
 import com.github.traderjoe95.mls.protocol.group.GroupContext
 import com.github.traderjoe95.mls.protocol.interop.util.getCipherSuite
 import com.github.traderjoe95.mls.protocol.interop.util.getHexBinary
@@ -25,6 +28,7 @@ import com.github.traderjoe95.mls.protocol.types.crypto.Secret
 import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePublicKey
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.Capabilities
+import com.github.traderjoe95.mls.protocol.util.unsafe
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.coAwait
@@ -61,68 +65,70 @@ data class WelcomeTestVector(
         .toJsonArray()
         .map { WelcomeTestVector(it as JsonObject) }
 
-    fun generate(cipherSuite: CipherSuite): WelcomeTestVector {
-      val sigKeyPair = cipherSuite.generateSignatureKeyPair()
-      val keyPackagePrivate =
-        KeyPackage.generate(
+    fun generate(cipherSuite: CipherSuite): WelcomeTestVector =
+      unsafe {
+        val sigKeyPair = cipherSuite.generateSignatureKeyPair()
+        val keyPackagePrivate =
+          KeyPackage.generate(
+            cipherSuite,
+            sigKeyPair,
+            BasicCredential(Random.nextBytes(64)),
+            Capabilities.create(listOf(CredentialType.Basic)),
+            5.hours,
+          ).bind()
+
+        val cth = Random.nextBytes(cipherSuite.hashLen.toInt())
+
+        val groupContext =
+          GroupContext(
+            ProtocolVersion.MLS_1_0,
+            cipherSuite,
+            GroupId.new(),
+            Random.nextULong(),
+            Random.nextBytes(cipherSuite.hashLen.toInt()),
+            cth,
+          )
+
+        val pskSecret = Secret.zeroes(cipherSuite.hashLen)
+        val joinerSecret = cipherSuite.generateSecret(cipherSuite.hashLen)
+        val joinerExtracted = cipherSuite.extract(joinerSecret, pskSecret)
+        val welcomeSecret = cipherSuite.deriveSecret(joinerExtracted, "welcome")
+        val keySchedule =
+          KeySchedule.join(
+            cipherSuite,
+            joinerSecret,
+            pskSecret,
+            groupContext,
+          )
+
+        val groupInfo =
+          GroupInfo.create(
+            groupContext,
+            cipherSuite.mac(keySchedule.confirmationKey, cth),
+            ownLeafIndex = LeafIndex(Random.nextUInt()),
+            signaturePrivateKey = sigKeyPair.private,
+          ).bind()
+        val welcomeNonce =
+          cipherSuite.expandWithLabel(welcomeSecret, "nonce", byteArrayOf(), cipherSuite.nonceLen).asNonce
+        val welcomeKey = cipherSuite.expandWithLabel(welcomeSecret, "key", byteArrayOf(), cipherSuite.keyLen)
+        val encryptedGroupInfo = cipherSuite.encryptAead(welcomeKey, welcomeNonce, Aad.empty, groupInfo.encodeUnsafe())
+
+        val groupSecrets = GroupSecrets(joinerSecret)
+        val encryptedGroupSecrets =
+          groupSecrets.generateEncrypted(cipherSuite, encryptedGroupInfo) +
+            groupSecrets.encrypt(cipherSuite, keyPackagePrivate.public, encryptedGroupInfo).bind() +
+            groupSecrets.generateEncrypted(cipherSuite, encryptedGroupInfo)
+
+        return WelcomeTestVector(
           cipherSuite,
-          sigKeyPair,
-          BasicCredential(Random.nextBytes(64)),
-          Capabilities.create(listOf(CredentialType.Basic)),
-          5.hours,
+          keyPackagePrivate.initPrivateKey,
+          sigKeyPair.public,
+          MlsMessage.keyPackage(keyPackagePrivate.public),
+          MlsMessage.welcome(cipherSuite, encryptedGroupSecrets, encryptedGroupInfo),
         )
+      }
 
-      val cth = Random.nextBytes(cipherSuite.hashLen.toInt())
-
-      val groupContext =
-        GroupContext(
-          ProtocolVersion.MLS_1_0,
-          cipherSuite,
-          GroupId.new(),
-          Random.nextULong(),
-          Random.nextBytes(cipherSuite.hashLen.toInt()),
-          cth,
-        )
-
-      val pskSecret = Secret.zeroes(cipherSuite.hashLen)
-      val joinerSecret = cipherSuite.generateSecret(cipherSuite.hashLen)
-      val joinerExtracted = cipherSuite.extract(joinerSecret, pskSecret)
-      val welcomeSecret = cipherSuite.deriveSecret(joinerExtracted, "welcome")
-      val keySchedule =
-        KeySchedule.join(
-          cipherSuite,
-          joinerSecret,
-          pskSecret,
-          groupContext,
-        )
-
-      val groupInfo =
-        GroupInfo.create(
-          groupContext,
-          cipherSuite.mac(keySchedule.confirmationKey, cth),
-          ownLeafIndex = LeafIndex(Random.nextUInt()),
-          signaturePrivateKey = sigKeyPair.private,
-        )
-      val welcomeNonce =
-        cipherSuite.expandWithLabel(welcomeSecret, "nonce", byteArrayOf(), cipherSuite.nonceLen).asNonce
-      val welcomeKey = cipherSuite.expandWithLabel(welcomeSecret, "key", byteArrayOf(), cipherSuite.keyLen)
-      val encryptedGroupInfo = cipherSuite.encryptAead(welcomeKey, welcomeNonce, Aad.empty, groupInfo.encodeUnsafe())
-
-      val groupSecrets = GroupSecrets(joinerSecret)
-      val encryptedGroupSecrets =
-        groupSecrets.generateEncrypted(cipherSuite, encryptedGroupInfo) +
-          groupSecrets.encrypt(cipherSuite, keyPackagePrivate.public, encryptedGroupInfo) +
-          groupSecrets.generateEncrypted(cipherSuite, encryptedGroupInfo)
-
-      return WelcomeTestVector(
-        cipherSuite,
-        keyPackagePrivate.initPrivateKey,
-        sigKeyPair.public,
-        MlsMessage.keyPackage(keyPackagePrivate.public),
-        MlsMessage.welcome(cipherSuite, encryptedGroupSecrets, encryptedGroupInfo),
-      )
-    }
-
+    context(Raise<CreateSignatureError>, Raise<HpkeEncryptError>)
     private fun GroupSecrets.generateEncrypted(
       cipherSuite: CipherSuite,
       encryptedGroupInfo: Ciphertext,
@@ -135,9 +141,9 @@ data class WelcomeTestVector(
             BasicCredential(Random.nextBytes(64)),
             Capabilities.create(listOf(CredentialType.Basic)),
             5.hours,
-          )
+          ).bind()
 
-        encrypt(cipherSuite, otherKp.public, encryptedGroupInfo)
+        encrypt(cipherSuite, otherKp.public, encryptedGroupInfo).bind()
       }
   }
 }

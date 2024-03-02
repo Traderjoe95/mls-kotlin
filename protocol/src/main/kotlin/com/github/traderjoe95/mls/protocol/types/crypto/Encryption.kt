@@ -38,25 +38,12 @@ value class HpkePublicKey(override val bytes: ByteArray) : RefinedBytes<HpkePubl
   }
 }
 
-@JvmInline
-value class HpkeKeyPair(private val keyPair: Pair<HpkePrivateKey, HpkePublicKey>) : MoveCopyWipe<HpkeKeyPair> {
-  constructor(privateKey: HpkePrivateKey, publicKey: HpkePublicKey) : this(privateKey to publicKey)
-
+data class HpkeKeyPair(val private: HpkePrivateKey, val public: HpkePublicKey) : MoveCopyWipe<HpkeKeyPair> {
   override fun copy(): HpkeKeyPair = HpkeKeyPair(private.copy(), public)
 
   override fun wipe() {
     private.wipe()
   }
-
-  val private: HpkePrivateKey
-    get() = keyPair.first
-
-  val public: HpkePublicKey
-    get() = keyPair.second
-
-  operator fun component1(): HpkePrivateKey = keyPair.first
-
-  operator fun component2(): HpkePublicKey = keyPair.second
 }
 
 @JvmInline

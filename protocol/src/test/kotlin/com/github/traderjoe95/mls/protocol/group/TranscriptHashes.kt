@@ -1,6 +1,5 @@
 package com.github.traderjoe95.mls.protocol.group
 
-import arrow.core.raise.either
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.interop.group.TranscriptHashesTestVector
 import com.github.traderjoe95.mls.protocol.testing.VertxFunSpec
@@ -35,16 +34,14 @@ class TranscriptHashes : VertxFunSpec({ vertx ->
         context("Cipher Suite $cipherSuite") {
           testVectors.forEach { v ->
             test("should be able to verify a correct confirmation tag with a confirmation key of ${v.confirmationKey.hex}") {
-              either {
-                cipherSuite.verifyMac(
-                  v.confirmationKey,
-                  v.confirmedTranscriptHashAfter,
-                  v.authenticatedContent.also {
-                    it.contentType shouldBe ContentType.Commit
-                    it.content.content.shouldBeInstanceOf<Commit>()
-                  }.confirmationTag.shouldNotBeNull(),
-                )
-              }.shouldBeRight()
+              cipherSuite.verifyMac(
+                v.confirmationKey,
+                v.confirmedTranscriptHashAfter,
+                v.authenticatedContent.also {
+                  it.contentType shouldBe ContentType.Commit
+                  it.content.content.shouldBeInstanceOf<Commit>()
+                }.confirmationTag.shouldNotBeNull(),
+              ).shouldBeRight()
             }
 
             test(

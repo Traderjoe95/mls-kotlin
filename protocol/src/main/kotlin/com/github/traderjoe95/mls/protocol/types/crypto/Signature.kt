@@ -35,26 +35,15 @@ value class SignaturePublicKey(override val bytes: ByteArray) : RefinedBytes<Sig
   }
 }
 
-@JvmInline
-value class SignatureKeyPair(private val keyPair: Pair<SignaturePrivateKey, SignaturePublicKey>) :
-  MoveCopyWipe<SignatureKeyPair> {
-  constructor(privateKey: SignaturePrivateKey, publicKey: SignaturePublicKey) : this(privateKey to publicKey)
-
+data class SignatureKeyPair(
+  val private: SignaturePrivateKey,
+  val public: SignaturePublicKey,
+) : MoveCopyWipe<SignatureKeyPair> {
   override fun copy(): SignatureKeyPair = SignatureKeyPair(private.copy(), public)
 
   override fun wipe() {
     private.wipe()
   }
-
-  val private: SignaturePrivateKey
-    get() = keyPair.first
-
-  val public: SignaturePublicKey
-    get() = keyPair.second
-
-  operator fun component1(): SignaturePrivateKey = keyPair.first
-
-  operator fun component2(): SignaturePublicKey = keyPair.second
 }
 
 @JvmInline

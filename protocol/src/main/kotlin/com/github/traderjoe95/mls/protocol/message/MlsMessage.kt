@@ -25,6 +25,9 @@ data class MlsMessage<out M : Message>
     val wireFormat: WireFormat,
     val message: M,
   ) : Struct3T.Shape<ProtocolVersion, WireFormat, M> {
+    @get:JvmName("encoded")
+    val encoded: ByteArray by lazy { encodeUnsafe() }
+
     companion object : Encodable<MlsMessage<*>> {
       internal fun <C : Content<C>> public(message: PublicMessage<C>): MlsMessage<PublicMessage<C>> =
         MlsMessage(MLS_1_0, WireFormat.MlsPublicMessage, message)
@@ -32,7 +35,7 @@ data class MlsMessage<out M : Message>
       internal fun <C : Content<C>> private(message: PrivateMessage<C>): MlsMessage<PrivateMessage<C>> =
         MlsMessage(MLS_1_0, WireFormat.MlsPrivateMessage, message)
 
-      fun welcome(
+      internal fun welcome(
         cipherSuite: CipherSuite,
         encryptedGroupSecrets: List<EncryptedGroupSecrets>,
         encryptedGroupInfo: Ciphertext,

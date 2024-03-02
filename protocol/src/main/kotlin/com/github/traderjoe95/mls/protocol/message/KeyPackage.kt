@@ -1,6 +1,8 @@
 package com.github.traderjoe95.mls.protocol.message
 
+import arrow.core.Either
 import arrow.core.raise.Raise
+import arrow.core.raise.either
 import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.type.DataType
 import com.github.traderjoe95.mls.codec.type.struct.Struct5T
@@ -8,8 +10,9 @@ import com.github.traderjoe95.mls.codec.type.struct.Struct6T
 import com.github.traderjoe95.mls.codec.type.struct.lift
 import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
+import com.github.traderjoe95.mls.protocol.error.CreateSignatureError
 import com.github.traderjoe95.mls.protocol.error.KeyPackageMismatchError
-import com.github.traderjoe95.mls.protocol.error.SignatureError
+import com.github.traderjoe95.mls.protocol.error.VerifySignatureError
 import com.github.traderjoe95.mls.protocol.message.KeyPackage.Tbs.Companion.encodeUnsafe
 import com.github.traderjoe95.mls.protocol.types.Credential
 import com.github.traderjoe95.mls.protocol.types.Extension
@@ -45,19 +48,23 @@ data class KeyPackage(
 ) : HasExtensions<KeyPackageExtension<*>>(),
   Message,
   Struct6T.Shape<ProtocolVersion, CipherSuite, HpkePublicKey, KeyPackageLeafNode, KeyPackageExtensions, Signature> {
-  val ref: Ref by lazy {
-    cipherSuite.makeKeyPackageRef(this)
-  }
+  @get:JvmName("ref")
+  val ref: Ref by lazy { cipherSuite.makeKeyPackageRef(this) }
 
-  context(Raise<SignatureError>)
-  fun verifySignature() {
-    cipherSuite.verifyWithLabel(
-      leafNode.signaturePublicKey,
-      "KeyPackageTBS",
-      Tbs(version, cipherSuite, initKey, leafNode, extensions).encodeUnsafe(),
-      signature,
-    )
-  }
+  @get:JvmName("encoded")
+  val encoded: ByteArray by lazy { encodeUnsafe() }
+
+  fun verifySignature(): Either<VerifySignatureError, KeyPackage> =
+    either {
+      this@KeyPackage.apply {
+        cipherSuite.verifyWithLabel(
+          leafNode.signaturePublicKey,
+          "KeyPackageTBS",
+          Tbs(version, cipherSuite, initKey, leafNode, extensions).encodeUnsafe(),
+          signature,
+        )
+      }
+    }
 
   override fun equals(other: Any?): Boolean {
     if (this === other) return true
@@ -105,7 +112,7 @@ data class KeyPackage(
       lifetime: Duration,
       keyPackageExtensions: KeyPackageExtensions = listOf(),
       leafNodeExtensions: LeafNodeExtensions = listOf(),
-    ): Private =
+    ): Either<CreateSignatureError, Private> =
       generate(
         cipherSuite,
         signatureKeyPair,
@@ -124,32 +131,33 @@ data class KeyPackage(
       lifetime: Lifetime,
       keyPackageExtensions: KeyPackageExtensions = listOf(),
       leafNodeExtensions: LeafNodeExtensions = listOf(),
-    ): Private {
-      val initKeyPair = cipherSuite.generateHpkeKeyPair()
-      val encKeyPair = cipherSuite.generateHpkeKeyPair()
+    ): Either<CreateSignatureError, Private> =
+      either {
+        val initKeyPair = cipherSuite.generateHpkeKeyPair()
+        val encKeyPair = cipherSuite.generateHpkeKeyPair()
 
-      return Private(
-        create(
-          cipherSuite,
-          initKeyPair.public,
-          LeafNode.keyPackage(
+        Private(
+          create(
             cipherSuite,
-            encKeyPair.public,
-            signatureKeyPair.public,
-            credential,
-            capabilities,
-            lifetime,
-            extensions = leafNodeExtensions,
-            signaturePrivateKey = signatureKeyPair.private,
-          ),
-          keyPackageExtensions,
+            initKeyPair.public,
+            LeafNode.keyPackage(
+              cipherSuite,
+              encKeyPair.public,
+              signatureKeyPair.public,
+              credential,
+              capabilities,
+              lifetime,
+              extensions = leafNodeExtensions,
+              signaturePrivateKey = signatureKeyPair.private,
+            ).bind(),
+            keyPackageExtensions,
+            signatureKeyPair.private,
+          ).bind(),
+          initKeyPair.private,
+          encKeyPair.private,
           signatureKeyPair.private,
-        ),
-        initKeyPair.private,
-        encKeyPair.private,
-        signatureKeyPair.private,
-      )
-    }
+        )
+      }
 
     fun create(
       cipherSuite: CipherSuite,
@@ -157,22 +165,23 @@ data class KeyPackage(
       leafNode: KeyPackageLeafNode,
       extensions: KeyPackageExtensions,
       signaturePrivateKey: SignaturePrivateKey,
-    ): KeyPackage {
-      val greasedExtensions = extensions + listOf(*Extension.grease())
+    ): Either<CreateSignatureError, KeyPackage> =
+      either {
+        val greasedExtensions = extensions + listOf(*Extension.grease())
 
-      return KeyPackage(
-        ProtocolVersion.MLS_1_0,
-        cipherSuite,
-        initKey,
-        leafNode,
-        greasedExtensions,
-        cipherSuite.signWithLabel(
-          signaturePrivateKey,
-          "KeyPackageTBS",
-          Tbs(ProtocolVersion.MLS_1_0, cipherSuite, initKey, leafNode, greasedExtensions).encodeUnsafe(),
-        ),
-      )
-    }
+        KeyPackage(
+          ProtocolVersion.MLS_1_0,
+          cipherSuite,
+          initKey,
+          leafNode,
+          greasedExtensions,
+          cipherSuite.signWithLabel(
+            signaturePrivateKey,
+            "KeyPackageTBS",
+            Tbs(ProtocolVersion.MLS_1_0, cipherSuite, initKey, leafNode, greasedExtensions).encodeUnsafe(),
+          ).bind(),
+        )
+      }
   }
 
   data class Tbs(
@@ -216,7 +225,7 @@ data class KeyPackage(
       get() = public.leafNode
 
     val initKeyPair: HpkeKeyPair
-      get() = HpkeKeyPair(initPrivateKey to public.initKey)
+      get() = HpkeKeyPair(initPrivateKey, public.initKey)
 
     val ref: Ref
       get() = public.ref

@@ -2,7 +2,8 @@
 
 package com.github.traderjoe95.mls.protocol.types.tree
 
-import arrow.core.raise.Raise
+import arrow.core.Either
+import arrow.core.raise.either
 import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.type.DataType
 import com.github.traderjoe95.mls.codec.type.struct.Struct2T
@@ -12,7 +13,8 @@ import com.github.traderjoe95.mls.codec.type.struct.member.orElseNothing
 import com.github.traderjoe95.mls.codec.type.struct.member.then
 import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
-import com.github.traderjoe95.mls.protocol.error.SignatureError
+import com.github.traderjoe95.mls.protocol.error.CreateSignatureError
+import com.github.traderjoe95.mls.protocol.error.VerifySignatureError
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.types.Credential
 import com.github.traderjoe95.mls.protocol.types.Extension
@@ -78,19 +80,17 @@ data class LeafNode<S : LeafNodeSource>(
       if (source != LeafNodeSource.KeyPackage) LeafNodeLocation(groupId, leafIndex) else null,
     ).encodeUnsafe()
 
-  context(Raise<SignatureError>)
   fun verifySignature(
     cipherSuite: ICipherSuite,
     groupId: GroupId,
     leafIndex: LeafIndex,
-  ) {
+  ): Either<VerifySignatureError, Unit> =
     cipherSuite.verifyWithLabel(
       signaturePublicKey,
       "LeafNodeTBS",
       tbs(groupId, leafIndex),
       signature,
     )
-  }
 
   override fun equals(other: Any?): Boolean {
     if (this === other) return true
@@ -170,43 +170,43 @@ data class LeafNode<S : LeafNodeSource>(
       lifetime: Lifetime,
       extensions: LeafNodeExtensions,
       signaturePrivateKey: SignaturePrivateKey,
-    ): KeyPackageLeafNode {
-      val greasedExtensions = extensions + listOf(*Extension.grease())
-      val greasedCapabilities =
-        capabilities.copy(
-          extensions =
-            capabilities.extensions +
-              greasedExtensions
-                .filterNot { capabilities supportsExtension it.type }
-                .map { it.type },
-        )
-
-      val signature =
-        cipherSuite.signWithLabel(
-          signaturePrivateKey,
-          "LeafNodeTBS",
-          Tbs.keyPackage(
-            encryptionKey,
-            signaturePublicKey,
-            credential,
-            greasedCapabilities,
-            lifetime,
-            greasedExtensions,
+    ): Either<CreateSignatureError, KeyPackageLeafNode> =
+      either {
+        val greasedExtensions = extensions + listOf(*Extension.grease())
+        val greasedCapabilities =
+          capabilities.copy(
+            extensions =
+              capabilities.extensions +
+                greasedExtensions
+                  .filterNot { capabilities supportsExtension it.type }
+                  .map { it.type },
           )
-            .encodeUnsafe(),
-        )
 
-      return LeafNode(
-        encryptionKey,
-        signaturePublicKey,
-        credential,
-        greasedCapabilities,
-        LeafNodeSource.KeyPackage,
-        lifetime,
-        greasedExtensions,
-        signature,
-      )
-    }
+        val signature =
+          cipherSuite.signWithLabel(
+            signaturePrivateKey,
+            "LeafNodeTBS",
+            Tbs.keyPackage(
+              encryptionKey,
+              signaturePublicKey,
+              credential,
+              greasedCapabilities,
+              lifetime,
+              greasedExtensions,
+            ).encodeUnsafe(),
+          ).bind()
+
+        LeafNode(
+          encryptionKey,
+          signaturePublicKey,
+          credential,
+          greasedCapabilities,
+          LeafNodeSource.KeyPackage,
+          lifetime,
+          greasedExtensions,
+          signature,
+        )
+      }
 
     fun commit(
       cipherSuite: ICipherSuite,
@@ -216,12 +216,15 @@ data class LeafNode<S : LeafNodeSource>(
       leafIndex: LeafIndex,
       groupId: GroupId,
       signaturePrivateKey: SignaturePrivateKey,
-    ): CommitLeafNode =
-      cipherSuite.signWithLabel(
-        signaturePrivateKey,
-        "LeafNodeTBS",
-        Tbs.commit(encryptionKey, oldLeafNode, parentHash, leafIndex, groupId).encodeUnsafe(),
-      ).let { signature ->
+    ): Either<CreateSignatureError, CommitLeafNode> =
+      either {
+        val signature =
+          cipherSuite.signWithLabel(
+            signaturePrivateKey,
+            "LeafNodeTBS",
+            Tbs.commit(encryptionKey, oldLeafNode, parentHash, leafIndex, groupId).encodeUnsafe(),
+          ).bind()
+
         LeafNode(
           encryptionKey,
           oldLeafNode.signaturePublicKey,
@@ -241,12 +244,15 @@ data class LeafNode<S : LeafNodeSource>(
       leafIndex: LeafIndex,
       groupId: GroupId,
       signaturePrivateKey: SignaturePrivateKey,
-    ): UpdateLeafNode =
-      cipherSuite.signWithLabel(
-        signaturePrivateKey,
-        "LeafNodeTBS",
-        Tbs.update(encryptionKey, oldLeafNode, leafIndex, groupId).encodeUnsafe(),
-      ).let { signature ->
+    ): Either<CreateSignatureError, UpdateLeafNode> =
+      either {
+        val signature =
+          cipherSuite.signWithLabel(
+            signaturePrivateKey,
+            "LeafNodeTBS",
+            Tbs.update(encryptionKey, oldLeafNode, leafIndex, groupId).encodeUnsafe(),
+          ).bind()
+
         LeafNode(
           encryptionKey,
           oldLeafNode.signaturePublicKey,
@@ -268,13 +274,16 @@ data class LeafNode<S : LeafNodeSource>(
       extensions: LeafNodeExtensions,
       leafIndex: LeafIndex,
       groupId: GroupId,
-    ): UpdateLeafNode =
-      cipherSuite.signWithLabel(
-        signatureKeyPair.private,
-        "LeafNodeTBS",
-        Tbs.update(encryptionKey, signatureKeyPair.public, credential, capabilities, extensions, leafIndex, groupId)
-          .encodeUnsafe(),
-      ).let { signature ->
+    ): Either<CreateSignatureError, UpdateLeafNode> =
+      either {
+        val signature =
+          cipherSuite.signWithLabel(
+            signatureKeyPair.private,
+            "LeafNodeTBS",
+            Tbs.update(encryptionKey, signatureKeyPair.public, credential, capabilities, extensions, leafIndex, groupId)
+              .encodeUnsafe(),
+          ).bind()
+
         LeafNode(
           encryptionKey,
           signatureKeyPair.public,

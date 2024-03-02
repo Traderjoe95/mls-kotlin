@@ -16,6 +16,7 @@ import com.github.traderjoe95.mls.protocol.types.framing.content.AuthenticatedCo
 import com.github.traderjoe95.mls.protocol.types.framing.content.FramedContent
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
 import com.github.traderjoe95.mls.protocol.types.framing.enums.WireFormat
+import com.github.traderjoe95.mls.protocol.util.unsafe
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.coroutines.coAwait
@@ -73,7 +74,7 @@ data class TranscriptHashesTestVector(
       val commit = Random.nextCommit(cipherSuite, groupContext.groupId)
       val commitContent = FramedContent.createMember(commit, groupContext, LeafIndex(1U))
 
-      val signature = commitContent.sign(cipherSuite, wireFormat, groupContext, signingKey)
+      val signature = unsafe { commitContent.sign(wireFormat, groupContext, signingKey).bind() }
 
       val confirmedTranscriptHashAfter =
         newConfirmedTranscriptHash(

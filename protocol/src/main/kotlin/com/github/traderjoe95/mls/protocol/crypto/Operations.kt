@@ -8,10 +8,14 @@ import com.github.traderjoe95.mls.protocol.types.crypto.Ciphertext
 import com.github.traderjoe95.mls.protocol.types.crypto.Nonce
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret
 
-context(ICipherSuite)
-fun List<Pair<PreSharedKeyId, Secret>>.calculatePskSecret(): Secret =
-  foldIndexed(zeroesNh) { idx, pskSecret, (pskId, psk) ->
-    updatePskSecret(pskSecret, pskId, psk, idx, size)
+fun calculatePskSecret(
+  cipherSuite: ICipherSuite,
+  psks: List<Pair<PreSharedKeyId, Secret>>,
+): Secret =
+  with(cipherSuite) {
+    psks.foldIndexed(this.zeroesNh) { idx, pskSecret, (pskId, psk) ->
+      this.updatePskSecret(pskSecret, pskId, psk, idx, psks.size)
+    }
   }
 
 internal fun ICipherSuite.updatePskSecret(
@@ -31,21 +35,24 @@ internal fun ICipherSuite.updatePskSecret(
     pskSecret,
   )
 
-fun ICipherSuite.getSenderDataNonceAndKey(
+fun getSenderDataNonceAndKey(
+  cipherSuite: ICipherSuite,
   senderDataSecret: Secret,
   ciphertext: Ciphertext,
 ): Pair<Nonce, Secret> =
-  ciphertext.bytes.sliceArray(0..<minOf(ciphertext.size, hashLen.toInt())).let { ciphertextSample ->
-    expandWithLabel(
-      senderDataSecret,
-      "nonce",
-      ciphertextSample,
-      nonceLen,
-    ).asNonce to
+  with(cipherSuite) {
+    ciphertext.bytes.sliceArray(0..<minOf(ciphertext.size, hashLen.toInt())).let { ciphertextSample ->
       expandWithLabel(
         senderDataSecret,
-        "key",
+        "nonce",
         ciphertextSample,
-        keyLen,
-      )
+        nonceLen,
+      ).asNonce to
+        expandWithLabel(
+          senderDataSecret,
+          "key",
+          ciphertextSample,
+          keyLen,
+        )
+    }
   }

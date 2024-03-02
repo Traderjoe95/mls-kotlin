@@ -17,7 +17,7 @@ fun LeafNode<*>.validate(
   expectedSource: LeafNodeSource? = null,
 ) {
   // Verify leaf node signature
-  verifySignature(groupContext.cipherSuite, groupContext.groupId, leafIdx)
+  verifySignature(groupContext.cipherSuite, groupContext.groupId, leafIdx).bind()
 
   // Check that leaf node is compatible with group requirements
   groupContext.extension<RequiredCapabilities>()?.let { requiredCapabilities ->

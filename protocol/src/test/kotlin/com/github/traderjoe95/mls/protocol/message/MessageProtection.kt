@@ -1,6 +1,5 @@
 package com.github.traderjoe95.mls.protocol.message
 
-import arrow.core.raise.either
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.error.PublicMessageError
 import com.github.traderjoe95.mls.protocol.error.PublicMessageSenderError
@@ -61,24 +60,21 @@ class MessageProtection : VertxFunSpec({ vertx ->
 
             context("with group context ${groupContext.toShortString()}") {
               test("should be able to unprotect a public message containing a Proposal") {
-                either {
-                  v.proposalPub.message.unprotect(groupContext, v.membershipKey, v.signaturePub)
-                }.shouldBeRight().content.content.shouldBeInstanceOf<Proposal>() shouldBeEqual v.proposal
+                v.proposalPub.message.unprotect(groupContext, v.membershipKey, v.signaturePub)
+                  .shouldBeRight().content.content.shouldBeInstanceOf<Proposal>() shouldBeEqual v.proposal
               }
 
               test("should be able to protect a public message containing a Proposal, which can be unprotected again") {
                 val pub: MlsMessage<PublicMessage<Proposal>> =
                   unsafe { messages().protect(v.proposal, UsePublicMessage) }.coerceFormat()
 
-                either {
-                  pub.message.unprotect(groupContext, v.membershipKey, v.signaturePub)
-                }.shouldBeRight().content.content.shouldBeInstanceOf<Proposal>() shouldBeEqual v.proposal
+                pub.message.unprotect(groupContext, v.membershipKey, v.signaturePub)
+                  .shouldBeRight().content.content.shouldBeInstanceOf<Proposal>() shouldBeEqual v.proposal
               }
 
               test("should be able to unprotect a public message containing a Commit") {
-                either {
-                  v.commitPub.message.unprotect(groupContext, v.membershipKey, v.signaturePub)
-                }.shouldBeRight().content.content.shouldBeInstanceOf<Commit>() shouldBeEqual v.commit
+                v.commitPub.message.unprotect(groupContext, v.membershipKey, v.signaturePub)
+                  .shouldBeRight().content.content.shouldBeInstanceOf<Commit>() shouldBeEqual v.commit
               }
 
               test("should be able to protect a public message containing a Commit, which can be unprotected again") {
@@ -94,22 +90,20 @@ class MessageProtection : VertxFunSpec({ vertx ->
                     )
                   }.coerceFormat()
 
-                either {
-                  pub.message.unprotect(groupContext, v.membershipKey, v.signaturePub)
-                }.shouldBeRight().content.content.shouldBeInstanceOf<Commit>() shouldBeEqual v.commit
+                pub.message.unprotect(groupContext, v.membershipKey, v.signaturePub)
+                  .shouldBeRight().content.content.shouldBeInstanceOf<Commit>() shouldBeEqual v.commit
               }
 
               test("should be able to unprotect a private message containing a Proposal") {
                 val secretTree = SecretTree.create(v.cipherSuite, v.encryptionSecret.copy(), 2U)
 
-                either {
-                  v.proposalPriv.message.unprotect(
-                    groupContext,
-                    v.senderDataSecret,
-                    secretTree,
-                    SignaturePublicKeyLookup.only(v.signaturePub),
-                  )
-                }.shouldBeRight().content.content.shouldBeInstanceOf<Proposal>() shouldBeEqual v.proposal
+                v.proposalPriv.message.unprotect(
+                  groupContext,
+                  v.senderDataSecret,
+                  secretTree,
+                  SignaturePublicKeyLookup.only(v.signaturePub),
+                )
+                  .shouldBeRight().content.content.shouldBeInstanceOf<Proposal>() shouldBeEqual v.proposal
               }
 
               test("should be able to protect a private message containing a Proposal, which can be unprotected again") {
@@ -118,27 +112,25 @@ class MessageProtection : VertxFunSpec({ vertx ->
 
                 val recipientSecretTree = SecretTree.create(v.cipherSuite, v.encryptionSecret.copy(), 2U)
 
-                either {
-                  priv.message.unprotect(
-                    groupContext,
-                    v.senderDataSecret,
-                    recipientSecretTree,
-                    SignaturePublicKeyLookup.only(v.signaturePub),
-                  )
-                }.shouldBeRight().content.content.shouldBeInstanceOf<Proposal>() shouldBeEqual v.proposal
+                priv.message.unprotect(
+                  groupContext,
+                  v.senderDataSecret,
+                  recipientSecretTree,
+                  SignaturePublicKeyLookup.only(v.signaturePub),
+                )
+                  .shouldBeRight().content.content.shouldBeInstanceOf<Proposal>() shouldBeEqual v.proposal
               }
 
               test("should be able to unprotect a private message containing a Commit") {
                 val secretTree = SecretTree.create(v.cipherSuite, v.encryptionSecret.copy(), 2U)
 
-                either {
-                  v.commitPriv.message.unprotect(
-                    groupContext,
-                    v.senderDataSecret,
-                    secretTree,
-                    SignaturePublicKeyLookup.only(v.signaturePub),
-                  )
-                }.shouldBeRight().content.content.shouldBeInstanceOf<Commit>() shouldBeEqual v.commit
+                v.commitPriv.message.unprotect(
+                  groupContext,
+                  v.senderDataSecret,
+                  secretTree,
+                  SignaturePublicKeyLookup.only(v.signaturePub),
+                )
+                  .shouldBeRight().content.content.shouldBeInstanceOf<Commit>() shouldBeEqual v.commit
               }
 
               test("should be able to protect a private message containing a Commit, which can be unprotected again") {
@@ -156,42 +148,39 @@ class MessageProtection : VertxFunSpec({ vertx ->
 
                 val recipientSecretTree = SecretTree.create(v.cipherSuite, v.encryptionSecret.copy(), 2U)
 
-                either {
-                  priv.message.unprotect(
-                    groupContext,
-                    v.senderDataSecret,
-                    recipientSecretTree,
-                    SignaturePublicKeyLookup.only(v.signaturePub),
-                  )
-                }.shouldBeRight().content.content.shouldBeInstanceOf<Commit>() shouldBeEqual v.commit
+                priv.message.unprotect(
+                  groupContext,
+                  v.senderDataSecret,
+                  recipientSecretTree,
+                  SignaturePublicKeyLookup.only(v.signaturePub),
+                )
+                  .shouldBeRight().content.content.shouldBeInstanceOf<Commit>() shouldBeEqual v.commit
               }
 
               test("should be able to unprotect a private message containing application data") {
                 val secretTree = SecretTree.create(v.cipherSuite, v.encryptionSecret.copy(), 2U)
 
-                either {
-                  v.applicationPriv.message.unprotect(
-                    groupContext,
-                    v.senderDataSecret,
-                    secretTree,
-                    SignaturePublicKeyLookup.only(v.signaturePub),
-                  )
-                }.shouldBeRight().content.content.shouldBeInstanceOf<ApplicationData>() shouldBeEq v.application
+                v.applicationPriv.message.unprotect(
+                  groupContext,
+                  v.senderDataSecret,
+                  secretTree,
+                  SignaturePublicKeyLookup.only(v.signaturePub),
+                )
+                  .shouldBeRight().content.content.shouldBeInstanceOf<ApplicationData>() shouldBeEq v.application
               }
 
               test("should be able to protect a private message containing application data, which can be unprotected again") {
-                val priv = unsafe { messages().applicationMessage(v.application) }
+                val priv = unsafe { messages().applicationMessage(v.application).bind() }
 
                 val recipientSecretTree = SecretTree.create(v.cipherSuite, v.encryptionSecret.copy(), 2U)
 
-                either {
-                  priv.message.unprotect(
-                    groupContext,
-                    v.senderDataSecret,
-                    recipientSecretTree,
-                    SignaturePublicKeyLookup.only(v.signaturePub),
-                  )
-                }.shouldBeRight().content.content.shouldBeInstanceOf<ApplicationData>() shouldBeEq v.application
+                priv.message.unprotect(
+                  groupContext,
+                  v.senderDataSecret,
+                  recipientSecretTree,
+                  SignaturePublicKeyLookup.only(v.signaturePub),
+                )
+                  .shouldBeRight().content.content.shouldBeInstanceOf<ApplicationData>() shouldBeEq v.application
               }
 
               test("should raise an error when trying to protect a public message containing application data") {
@@ -199,7 +188,7 @@ class MessageProtection : VertxFunSpec({ vertx ->
                   val content = FramedContent.createMember(v.application, groupContext, LeafIndex(1U))
                   val authData =
                     FramedContent.AuthData(
-                      content.sign(cipherSuite, WireFormat.MlsPublicMessage, groupContext, v.signaturePriv),
+                      content.sign(WireFormat.MlsPublicMessage, groupContext, v.signaturePriv).shouldBeRight(),
                       null,
                     )
 

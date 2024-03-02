@@ -1,7 +1,9 @@
 package com.github.traderjoe95.mls.protocol.crypto
 
-import arrow.core.raise.Raise
-import com.github.traderjoe95.mls.protocol.error.SignatureError
+import arrow.core.Either
+import com.github.traderjoe95.mls.protocol.error.CreateSignatureError
+import com.github.traderjoe95.mls.protocol.error.ReconstructSignaturePublicKeyError
+import com.github.traderjoe95.mls.protocol.error.VerifySignatureError
 import com.github.traderjoe95.mls.protocol.types.crypto.SignContent
 import com.github.traderjoe95.mls.protocol.types.crypto.SignContent.Companion.encodeUnsafe
 import com.github.traderjoe95.mls.protocol.types.crypto.Signature
@@ -14,62 +16,58 @@ interface Sign {
     signatureKey: SignaturePrivateKey,
     label: String,
     content: ByteArray,
-  ): Signature
+  ): Either<CreateSignatureError, Signature>
 
-  context(Raise<SignatureError>)
   fun verifyWithLabel(
     signaturePublicKey: SignaturePublicKey,
     label: String,
     content: ByteArray,
     signature: Signature,
-  )
+  ): Either<VerifySignatureError, Unit>
 
   fun generateSignatureKeyPair(): SignatureKeyPair
 
-  fun reconstructPublicKey(privateKey: SignaturePrivateKey): SignatureKeyPair
+  fun reconstructPublicKey(privateKey: SignaturePrivateKey): Either<ReconstructSignaturePublicKeyError, SignatureKeyPair>
 
   abstract class Provider : Sign {
     final override fun signWithLabel(
       signatureKey: SignaturePrivateKey,
       label: String,
       content: ByteArray,
-    ): Signature = sign(signatureKey, SignContent.create(label, content))
+    ): Either<CreateSignatureError, Signature> = sign(signatureKey, SignContent.create(label, content))
 
-    context(Raise<SignatureError>)
     final override fun verifyWithLabel(
       signaturePublicKey: SignaturePublicKey,
       label: String,
       content: ByteArray,
       signature: Signature,
-    ) = verify(signaturePublicKey, SignContent.create(label, content), signature)
+    ): Either<VerifySignatureError, Unit> = verify(signaturePublicKey, SignContent.create(label, content), signature)
 
     private fun sign(
       signatureKey: SignaturePrivateKey,
       content: SignContent,
-    ): Signature = sign(signatureKey, content.encodeUnsafe())
+    ): Either<CreateSignatureError, Signature> = sign(signatureKey, content.encodeUnsafe())
 
     internal abstract fun sign(
       signatureKey: SignaturePrivateKey,
       content: ByteArray,
-    ): Signature
+    ): Either<CreateSignatureError, Signature>
 
-    context(Raise<SignatureError>)
     private fun verify(
       signaturePublicKey: SignaturePublicKey,
       content: SignContent,
       signature: Signature,
-    ): Unit =
+    ): Either<VerifySignatureError, Unit> =
       verify(
         signaturePublicKey,
         content.encodeUnsafe(),
         signature,
       )
 
-    context(Raise<SignatureError>)
     internal abstract fun verify(
       signaturePublicKey: SignaturePublicKey,
       content: ByteArray,
       signature: Signature,
-    )
+    ): Either<VerifySignatureError, Unit>
   }
 }

@@ -53,13 +53,12 @@ class PassiveClientScenarios : VertxFunSpec({ vertx ->
                   test("the client should be able to join the group") {
                     var state =
                       either {
-                        with(AuthenticationSvc) {
-                          v.welcome.message.joinGroup(
-                            v.privateKeyPackage,
-                            psks = v.externalPsks.asPskLookup(null),
-                            optTree = v.ratchetTree,
-                          )
-                        }
+                        v.welcome.message.joinGroup(
+                          v.privateKeyPackage,
+                          AuthenticationSvc,
+                          psks = v.externalPsks.asPskLookup(null),
+                          optionalTree = v.ratchetTree,
+                        ).bind()
                       }.shouldBeRight().shouldBeInstanceOf<GroupState.Active>()
 
                     state.keySchedule.epochAuthenticator shouldBeEq v.initialEpochAuthenticator
@@ -73,20 +72,17 @@ class PassiveClientScenarios : VertxFunSpec({ vertx ->
                           state =
                             state.foldWith(epoch.proposals) {
                               unsafe {
-                                with(AuthenticationSvc) {
-                                  process(it.coerceFormat<ProposalMessage>().message)
-                                }
+                                process(it.coerceFormat<ProposalMessage>().message, AuthenticationSvc).bind()
                               }.shouldBeInstanceOf<GroupState.Active>()
                             }
 
                           state =
                             unsafe {
-                              with(AuthenticationSvc) {
-                                state.process(
-                                  epoch.commit.coerceFormat<CommitMessage>().message,
-                                  pskLookup,
-                                )
-                              }
+                              state.process(
+                                epoch.commit.coerceFormat<CommitMessage>().message,
+                                AuthenticationSvc,
+                                pskLookup,
+                              ).bind()
                             }.shouldBeInstanceOf<GroupState.Active>()
 
                           keySchedules[state.epoch] = state.keySchedule
@@ -111,7 +107,7 @@ class PassiveClientScenarios : VertxFunSpec({ vertx ->
     ): PskLookup =
       object : PskLookup {
         context(Raise<PskError>)
-        override suspend fun getPreSharedKey(id: PreSharedKeyId): Secret =
+        override suspend fun resolvePsk(id: PreSharedKeyId): Secret =
           when (id) {
             is ExternalPskId ->
               this@asPskLookup

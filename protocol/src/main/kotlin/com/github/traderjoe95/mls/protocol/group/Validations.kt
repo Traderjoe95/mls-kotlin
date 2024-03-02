@@ -77,7 +77,7 @@ class Validations(
         LeafNodeSource.KeyPackage,
       )
 
-      keyPackage.verifySignature()
+      keyPackage.verifySignature().bind()
 
       ensure(keyPackage.initKey neq keyPackage.leafNode.encryptionKey) {
         KeyPackageValidationError.InitKeyReuseAsEncryptionKey(keyPackage)
@@ -173,7 +173,7 @@ class Validations(
     either {
       preSharedKey.pskId.validate(cipherSuite, inReInit, inBranch)
 
-      psks?.getPreSharedKey(preSharedKey.pskId)
+      psks?.resolvePsk(preSharedKey.pskId)
     }
 
   fun validated(reInit: ReInit): Either<ReInitValidationError, ReInit> =

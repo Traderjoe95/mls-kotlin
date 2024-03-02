@@ -50,10 +50,7 @@ data class PskSecretTestVector(
             Random.nextBytes(cipherSuite.hashLen.toInt()).asNonce,
           )
         }
-      val pskSecret =
-        with(cipherSuite) {
-          psks.map { ExternalPskId(it.pskId, it.pskNonce) to it.psk }.calculatePskSecret()
-        }
+      val pskSecret = calculatePskSecret(cipherSuite, psks.map { ExternalPskId(it.pskId, it.pskNonce) to it.psk })
 
       return PskSecretTestVector(cipherSuite, psks, pskSecret)
     }

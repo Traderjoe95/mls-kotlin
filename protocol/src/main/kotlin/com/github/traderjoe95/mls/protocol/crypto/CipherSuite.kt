@@ -1,6 +1,6 @@
 package com.github.traderjoe95.mls.protocol.crypto
 
-import arrow.core.raise.Raise
+import arrow.core.Either
 import com.github.traderjoe95.mls.codec.type.EnumT
 import com.github.traderjoe95.mls.codec.type.ProtocolEnum
 import com.github.traderjoe95.mls.codec.type.enum
@@ -8,7 +8,15 @@ import com.github.traderjoe95.mls.codec.util.throwAnyError
 import com.github.traderjoe95.mls.protocol.crypto.impl.AeadAlgorithm
 import com.github.traderjoe95.mls.protocol.crypto.impl.CipherSuiteImpl.Companion.using
 import com.github.traderjoe95.mls.protocol.crypto.impl.DhKem
-import com.github.traderjoe95.mls.protocol.error.SignatureError
+import com.github.traderjoe95.mls.protocol.error.CreateSignatureError
+import com.github.traderjoe95.mls.protocol.error.DecryptError
+import com.github.traderjoe95.mls.protocol.error.HpkeDecryptError
+import com.github.traderjoe95.mls.protocol.error.HpkeEncryptError
+import com.github.traderjoe95.mls.protocol.error.ReceiveExportError
+import com.github.traderjoe95.mls.protocol.error.ReconstructHpkePublicKeyError
+import com.github.traderjoe95.mls.protocol.error.ReconstructSignaturePublicKeyError
+import com.github.traderjoe95.mls.protocol.error.SendExportError
+import com.github.traderjoe95.mls.protocol.error.VerifySignatureError
 import com.github.traderjoe95.mls.protocol.message.KeyPackage
 import com.github.traderjoe95.mls.protocol.types.crypto.Aad
 import com.github.traderjoe95.mls.protocol.types.crypto.Ciphertext
@@ -122,40 +130,40 @@ internal object Dummy : ICipherSuite {
     signatureKey: SignaturePrivateKey,
     label: String,
     content: ByteArray,
-  ): Signature = error("unsupported")
+  ): Either<CreateSignatureError, Signature> = error("unsupported")
 
-  context(Raise<SignatureError>)
   override fun verifyWithLabel(
     signaturePublicKey: SignaturePublicKey,
     label: String,
     content: ByteArray,
     signature: Signature,
-  ) = error("unsupported")
+  ): Either<VerifySignatureError, Unit> = error("unsupported")
 
   override fun generateSignatureKeyPair(): SignatureKeyPair = error("unsupported")
 
-  override fun reconstructPublicKey(privateKey: SignaturePrivateKey): SignatureKeyPair = error("unsupported")
+  override fun reconstructPublicKey(privateKey: SignaturePrivateKey): Either<ReconstructSignaturePublicKeyError, SignatureKeyPair> =
+    error("unsupported")
 
   override fun encryptWithLabel(
     publicKey: HpkePublicKey,
     label: String,
     context: ByteArray,
     plaintext: ByteArray,
-  ): HpkeCiphertext = error("unsupported")
+  ): Either<HpkeEncryptError, HpkeCiphertext> = error("unsupported")
 
   override fun decryptWithLabel(
     keyPair: HpkeKeyPair,
     label: String,
     context: ByteArray,
     ciphertext: HpkeCiphertext,
-  ): ByteArray = error("unsupported")
+  ): Either<HpkeDecryptError, ByteArray> = error("unsupported")
 
   override fun decryptWithLabel(
     privateKey: HpkePrivateKey,
     label: String,
     context: ByteArray,
     ciphertext: HpkeCiphertext,
-  ): ByteArray = error("unsupported")
+  ): Either<HpkeDecryptError, ByteArray> = error("unsupported")
 
   override fun encryptAead(
     key: Secret,
@@ -169,18 +177,18 @@ internal object Dummy : ICipherSuite {
     nonce: Nonce,
     aad: Aad,
     ciphertext: Ciphertext,
-  ): ByteArray = error("unsupported")
+  ): Either<DecryptError, ByteArray> = error("unsupported")
 
   override fun export(
     publicKey: HpkePublicKey,
     info: String,
-  ): Pair<KemOutput, Secret> = error("unsupported")
+  ): Either<SendExportError, Pair<KemOutput, Secret>> = error("unsupported")
 
   override fun export(
     kemOutput: KemOutput,
     keyPair: HpkeKeyPair,
     info: String,
-  ): Secret = error("unsupported")
+  ): Either<ReceiveExportError, Secret> = error("unsupported")
 
   override val keyLen: UShort
     get() = error("unsupported")
@@ -232,9 +240,11 @@ internal object Dummy : ICipherSuite {
 
   override fun deriveKeyPair(secret: Secret): HpkeKeyPair = error("unsupported")
 
-  override fun reconstructPublicKey(privateKey: HpkePrivateKey): HpkeKeyPair = error("unsupported")
+  override fun reconstructPublicKey(privateKey: HpkePrivateKey): Either<ReconstructHpkePublicKeyError, HpkeKeyPair> = error("unsupported")
 
   override fun generateSecret(len: UShort): Secret = error("unsupported")
+
+  override fun generateNonce(len: UShort): Nonce = error("unsupported")
 
   override fun generateHpkeKeyPair(): HpkeKeyPair = error("unsupported")
 }

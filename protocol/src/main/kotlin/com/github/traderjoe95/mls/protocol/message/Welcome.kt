@@ -1,8 +1,9 @@
 package com.github.traderjoe95.mls.protocol.message
 
+import arrow.core.Either
 import arrow.core.None
 import arrow.core.Option
-import arrow.core.raise.Raise
+import arrow.core.raise.either
 import com.github.traderjoe95.mls.codec.Encodable
 import com.github.traderjoe95.mls.codec.decodeAs
 import com.github.traderjoe95.mls.codec.type.DataType
@@ -15,6 +16,7 @@ import com.github.traderjoe95.mls.codec.type.struct.lift
 import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.error.DecoderError
+import com.github.traderjoe95.mls.protocol.error.HpkeEncryptError
 import com.github.traderjoe95.mls.protocol.error.WelcomeJoinError
 import com.github.traderjoe95.mls.protocol.psk.PreSharedKeyId
 import com.github.traderjoe95.mls.protocol.types.crypto.Aad
@@ -28,52 +30,42 @@ data class Welcome(
   val secrets: List<EncryptedGroupSecrets>,
   val encryptedGroupInfo: Ciphertext,
 ) : Message, Struct3T.Shape<CipherSuite, List<EncryptedGroupSecrets>, Ciphertext> {
-  context(Raise<WelcomeJoinError>)
-  fun decryptGroupSecrets(keyPackage: KeyPackage.Private): GroupSecrets =
-    DecoderError.wrap {
-      cipherSuite.decryptWithLabel(
-        keyPackage.initKeyPair,
-        "Welcome",
-        encryptedGroupInfo.bytes,
-        secrets
-          .find { it.newMember.eq(keyPackage.ref) }
-          ?.encryptedGroupSecrets
-          ?: raise(WelcomeJoinError.WelcomeNotForYou),
-      ).decodeAs(GroupSecrets.dataT)
-    }
+  fun decryptGroupSecrets(keyPackage: KeyPackage.Private): Either<WelcomeJoinError, GroupSecrets> =
+    decryptGroupSecrets(keyPackage.ref, keyPackage.initKeyPair)
 
-  context(Raise<WelcomeJoinError>)
   fun decryptGroupSecrets(
     keyPackageRef: KeyPackage.Ref,
     initKeyPair: HpkeKeyPair,
-  ): GroupSecrets =
-    DecoderError.wrap {
-      cipherSuite.decryptWithLabel(
-        initKeyPair,
-        "Welcome",
-        encryptedGroupInfo.bytes,
-        secrets
-          .find { it.newMember.eq(keyPackageRef) }
-          ?.encryptedGroupSecrets
-          ?: raise(WelcomeJoinError.WelcomeNotForYou),
-      ).decodeAs(GroupSecrets.dataT)
+  ): Either<WelcomeJoinError, GroupSecrets> =
+    either {
+      DecoderError.wrap {
+        cipherSuite.decryptWithLabel(
+          initKeyPair,
+          "Welcome",
+          encryptedGroupInfo.bytes,
+          secrets
+            .find { it.newMember.eq(keyPackageRef) }
+            ?.encryptedGroupSecrets
+            ?: raise(WelcomeJoinError.WelcomeNotForYou),
+        ).bind().decodeAs(GroupSecrets.dataT)
+      }
     }
 
-  context(Raise<WelcomeJoinError>)
   fun decryptGroupInfo(
     joinerSecret: Secret,
     pskSecret: Secret,
-  ): GroupInfo {
-    val joinerExtracted = cipherSuite.extract(joinerSecret, pskSecret)
-    val welcomeSecret = cipherSuite.deriveSecret(joinerExtracted, "welcome")
+  ): Either<WelcomeJoinError, GroupInfo> =
+    either {
+      val joinerExtracted = cipherSuite.extract(joinerSecret, pskSecret)
+      val welcomeSecret = cipherSuite.deriveSecret(joinerExtracted, "welcome")
 
-    val nonce = cipherSuite.expandWithLabel(welcomeSecret, "nonce", byteArrayOf(), cipherSuite.nonceLen).asNonce
-    val key = cipherSuite.expandWithLabel(welcomeSecret, "key", byteArrayOf(), cipherSuite.keyLen)
+      val nonce = cipherSuite.expandWithLabel(welcomeSecret, "nonce", byteArrayOf(), cipherSuite.nonceLen).asNonce
+      val key = cipherSuite.expandWithLabel(welcomeSecret, "key", byteArrayOf(), cipherSuite.keyLen)
 
-    return DecoderError.wrap {
-      GroupInfo.decode(cipherSuite.decryptAead(key, nonce, Aad.empty, encryptedGroupInfo))
+      DecoderError.wrap {
+        GroupInfo.decode(cipherSuite.decryptAead(key, nonce, Aad.empty, encryptedGroupInfo).bind())
+      }
     }
-  }
 
   companion object : Encodable<Welcome> {
     override val dataT: DataType<Welcome> =
@@ -94,16 +86,18 @@ data class GroupSecrets(
     cipherSuite: CipherSuite,
     forKeyPackage: KeyPackage,
     encryptedGroupInfo: Ciphertext,
-  ): EncryptedGroupSecrets =
-    EncryptedGroupSecrets(
-      forKeyPackage.ref,
-      cipherSuite.encryptWithLabel(
-        forKeyPackage.initKey,
-        "Welcome",
-        encryptedGroupInfo.bytes,
-        encodeUnsafe(),
-      ),
-    )
+  ): Either<HpkeEncryptError, EncryptedGroupSecrets> =
+    either {
+      EncryptedGroupSecrets(
+        forKeyPackage.ref,
+        cipherSuite.encryptWithLabel(
+          forKeyPackage.initKey,
+          "Welcome",
+          encryptedGroupInfo.bytes,
+          encodeUnsafe(),
+        ).bind(),
+      )
+    }
 
   companion object : Encodable<GroupSecrets> {
     override val dataT: DataType<GroupSecrets> =

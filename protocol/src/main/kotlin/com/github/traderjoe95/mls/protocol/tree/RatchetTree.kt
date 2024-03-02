@@ -12,7 +12,7 @@ import com.github.traderjoe95.mls.codec.type.get
 import com.github.traderjoe95.mls.codec.type.optional
 import com.github.traderjoe95.mls.codec.util.uSize
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
-import com.github.traderjoe95.mls.protocol.error.SignatureError
+import com.github.traderjoe95.mls.protocol.error.VerifySignatureError
 import com.github.traderjoe95.mls.protocol.group.GroupContext
 import com.github.traderjoe95.mls.protocol.message.KeyPackage
 import com.github.traderjoe95.mls.protocol.tree.PublicRatchetTree.Companion.newTree
@@ -68,7 +68,7 @@ sealed interface RatchetTreeOps : SignaturePublicKeyLookup {
 
   fun leafNodeOrNull(idx: TreeIndex): LeafNode<*>?
 
-  context(Raise<SignatureError.SignaturePublicKeyKeyNotFound>)
+  context(Raise<VerifySignatureError.SignaturePublicKeyKeyNotFound>)
   override fun getSignaturePublicKey(
     groupContext: GroupContext,
     framedContent: FramedContent<*>,
@@ -197,7 +197,7 @@ class RatchetTree(
 
   fun getPrivateKey(nodeIndex: TreeIndex): HpkePrivateKey? = private.getPrivateKey(nodeIndex)
 
-  fun getKeyPair(nodeIndex: TreeIndex): HpkeKeyPair? = getPrivateKey(nodeIndex)?.let { HpkeKeyPair(it to node(nodeIndex).encryptionKey) }
+  fun getKeyPair(nodeIndex: TreeIndex): HpkeKeyPair? = getPrivateKey(nodeIndex)?.let { HpkeKeyPair(it, node(nodeIndex).encryptionKey) }
 
   internal fun removeLeaves(leaves: Set<LeafIndex>): RatchetTree =
     if (leaves.isEmpty()) {

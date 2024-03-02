@@ -1,12 +1,16 @@
 package com.github.traderjoe95.mls.protocol.group
 
+import arrow.core.Either
 import arrow.core.raise.Raise
+import arrow.core.raise.either
 import arrow.core.raise.ensure
 import com.github.traderjoe95.mls.codec.util.uSize
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
 import com.github.traderjoe95.mls.protocol.crypto.KeySchedule
 import com.github.traderjoe95.mls.protocol.error.CreateUpdateError
+import com.github.traderjoe95.mls.protocol.error.GroupActive
+import com.github.traderjoe95.mls.protocol.error.GroupInfoError
 import com.github.traderjoe95.mls.protocol.error.GroupSuspended
 import com.github.traderjoe95.mls.protocol.error.InvalidCommit
 import com.github.traderjoe95.mls.protocol.error.MessageRecipientError
@@ -72,10 +76,20 @@ sealed class GroupState(
   fun isActive(): Boolean = this is Active
 
   context(Raise<GroupSuspended>)
-  inline fun <T> ensureActive(body: Active.() -> T): T = coerceActive().body()
+  inline fun <T> ensureActive(body: Active.() -> T): T = ensureActive().body()
 
   context(Raise<GroupSuspended>)
-  fun coerceActive(): Active = (this@GroupState as? Active) ?: raise(GroupSuspended(groupId))
+  fun ensureActive(): Active = (this as? Active) ?: raise(GroupSuspended(groupId))
+
+  context(Raise<GroupActive>)
+  inline fun <T> ensureSuspended(body: Suspended.() -> T): T = ensureSuspended().body()
+
+  context(Raise<GroupActive>)
+  fun ensureSuspended(): Suspended = (this as? Suspended) ?: raise(GroupActive(groupId))
+
+  fun coerceActive(): Active = this as Active
+
+  fun coerceSuspended(): Suspended = this as Suspended
 
   class Active internal constructor(
     groupContext: GroupContext,
@@ -125,7 +139,7 @@ sealed class GroupState(
     fun groupInfo(
       inlineTree: Boolean = true,
       public: Boolean = false,
-    ): GroupInfo =
+    ): Either<GroupInfoError, GroupInfo> =
       GroupInfo.create(
         groupContext,
         mac(keySchedule.confirmationKey, groupContext.confirmedTranscriptHash),
@@ -139,35 +153,39 @@ sealed class GroupState(
       )
 
     context(Raise<PskError>)
-    override suspend fun getPreSharedKey(id: PreSharedKeyId): Secret =
+    override suspend fun resolvePsk(id: PreSharedKeyId): Secret =
       if (id is ResumptionPskId && id.pskGroupId == groupId && id.pskEpoch == epoch) {
         keySchedule.resumptionPsk
       } else {
         raise(PskError.PskNotFound(id))
       }
 
-    context(Raise<ProcessMessageError>, AuthenticationService<Identity>)
     suspend fun <Identity : Any> process(
       mlsMessage: MlsHandshakeMessage,
+      authenticationService: AuthenticationService<Identity>,
       psks: PskLookup = PskLookup.EMPTY,
       cachedState: GroupState? = null,
-    ): GroupState = process(mlsMessage.message, psks, cachedState)
+    ): Either<ProcessMessageError, GroupState> = process(mlsMessage.message, authenticationService, psks, cachedState)
 
-    context(Raise<ProcessMessageError>, AuthenticationService<Identity>)
     suspend fun <Identity : Any> process(
       message: HandshakeMessage,
+      authenticationService: AuthenticationService<Identity>,
       psks: PskLookup = PskLookup.EMPTY,
       cachedState: GroupState? = null,
-    ): GroupState = process(message.unprotect(this), psks, cachedState)
+    ): Either<ProcessMessageError, GroupState> =
+      either {
+        process(message.unprotect(this@Active).bind(), authenticationService, psks, cachedState)
+      }
 
-    context(Raise<ProcessMessageError>, AuthenticationService<Identity>)
+    context(Raise<ProcessMessageError>)
     @Suppress("UNCHECKED_CAST")
     internal suspend fun <Identity : Any> process(
       message: AuthHandshakeContent,
+      authenticationService: AuthenticationService<Identity>,
       psks: PskLookup = PskLookup.EMPTY,
       cachedState: GroupState? = null,
     ): GroupState {
-      ensure(message.groupId == groupId) { MessageRecipientError.WrongGroup(message.groupId, groupId) }
+      ensure(message.groupId eq groupId) { MessageRecipientError.WrongGroup(message.groupId, groupId) }
       ensure(message.epoch == epoch) {
         ProcessMessageError.HandshakeMessageForWrongEpoch(groupId, message.epoch, epoch)
       }
@@ -180,7 +198,7 @@ sealed class GroupState(
           if (message.sender.type == Member && message.sender.index == leafIndex) {
             cachedState ?: raise(ProcessMessageError.MustUseCachedStateForOwnCommit)
           } else {
-            processCommit(message as AuthenticatedContent<Commit>, psks)
+            processCommit(message as AuthenticatedContent<Commit>, authenticationService, psks).bind()
           }
       }
     }
@@ -206,7 +224,7 @@ sealed class GroupState(
           newExtensions ?: oldLeaf.extensions,
           leafIndex,
           groupId,
-        )
+        ).bind()
 
       cachedUpdate = CachedUpdate(newLeaf, newEncryptionKeyPair.private, newSignatureKeyPair?.private)
 
@@ -235,7 +253,7 @@ sealed class GroupState(
     val reInit: ReInit,
   ) : GroupState(groupContext, tree, keySchedule), PskLookup {
     context(Raise<PskError>)
-    override suspend fun getPreSharedKey(id: PreSharedKeyId): Secret =
+    override suspend fun resolvePsk(id: PreSharedKeyId): Secret =
       if (id is ResumptionPskId && id.pskGroupId == groupId && id.pskEpoch == epoch) {
         keySchedule.resumptionPsk
       } else {

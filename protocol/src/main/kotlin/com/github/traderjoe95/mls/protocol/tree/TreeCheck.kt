@@ -1,42 +1,43 @@
 package com.github.traderjoe95.mls.protocol.tree
 
+import arrow.core.Either
 import arrow.core.raise.Raise
+import arrow.core.raise.either
 import arrow.core.raise.nullable
 import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
 import com.github.traderjoe95.mls.protocol.error.LeafNodeCheckError
 import com.github.traderjoe95.mls.protocol.error.TreeCheckError
 import com.github.traderjoe95.mls.protocol.group.GroupContext
-import com.github.traderjoe95.mls.protocol.service.AuthenticationService
 import com.github.traderjoe95.mls.protocol.types.RefinedBytes.Companion.eqNullable
 import com.github.traderjoe95.mls.protocol.types.tree.Node
 import com.github.traderjoe95.mls.protocol.types.tree.ParentNode
 
-context(Raise<TreeCheckError>, AuthenticationService<Identity>)
-suspend fun <Identity : Any> RatchetTreeOps.check(groupContext: GroupContext) {
-  treeHash(groupContext.cipherSuite).let { th ->
-    if (th.contentEquals(groupContext.treeHash).not()) {
-      raise(TreeCheckError.BadTreeHash(groupContext.treeHash, th))
+fun RatchetTreeOps.check(groupContext: GroupContext): Either<TreeCheckError, Unit> =
+  either {
+    treeHash(groupContext.cipherSuite).let { th ->
+      if (th.contentEquals(groupContext.treeHash).not()) {
+        raise(TreeCheckError.BadTreeHash(groupContext.treeHash, th))
+      }
+    }
+
+    checkParentHashCoverage(groupContext.cipherSuite)
+
+    nonBlankParentNodeIndices.forEach { parentIdx ->
+      val parentNode = parentNode(parentIdx)
+
+      parentNode.checkUnmergedLeaves(parentIdx)
+
+      (nonBlankLeafNodeIndices + nonBlankParentNodeIndices).filter {
+        it != parentIdx && node(it).encryptionKey.eq(parentNode.encryptionKey)
+      }.sorted().let {
+        if (it.isNotEmpty()) raise(LeafNodeCheckError.DuplicateEncryptionKey(it))
+      }
+    }
+
+    nonBlankLeafIndices.forEach {
+      leafNode(it).validate(this@check, groupContext, it)
     }
   }
-
-  checkParentHashCoverage(groupContext.cipherSuite)
-
-  nonBlankParentNodeIndices.forEach { parentIdx ->
-    val parentNode = parentNode(parentIdx)
-
-    parentNode.checkUnmergedLeaves(parentIdx)
-
-    (nonBlankLeafNodeIndices + nonBlankParentNodeIndices).filter {
-      it != parentIdx && node(it).encryptionKey.eq(parentNode.encryptionKey)
-    }.sorted().let {
-      if (it.isNotEmpty()) raise(LeafNodeCheckError.DuplicateEncryptionKey(it))
-    }
-  }
-
-  nonBlankLeafIndices.forEach {
-    leafNode(it).validate(this@check, groupContext, it)
-  }
-}
 
 context(Raise<TreeCheckError>)
 internal fun RatchetTreeOps.checkParentHashCoverage(cipherSuite: ICipherSuite) {

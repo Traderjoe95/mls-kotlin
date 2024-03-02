@@ -1,6 +1,8 @@
 package com.github.traderjoe95.mls.protocol.message
 
+import arrow.core.Either
 import arrow.core.raise.Raise
+import arrow.core.raise.either
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.error.CreateAddError
 import com.github.traderjoe95.mls.protocol.error.CreateGroupContextExtensionsError
@@ -8,6 +10,7 @@ import com.github.traderjoe95.mls.protocol.error.CreateMessageError
 import com.github.traderjoe95.mls.protocol.error.CreatePreSharedKeyError
 import com.github.traderjoe95.mls.protocol.error.CreateReInitError
 import com.github.traderjoe95.mls.protocol.error.CreateRemoveError
+import com.github.traderjoe95.mls.protocol.error.CreateSignatureError
 import com.github.traderjoe95.mls.protocol.error.CreateUpdateError
 import com.github.traderjoe95.mls.protocol.error.PrivateMessageSenderError
 import com.github.traderjoe95.mls.protocol.error.PublicMessageSenderError
@@ -67,100 +70,108 @@ class GroupMessageFactory internal constructor(
   private val cipherSuite: CipherSuite
     get() = groupContext.cipherSuite
 
-  context(Raise<PrivateMessageSenderError>)
   suspend fun applicationMessage(
     applicationData: ApplicationData,
     options: UsePrivateMessage = UsePrivateMessage(),
     authenticatedData: ByteArray = byteArrayOf(),
-  ): MlsApplicationMessage = protectPrivate(applicationData, options, authenticatedData)
+  ): Either<PrivateMessageSenderError, MlsApplicationMessage> =
+    either {
+      protectPrivate(applicationData, options, authenticatedData)
+    }
 
   context(Raise<CreateAddError>)
   suspend fun add(
     keyPackage: KeyPackage,
     options: MessageOptions = UsePublicMessage,
     authenticatedData: ByteArray = byteArrayOf(),
-  ): MlsProposalMessage =
-    protect(
-      validations.validated(Add(keyPackage)).bind(),
-      options,
-      authenticatedData,
-    )
+  ): Either<CreateAddError, MlsProposalMessage> =
+    either {
+      protect(
+        validations.validated(Add(keyPackage)).bind(),
+        options,
+        authenticatedData,
+      )
+    }
 
-  context(Raise<CreateUpdateError>)
   suspend fun update(
     leafNode: UpdateLeafNode,
     options: MessageOptions = UsePublicMessage,
     authenticatedData: ByteArray = byteArrayOf(),
-  ): MlsProposalMessage =
-    protect(
-      validations.validated(Update(leafNode), leafIndex).bind(),
-      options,
-      authenticatedData,
-    )
+  ): Either<CreateUpdateError, MlsProposalMessage> =
+    either {
+      protect(
+        validations.validated(Update(leafNode), leafIndex).bind(),
+        options,
+        authenticatedData,
+      )
+    }
 
-  context(Raise<CreateRemoveError>)
   suspend fun remove(
     leafIndex: LeafIndex,
     options: MessageOptions = UsePublicMessage,
     authenticatedData: ByteArray = byteArrayOf(),
-  ): MlsProposalMessage = protect(validations.validated(Remove(leafIndex)).bind(), options, authenticatedData)
+  ): Either<CreateRemoveError, MlsProposalMessage> =
+    either {
+      protect(validations.validated(Remove(leafIndex)).bind(), options, authenticatedData)
+    }
 
-  context(Raise<CreatePreSharedKeyError>)
   suspend fun preSharedKey(
     externalPskId: ByteArray,
     psks: PskLookup? = null,
     options: MessageOptions = UsePublicMessage,
     authenticatedData: ByteArray = byteArrayOf(),
-  ): MlsProposalMessage =
-    protect(
-      PreSharedKey(ExternalPskId(externalPskId, cipherSuite.generateNonce(cipherSuite.hashLen))).also {
-        validations.validated(it, psks = psks).bind()
-      },
-      options,
-      authenticatedData,
-    )
+  ): Either<CreatePreSharedKeyError, MlsProposalMessage> =
+    either {
+      protect(
+        PreSharedKey(ExternalPskId(externalPskId, cipherSuite.generateNonce(cipherSuite.hashLen))).also {
+          validations.validated(it, psks = psks).bind()
+        },
+        options,
+        authenticatedData,
+      )
+    }
 
-  context(Raise<CreatePreSharedKeyError>)
   suspend fun preSharedKey(
     pskGroupId: GroupId,
     pskEpoch: ULong,
     psks: PskLookup? = null,
     options: MessageOptions = UsePublicMessage,
     authenticatedData: ByteArray = byteArrayOf(),
-  ): MlsProposalMessage =
-    protect(
-      PreSharedKey(
-        ResumptionPskId(
-          ResumptionPskUsage.Application,
-          pskGroupId,
-          pskEpoch,
-          cipherSuite.generateNonce(cipherSuite.hashLen),
-        ),
-      ).also { validations.validated(it, psks = psks).bind() },
-      options,
-      authenticatedData,
-    )
+  ): Either<CreatePreSharedKeyError, MlsProposalMessage> =
+    either {
+      protect(
+        PreSharedKey(
+          ResumptionPskId(
+            ResumptionPskUsage.Application,
+            pskGroupId,
+            pskEpoch,
+            cipherSuite.generateNonce(cipherSuite.hashLen),
+          ),
+        ).also { validations.validated(it, psks = psks).bind() },
+        options,
+        authenticatedData,
+      )
+    }
 
-  context(Raise<CreateGroupContextExtensionsError>)
   suspend fun groupContextExtensions(
     extensions: List<GroupContextExtension<*>>,
     options: MessageOptions = UsePublicMessage,
     authenticatedData: ByteArray = byteArrayOf(),
-  ): MlsProposalMessage =
-    protect(
-      validations.validated(GroupContextExtensions(extensions)).bind(),
-      options,
-      authenticatedData,
-    )
+  ): Either<CreateGroupContextExtensionsError, MlsProposalMessage> =
+    either {
+      protect(
+        validations.validated(GroupContextExtensions(extensions)).bind(),
+        options,
+        authenticatedData,
+      )
+    }
 
-  context(Raise<CreateGroupContextExtensionsError>)
   suspend fun groupContextExtensions(
     vararg extensions: GroupContextExtension<*>,
     options: MessageOptions = UsePublicMessage,
     authenticatedData: ByteArray = byteArrayOf(),
-  ): MlsProposalMessage = groupContextExtensions(extensions.asList(), options, authenticatedData)
+  ): Either<CreateGroupContextExtensionsError, MlsProposalMessage> = groupContextExtensions(extensions.asList(), options, authenticatedData)
 
-  context(Raise<CreateReInitError>)
   suspend fun reInit(
     cipherSuite: CipherSuite,
     version: ProtocolVersion = ProtocolVersion.MLS_1_0,
@@ -168,14 +179,15 @@ class GroupMessageFactory internal constructor(
     extensions: List<GroupContextExtension<*>> = listOf(),
     options: MessageOptions = UsePublicMessage,
     authenticatedData: ByteArray = byteArrayOf(),
-  ): MlsProposalMessage =
-    protect(
-      validations.validated(ReInit(groupId, version, cipherSuite, extensions)).bind(),
-      options,
-      authenticatedData,
-    )
+  ): Either<CreateReInitError, MlsProposalMessage> =
+    either {
+      protect(
+        validations.validated(ReInit(groupId, version, cipherSuite, extensions)).bind(),
+        options,
+        authenticatedData,
+      )
+    }
 
-  context(Raise<CreateReInitError>)
   suspend fun reInit(
     cipherSuite: CipherSuite,
     vararg extensions: GroupContextExtension<*>,
@@ -183,7 +195,7 @@ class GroupMessageFactory internal constructor(
     groupId: GroupId = GroupId.new(),
     options: MessageOptions = UsePublicMessage,
     authenticatedData: ByteArray = byteArrayOf(),
-  ): MlsProposalMessage = reInit(cipherSuite, version, groupId, extensions.asList(), options, authenticatedData)
+  ): Either<CreateReInitError, MlsProposalMessage> = reInit(cipherSuite, version, groupId, extensions.asList(), options, authenticatedData)
 
   context(Raise<CreateMessageError>)
   internal suspend fun <C : Content<C>> protect(
@@ -242,13 +254,14 @@ class GroupMessageFactory internal constructor(
       ),
     )
 
+  context(Raise<CreateSignatureError>)
   internal fun <C : Content<C>> createAuthenticatedContent(
     content: C,
     options: MessageOptions,
     authenticatedData: ByteArray,
   ): AuthenticatedContent<C> {
     val framedContent = FramedContent.createMember(content, groupContext, leafIndex, authenticatedData)
-    val signature = framedContent.sign(cipherSuite, options.wireFormat, groupContext, signaturePrivateKey)
+    val signature = framedContent.sign(options.wireFormat, groupContext, signaturePrivateKey).bind()
 
     return AuthenticatedContent(
       options.wireFormat,

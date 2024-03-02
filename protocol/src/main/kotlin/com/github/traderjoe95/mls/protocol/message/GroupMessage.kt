@@ -1,6 +1,6 @@
 package com.github.traderjoe95.mls.protocol.message
 
-import arrow.core.raise.Raise
+import arrow.core.Either
 import com.github.traderjoe95.mls.protocol.error.ProcessMessageError
 import com.github.traderjoe95.mls.protocol.group.GroupState
 import com.github.traderjoe95.mls.protocol.types.GroupId
@@ -13,6 +13,5 @@ sealed interface GroupMessage<out C : Content<C>> : Message {
   val epoch: ULong
   val contentType: ContentType<C>
 
-  context(Raise<ProcessMessageError>)
-  suspend fun unprotect(groupState: GroupState.Active): AuthenticatedContent<C>
+  suspend fun unprotect(groupState: GroupState.Active): Either<ProcessMessageError, AuthenticatedContent<C>>
 }

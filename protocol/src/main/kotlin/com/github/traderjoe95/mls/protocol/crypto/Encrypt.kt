@@ -1,7 +1,11 @@
 package com.github.traderjoe95.mls.protocol.crypto
 
-import arrow.core.raise.Raise
+import arrow.core.Either
 import com.github.traderjoe95.mls.protocol.error.DecryptError
+import com.github.traderjoe95.mls.protocol.error.HpkeDecryptError
+import com.github.traderjoe95.mls.protocol.error.HpkeEncryptError
+import com.github.traderjoe95.mls.protocol.error.ReceiveExportError
+import com.github.traderjoe95.mls.protocol.error.SendExportError
 import com.github.traderjoe95.mls.protocol.types.crypto.Aad
 import com.github.traderjoe95.mls.protocol.types.crypto.Ciphertext
 import com.github.traderjoe95.mls.protocol.types.crypto.EncryptContext
@@ -19,21 +23,21 @@ interface Encrypt {
     label: String,
     context: ByteArray,
     plaintext: ByteArray,
-  ): HpkeCiphertext
+  ): Either<HpkeEncryptError, HpkeCiphertext>
 
   fun decryptWithLabel(
     keyPair: HpkeKeyPair,
     label: String,
     context: ByteArray,
     ciphertext: HpkeCiphertext,
-  ): ByteArray
+  ): Either<HpkeDecryptError, ByteArray>
 
   fun decryptWithLabel(
     privateKey: HpkePrivateKey,
     label: String,
     context: ByteArray,
     ciphertext: HpkeCiphertext,
-  ): ByteArray
+  ): Either<HpkeDecryptError, ByteArray>
 
   fun encryptAead(
     key: Secret,
@@ -42,24 +46,23 @@ interface Encrypt {
     plaintext: ByteArray,
   ): Ciphertext
 
-  context(Raise<DecryptError>)
   fun decryptAead(
     key: Secret,
     nonce: Nonce,
     aad: Aad,
     ciphertext: Ciphertext,
-  ): ByteArray
+  ): Either<DecryptError, ByteArray>
 
   fun export(
     publicKey: HpkePublicKey,
     info: String,
-  ): Pair<KemOutput, Secret>
+  ): Either<SendExportError, Pair<KemOutput, Secret>>
 
   fun export(
     kemOutput: KemOutput,
     keyPair: HpkeKeyPair,
     info: String,
-  ): Secret
+  ): Either<ReceiveExportError, Secret>
 
   val keyLen: UShort
   val nonceLen: UShort
@@ -70,14 +73,14 @@ interface Encrypt {
       label: String,
       context: ByteArray,
       plaintext: ByteArray,
-    ): HpkeCiphertext = sealBase(publicKey, EncryptContext.create(label, context), Aad.empty, plaintext)
+    ): Either<HpkeEncryptError, HpkeCiphertext> = sealBase(publicKey, EncryptContext.create(label, context), Aad.empty, plaintext)
 
     final override fun decryptWithLabel(
       keyPair: HpkeKeyPair,
       label: String,
       context: ByteArray,
       ciphertext: HpkeCiphertext,
-    ): ByteArray =
+    ): Either<HpkeDecryptError, ByteArray> =
       openBase(
         ciphertext.kemOutput,
         keyPair,
@@ -91,7 +94,7 @@ interface Encrypt {
       context: EncryptContext,
       aad: Aad,
       plaintext: ByteArray,
-    ): HpkeCiphertext
+    ): Either<HpkeEncryptError, HpkeCiphertext>
 
     internal abstract fun openBase(
       kemOutput: KemOutput,
@@ -99,6 +102,6 @@ interface Encrypt {
       context: EncryptContext,
       aad: Aad,
       ciphertext: Ciphertext,
-    ): ByteArray
+    ): Either<HpkeDecryptError, ByteArray>
   }
 }

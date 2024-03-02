@@ -115,203 +115,204 @@ data class MessagesTestVector(
         .toJsonArray()
         .map { MessagesTestVector(it as JsonObject) }
 
-    suspend fun generate(): MessagesTestVector {
-      val cipherSuite = CipherSuite.X25519_CHACHA20_SHA256_ED25519
-      val groupId = GroupId.new()
-      val epoch = Random.nextULong()
+    suspend fun generate(): MessagesTestVector =
+      unsafe {
+        val cipherSuite = CipherSuite.X25519_CHACHA20_SHA256_ED25519
+        val groupId = GroupId.new()
+        val epoch = Random.nextULong()
 
-      val tree =
-        Random.choice(
-          listOf(
-            TreeStructure.FullTree(2U),
-            TreeStructure.FullTree(3U),
-            TreeStructure.FullTree(4U),
-            TreeStructure.FullTree(5U),
-          ),
-        ).generateTree(cipherSuite, groupId)
+        val tree =
+          Random.choice(
+            listOf(
+              TreeStructure.FullTree(2U),
+              TreeStructure.FullTree(3U),
+              TreeStructure.FullTree(4U),
+              TreeStructure.FullTree(5U),
+            ),
+          ).generateTree(cipherSuite, groupId)
 
-      val leafIndex = LeafIndex(Random.choice((0U..<tree.private.uSize).toList()))
-      val signatureKey = tree.signaturePrivateKeys[leafIndex.value.toInt()]!!
+        val leafIndex = LeafIndex(Random.choice((0U..<tree.private.uSize).toList()))
+        val signatureKey = tree.signaturePrivateKeys[leafIndex.value.toInt()]!!
 
-      val groupContext =
-        GroupContext(
-          ProtocolVersion.MLS_1_0,
-          cipherSuite,
-          groupId,
-          epoch,
-          tree.public.treeHash(cipherSuite),
-          Random.nextBytes(cipherSuite.hashLen.toInt()),
-        )
-
-      val groupInfo =
-        GroupInfo.create(
-          groupContext,
-          Mac(Random.nextBytes(cipherSuite.hashLen.toInt())),
-          listOfNotNull(
-            if (Random.nextDouble() < 0.5) RatchetTree(tree.public) else null,
-            if (Random.nextDouble() < 0.5) {
-              ExternalPub(
-                cipherSuite.deriveKeyPair(cipherSuite.generateSecret(cipherSuite.hashLen)).public,
-              )
-            } else {
-              null
-            },
-          ),
-          leafIndex,
-          signatureKey,
-        )
-
-      val groupSecrets =
-        GroupSecrets(
-          cipherSuite.generateSecret(cipherSuite.hashLen),
-          if (Random.nextDouble() < 0.5) None else cipherSuite.generateSecret(cipherSuite.hashLen).some(),
-          List(Random.nextInt(0..3)) {
-            if (Random.nextDouble() < 0.5) {
-              ExternalPskId(Random.nextBytes(32), Random.nextBytes(cipherSuite.hashLen.toInt()).asNonce)
-            } else {
-              ResumptionPskId(
-                Random.choice(ResumptionPskUsage.entries.filter(ResumptionPskUsage::isValid)),
-                GroupId.new(),
-                Random.nextULong(),
-                Random.nextBytes(cipherSuite.hashLen.toInt()).asNonce,
-              )
-            }
-          },
-        )
-
-      val joinerExtracted =
-        cipherSuite.extract(
-          groupSecrets.joinerSecret,
-          cipherSuite.generateSecret(cipherSuite.hashLen),
-        )
-      val welcomeSecret = cipherSuite.deriveSecret(joinerExtracted, "welcome")
-      val welcomeNonce =
-        cipherSuite.expandWithLabel(welcomeSecret, "nonce", byteArrayOf(), cipherSuite.nonceLen).asNonce
-      val welcomeKey = cipherSuite.expandWithLabel(welcomeSecret, "key", byteArrayOf(), cipherSuite.keyLen)
-
-      val encryptedGroupInfo = cipherSuite.encryptAead(welcomeKey, welcomeNonce, Aad.empty, groupInfo.encodeUnsafe())
-
-      val keyPackage = Random.nextKeyPackage(cipherSuite)
-      val encryptedGroupSecrets = groupSecrets.encrypt(cipherSuite, keyPackage.public, encryptedGroupInfo)
-
-      val welcome =
-        Welcome(
-          cipherSuite,
-          listOf(encryptedGroupSecrets),
-          encryptedGroupInfo,
-        )
-
-      val add = Add(keyPackage.public)
-      val update = Random.nextUpdate(cipherSuite, groupId)
-      val remove = Remove(LeafIndex(Random.choice((0U..tree.private.uSize).toList())))
-      val preSharedKey = Random.nextPreSharedKey(cipherSuite)
-      val reInit = Random.nextReInit()
-      val externalInit = Random.nextExternalInit(cipherSuite)
-      val groupContextExtensions = Random.nextGroupContextExtensions(cipherSuite)
-
-      val commit = Random.nextCommit(cipherSuite, groupId)
-
-      val applicationData = Random.nextBytes(64)
-      val applicationContent = FramedContent.createMember(ApplicationData(applicationData), groupContext, leafIndex)
-      val applicationPublicMessage =
-        MlsMessage(
-          ProtocolVersion.MLS_1_0,
-          WireFormat.MlsPublicMessage,
-          PublicMessage(
-            applicationContent,
-            applicationContent.sign(cipherSuite, WireFormat.MlsPublicMessage, groupContext, signatureKey),
-            null,
-            Random.nextBytes(cipherSuite.hashLen.toInt()).asMac,
-          ),
-        )
-
-      val proposalContent =
-        FramedContent.createMember(
-          Random.choice(listOf(add, update, remove, preSharedKey, remove, externalInit, groupContextExtensions)),
-          groupContext,
-          leafIndex,
-        )
-      val proposalPublicMessage =
-        MlsMessage(
-          ProtocolVersion.MLS_1_0,
-          WireFormat.MlsPublicMessage,
-          PublicMessage(
-            proposalContent,
-            proposalContent.sign(cipherSuite, WireFormat.MlsPublicMessage, groupContext, signatureKey),
-            null,
-            Random.nextBytes(cipherSuite.hashLen.toInt()).asMac,
-          ),
-        )
-
-      val commitContent = FramedContent.createMember(commit, groupContext, leafIndex)
-      val commitPublicMessage =
-        MlsMessage(
-          ProtocolVersion.MLS_1_0,
-          WireFormat.MlsPublicMessage,
-          PublicMessage(
-            commitContent,
-            commitContent.sign(cipherSuite, WireFormat.MlsPublicMessage, groupContext, signatureKey),
-            Random.nextBytes(cipherSuite.hashLen.toInt()).asMac,
-            Random.nextBytes(cipherSuite.hashLen.toInt()).asMac,
-          ),
-        )
-
-      val privateMessage =
-        unsafe {
-          PrivateMessage.create(
+        val groupContext =
+          GroupContext(
+            ProtocolVersion.MLS_1_0,
             cipherSuite,
-            Random.choice(
-              listOf(
-                {
-                  AuthenticatedContent(
-                    WireFormat.MlsPrivateMessage,
-                    applicationContent,
-                    applicationContent.sign(cipherSuite, WireFormat.MlsPrivateMessage, groupContext, signatureKey),
-                    null,
-                  )
-                },
-                {
-                  AuthenticatedContent(
-                    WireFormat.MlsPrivateMessage,
-                    proposalContent,
-                    proposalContent.sign(cipherSuite, WireFormat.MlsPrivateMessage, groupContext, signatureKey),
-                    null,
-                  )
-                },
-                {
-                  AuthenticatedContent(
-                    WireFormat.MlsPrivateMessage,
-                    commitContent,
-                    commitContent.sign(cipherSuite, WireFormat.MlsPrivateMessage, groupContext, signatureKey),
-                    Random.nextBytes(cipherSuite.hashLen.toInt()).asMac,
-                  )
-                },
-              ),
-            )(),
-            SecretTree.create(cipherSuite, cipherSuite.generateSecret(cipherSuite.hashLen), tree.public.leaves.uSize),
+            groupId,
+            epoch,
+            tree.public.treeHash(cipherSuite),
+            Random.nextBytes(cipherSuite.hashLen.toInt()),
+          )
+
+        val groupInfo =
+          GroupInfo.create(
+            groupContext,
+            Mac(Random.nextBytes(cipherSuite.hashLen.toInt())),
+            listOfNotNull(
+              if (Random.nextDouble() < 0.5) RatchetTree(tree.public) else null,
+              if (Random.nextDouble() < 0.5) {
+                ExternalPub(
+                  cipherSuite.deriveKeyPair(cipherSuite.generateSecret(cipherSuite.hashLen)).public,
+                )
+              } else {
+                null
+              },
+            ),
+            leafIndex,
+            signatureKey,
+          ).bind()
+
+        val groupSecrets =
+          GroupSecrets(
+            cipherSuite.generateSecret(cipherSuite.hashLen),
+            if (Random.nextDouble() < 0.5) None else cipherSuite.generateSecret(cipherSuite.hashLen).some(),
+            List(Random.nextInt(0..3)) {
+              if (Random.nextDouble() < 0.5) {
+                ExternalPskId(Random.nextBytes(32), Random.nextBytes(cipherSuite.hashLen.toInt()).asNonce)
+              } else {
+                ResumptionPskId(
+                  Random.choice(ResumptionPskUsage.entries.filter(ResumptionPskUsage::isValid)),
+                  GroupId.new(),
+                  Random.nextULong(),
+                  Random.nextBytes(cipherSuite.hashLen.toInt()).asNonce,
+                )
+              }
+            },
+          )
+
+        val joinerExtracted =
+          cipherSuite.extract(
+            groupSecrets.joinerSecret,
             cipherSuite.generateSecret(cipherSuite.hashLen),
           )
-        }
+        val welcomeSecret = cipherSuite.deriveSecret(joinerExtracted, "welcome")
+        val welcomeNonce =
+          cipherSuite.expandWithLabel(welcomeSecret, "nonce", byteArrayOf(), cipherSuite.nonceLen).asNonce
+        val welcomeKey = cipherSuite.expandWithLabel(welcomeSecret, "key", byteArrayOf(), cipherSuite.keyLen)
 
-      return MessagesTestVector(
-        MlsMessage.welcome(welcome).encodeUnsafe(),
-        MlsMessage.groupInfo(groupInfo).encodeUnsafe(),
-        MlsMessage.keyPackage(keyPackage.public).encodeUnsafe(),
-        tree.public.encodeUnsafe(),
-        groupSecrets.encodeUnsafe(),
-        Add.T.encodeUnsafe(add),
-        Update.T.encodeUnsafe(update),
-        Remove.T.encodeUnsafe(remove),
-        PreSharedKey.T.encodeUnsafe(preSharedKey),
-        ReInit.T.encodeUnsafe(reInit),
-        ExternalInit.T.encodeUnsafe(externalInit),
-        GroupContextExtensions.T.encodeUnsafe(groupContextExtensions),
-        commit.encodeUnsafe(),
-        applicationPublicMessage.encodeUnsafe(),
-        proposalPublicMessage.encodeUnsafe(),
-        commitPublicMessage.encodeUnsafe(),
-        privateMessage.encodeUnsafe(),
-      )
-    }
+        val encryptedGroupInfo = cipherSuite.encryptAead(welcomeKey, welcomeNonce, Aad.empty, groupInfo.encodeUnsafe())
+
+        val keyPackage = Random.nextKeyPackage(cipherSuite)
+        val encryptedGroupSecrets = groupSecrets.encrypt(cipherSuite, keyPackage.public, encryptedGroupInfo).bind()
+
+        val welcome =
+          Welcome(
+            cipherSuite,
+            listOf(encryptedGroupSecrets),
+            encryptedGroupInfo,
+          )
+
+        val add = Add(keyPackage.public)
+        val update = Random.nextUpdate(cipherSuite, groupId)
+        val remove = Remove(LeafIndex(Random.choice((0U..tree.private.uSize).toList())))
+        val preSharedKey = Random.nextPreSharedKey(cipherSuite)
+        val reInit = Random.nextReInit()
+        val externalInit = Random.nextExternalInit(cipherSuite)
+        val groupContextExtensions = Random.nextGroupContextExtensions(cipherSuite)
+
+        val commit = Random.nextCommit(cipherSuite, groupId)
+
+        val applicationData = Random.nextBytes(64)
+        val applicationContent = FramedContent.createMember(ApplicationData(applicationData), groupContext, leafIndex)
+        val applicationPublicMessage =
+          MlsMessage(
+            ProtocolVersion.MLS_1_0,
+            WireFormat.MlsPublicMessage,
+            PublicMessage(
+              applicationContent,
+              applicationContent.sign(WireFormat.MlsPublicMessage, groupContext, signatureKey).bind(),
+              null,
+              Random.nextBytes(cipherSuite.hashLen.toInt()).asMac,
+            ),
+          )
+
+        val proposalContent =
+          FramedContent.createMember(
+            Random.choice(listOf(add, update, remove, preSharedKey, remove, externalInit, groupContextExtensions)),
+            groupContext,
+            leafIndex,
+          )
+        val proposalPublicMessage =
+          MlsMessage(
+            ProtocolVersion.MLS_1_0,
+            WireFormat.MlsPublicMessage,
+            PublicMessage(
+              proposalContent,
+              proposalContent.sign(WireFormat.MlsPublicMessage, groupContext, signatureKey).bind(),
+              null,
+              Random.nextBytes(cipherSuite.hashLen.toInt()).asMac,
+            ),
+          )
+
+        val commitContent = FramedContent.createMember(commit, groupContext, leafIndex)
+        val commitPublicMessage =
+          MlsMessage(
+            ProtocolVersion.MLS_1_0,
+            WireFormat.MlsPublicMessage,
+            PublicMessage(
+              commitContent,
+              commitContent.sign(WireFormat.MlsPublicMessage, groupContext, signatureKey).bind(),
+              Random.nextBytes(cipherSuite.hashLen.toInt()).asMac,
+              Random.nextBytes(cipherSuite.hashLen.toInt()).asMac,
+            ),
+          )
+
+        val privateMessage =
+          unsafe {
+            PrivateMessage.create(
+              cipherSuite,
+              Random.choice(
+                listOf(
+                  {
+                    AuthenticatedContent(
+                      WireFormat.MlsPrivateMessage,
+                      applicationContent,
+                      applicationContent.sign(WireFormat.MlsPrivateMessage, groupContext, signatureKey).bind(),
+                      null,
+                    )
+                  },
+                  {
+                    AuthenticatedContent(
+                      WireFormat.MlsPrivateMessage,
+                      proposalContent,
+                      proposalContent.sign(WireFormat.MlsPrivateMessage, groupContext, signatureKey).bind(),
+                      null,
+                    )
+                  },
+                  {
+                    AuthenticatedContent(
+                      WireFormat.MlsPrivateMessage,
+                      commitContent,
+                      commitContent.sign(WireFormat.MlsPrivateMessage, groupContext, signatureKey).bind(),
+                      Random.nextBytes(cipherSuite.hashLen.toInt()).asMac,
+                    )
+                  },
+                ),
+              )(),
+              SecretTree.create(cipherSuite, cipherSuite.generateSecret(cipherSuite.hashLen), tree.public.leaves.uSize),
+              cipherSuite.generateSecret(cipherSuite.hashLen),
+            )
+          }
+
+        return MessagesTestVector(
+          MlsMessage.welcome(welcome).encodeUnsafe(),
+          MlsMessage.groupInfo(groupInfo).encodeUnsafe(),
+          MlsMessage.keyPackage(keyPackage.public).encodeUnsafe(),
+          tree.public.encodeUnsafe(),
+          groupSecrets.encodeUnsafe(),
+          Add.T.encodeUnsafe(add),
+          Update.T.encodeUnsafe(update),
+          Remove.T.encodeUnsafe(remove),
+          PreSharedKey.T.encodeUnsafe(preSharedKey),
+          ReInit.T.encodeUnsafe(reInit),
+          ExternalInit.T.encodeUnsafe(externalInit),
+          GroupContextExtensions.T.encodeUnsafe(groupContextExtensions),
+          commit.encodeUnsafe(),
+          applicationPublicMessage.encodeUnsafe(),
+          proposalPublicMessage.encodeUnsafe(),
+          commitPublicMessage.encodeUnsafe(),
+          privateMessage.encodeUnsafe(),
+        )
+      }
   }
 }

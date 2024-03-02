@@ -1,11 +1,21 @@
 package com.github.traderjoe95.mls.protocol.crypto.impl
 
+import arrow.core.Either
 import arrow.core.raise.Raise
 import arrow.core.raise.catch
+import arrow.core.raise.either
 import com.github.traderjoe95.mls.protocol.crypto.Encrypt
 import com.github.traderjoe95.mls.protocol.crypto.Gen
 import com.github.traderjoe95.mls.protocol.crypto.Kem
+import com.github.traderjoe95.mls.protocol.error.AeadDecryptionFailed
 import com.github.traderjoe95.mls.protocol.error.DecryptError
+import com.github.traderjoe95.mls.protocol.error.HpkeDecryptError
+import com.github.traderjoe95.mls.protocol.error.HpkeEncryptError
+import com.github.traderjoe95.mls.protocol.error.MalformedPrivateKey
+import com.github.traderjoe95.mls.protocol.error.MalformedPublicKey
+import com.github.traderjoe95.mls.protocol.error.ReceiveExportError
+import com.github.traderjoe95.mls.protocol.error.ReconstructHpkePublicKeyError
+import com.github.traderjoe95.mls.protocol.error.SendExportError
 import com.github.traderjoe95.mls.protocol.types.crypto.Aad
 import com.github.traderjoe95.mls.protocol.types.crypto.Ciphertext
 import com.github.traderjoe95.mls.protocol.types.crypto.Ciphertext.Companion.asCiphertext
@@ -47,7 +57,10 @@ internal class Hpke(
 
   override fun deriveKeyPair(secret: Secret): HpkeKeyPair = dhKem.deriveKeyPair(secret.bytes).asHpkeKeyPair
 
-  override fun reconstructPublicKey(privateKey: HpkePrivateKey): HpkeKeyPair = dhKem.reconstructPublicKey(privateKey)
+  override fun reconstructPublicKey(privateKey: HpkePrivateKey): Either<ReconstructHpkePublicKeyError, HpkeKeyPair> =
+    Either.catch {
+      dhKem.reconstructPublicKey(privateKey)
+    }.mapLeft { MalformedPrivateKey(it.message) }
 
   override fun encryptAead(
     key: Secret,
@@ -65,26 +78,22 @@ internal class Hpke(
       }.asCiphertext
     }
 
-  context(Raise<DecryptError>)
   override fun decryptAead(
     key: Secret,
     nonce: Nonce,
     aad: Aad,
     ciphertext: Ciphertext,
-  ): ByteArray =
+  ): Either<DecryptError, ByteArray> =
     with(aead()) {
       init(false, ParametersWithIV(KeyParameter(key.bytes), nonce.bytes))
       processAADBytes(aad.bytes, 0, aad.bytes.size)
 
-      catch(
-        block = {
-          ByteArray(getOutputSize(ciphertext.size)).also { out ->
-            val written = processBytes(ciphertext.bytes, 0, ciphertext.size, out, 0)
-            doFinal(out, written)
-          }
-        },
-        catch = { raise(DecryptError.AeadDecryptionFailed) },
-      )
+      Either.catch {
+        ByteArray(getOutputSize(ciphertext.size)).also { out ->
+          val written = processBytes(ciphertext.bytes, 0, ciphertext.size, out, 0)
+          doFinal(out, written)
+        }
+      }.mapLeft { AeadDecryptionFailed }
     }
 
   override fun decryptWithLabel(
@@ -92,56 +101,62 @@ internal class Hpke(
     label: String,
     context: ByteArray,
     ciphertext: HpkeCiphertext,
-  ): ByteArray = decryptWithLabel(dhKem.reconstructPublicKey(privateKey), label, context, ciphertext)
+  ): Either<HpkeDecryptError, ByteArray> = decryptWithLabel(dhKem.reconstructPublicKey(privateKey), label, context, ciphertext)
 
   override fun export(
     publicKey: HpkePublicKey,
     info: String,
-  ): Pair<KemOutput, Secret> =
-    hpke.sendExport(
-      publicKey.asParameter,
-      info.encodeToByteArray(),
-      exporterContext,
-      dhKem.hash.hashLen.toInt(),
-      null,
-      null,
-      null,
-    ).let { (kemOutput, secret) ->
-      kemOutput.asKemOutput to secret.asSecret
+  ): Either<SendExportError, Pair<KemOutput, Secret>> =
+    either {
+      hpke.sendExport(
+        publicKey.asParameter,
+        info.encodeToByteArray(),
+        exporterContext,
+        dhKem.hash.hashLen.toInt(),
+        null,
+        null,
+        null,
+      ).let { (kemOutput, secret) ->
+        kemOutput.asKemOutput to secret.asSecret
+      }
     }
 
   override fun export(
     kemOutput: KemOutput,
     keyPair: HpkeKeyPair,
     info: String,
-  ): Secret =
-    hpke.receiveExport(
-      kemOutput.bytes,
-      keyPair.asParameter,
-      info.encodeToByteArray(),
-      exporterContext,
-      dhKem.hash.hashLen.toInt(),
-      null,
-      null,
-      null,
-    ).asSecret
+  ): Either<ReceiveExportError, Secret> =
+    either {
+      hpke.receiveExport(
+        kemOutput.bytes,
+        keyPair.asParameter,
+        info.encodeToByteArray(),
+        exporterContext,
+        dhKem.hash.hashLen.toInt(),
+        null,
+        null,
+        null,
+      ).asSecret
+    }
 
   override fun sealBase(
     publicKey: HpkePublicKey,
     context: EncryptContext,
     aad: Aad,
     plaintext: ByteArray,
-  ): HpkeCiphertext =
-    hpke.seal(
-      publicKey.asParameter,
-      context.encodeUnsafe(),
-      aad.bytes,
-      plaintext,
-      null,
-      null,
-      null,
-    ).let { (ct, kemOutput) ->
-      HpkeCiphertext(kemOutput.asKemOutput, ct.asCiphertext)
+  ): Either<HpkeEncryptError, HpkeCiphertext> =
+    either {
+      hpke.seal(
+        publicKey.asParameter,
+        context.encodeUnsafe(),
+        aad.bytes,
+        plaintext,
+        null,
+        null,
+        null,
+      ).let { (ct, kemOutput) ->
+        HpkeCiphertext(kemOutput.asKemOutput, ct.asCiphertext)
+      }
     }
 
   override fun openBase(
@@ -150,17 +165,24 @@ internal class Hpke(
     context: EncryptContext,
     aad: Aad,
     ciphertext: Ciphertext,
-  ): ByteArray =
-    hpke.open(
-      kemOutput.bytes,
-      keyPair.asParameter,
-      context.encodeUnsafe(),
-      aad.bytes,
-      ciphertext.bytes,
-      null,
-      null,
-      null,
-    )
+  ): Either<HpkeDecryptError, ByteArray> =
+    either {
+      catch(
+        block = {
+          hpke.open(
+            kemOutput.bytes,
+            keyPair.asParameter,
+            context.encodeUnsafe(),
+            aad.bytes,
+            ciphertext.bytes,
+            null,
+            null,
+            null,
+          )
+        },
+        catch = { raise(AeadDecryptionFailed) },
+      )
+    }
 
   override fun generateSecret(len: UShort): Secret = ByteArray(len.toInt()).also(rand::nextBytes).asSecret
 
@@ -177,9 +199,15 @@ internal class Hpke(
         HpkePublicKey(hpke.serializePublicKey(public)),
       )
 
+  context(Raise<MalformedPublicKey>)
   private val HpkePublicKey.asParameter: AsymmetricKeyParameter
-    get() = hpke.deserializePublicKey(bytes)
+    get() = catch(block = { hpke.deserializePublicKey(bytes) }, catch = { raise(MalformedPublicKey(it.message)) })
 
+  context(Raise<MalformedPrivateKey>)
   private val HpkeKeyPair.asParameter: AsymmetricCipherKeyPair
-    get() = hpke.deserializePrivateKey(private.bytes, public.bytes)
+    get() =
+      catch(
+        block = { hpke.deserializePrivateKey(private.bytes, public.bytes) },
+        catch = { raise(MalformedPrivateKey(it.message)) },
+      )
 }

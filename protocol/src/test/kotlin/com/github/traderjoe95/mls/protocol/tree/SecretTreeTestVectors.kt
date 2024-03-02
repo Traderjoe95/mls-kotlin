@@ -37,7 +37,8 @@ class SecretTreeTestVectors : VertxFunSpec({ vertx ->
             testVectors.forEach { v ->
               test("for a sender data secret of '${v.senderData.senderDataSecret.hex}'") {
                 val (nonce, key) =
-                  cipherSuite.getSenderDataNonceAndKey(
+                  getSenderDataNonceAndKey(
+                    cipherSuite,
                     v.senderData.senderDataSecret,
                     v.senderData.ciphertext,
                   )

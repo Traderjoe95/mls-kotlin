@@ -1,9 +1,16 @@
 package com.github.traderjoe95.mls.protocol.crypto.impl
 
+import arrow.core.Either
 import arrow.core.raise.Raise
+import arrow.core.raise.catch
+import arrow.core.raise.either
 import com.github.traderjoe95.mls.protocol.crypto.Sign
+import com.github.traderjoe95.mls.protocol.error.CreateSignatureError
 import com.github.traderjoe95.mls.protocol.error.DecoderError
-import com.github.traderjoe95.mls.protocol.error.SignatureError
+import com.github.traderjoe95.mls.protocol.error.MalformedPrivateKey
+import com.github.traderjoe95.mls.protocol.error.MalformedPublicKey
+import com.github.traderjoe95.mls.protocol.error.ReconstructSignaturePublicKeyError
+import com.github.traderjoe95.mls.protocol.error.VerifySignatureError
 import com.github.traderjoe95.mls.protocol.types.crypto.Signature
 import com.github.traderjoe95.mls.protocol.types.crypto.Signature.Companion.asSignature
 import com.github.traderjoe95.mls.protocol.types.crypto.SignatureKeyPair
@@ -31,7 +38,6 @@ import org.bouncycastle.crypto.signers.Ed25519Signer
 import org.bouncycastle.crypto.signers.Ed448Signer
 import java.math.BigInteger
 import java.security.SecureRandom
-import com.github.traderjoe95.mls.codec.error.DecoderError as BaseDecoderError
 
 internal class SignProvider(
   private val dhKem: DhKem,
@@ -40,48 +46,52 @@ internal class SignProvider(
   override fun sign(
     signatureKey: SignaturePrivateKey,
     content: ByteArray,
-  ): Signature =
-    signer().apply {
-      init(true, signatureKey.asParameter)
-      update(content, 0, content.size)
-    }.generateSignature().asSignature
+  ): Either<CreateSignatureError, Signature> =
+    either {
+      signer().apply {
+        init(true, signatureKey.asParameter)
+        update(content, 0, content.size)
+      }.generateSignature().asSignature
+    }
 
-  context(Raise<SignatureError>)
   override fun verify(
     signaturePublicKey: SignaturePublicKey,
     content: ByteArray,
     signature: Signature,
-  ) {
-    val valid =
-      signer().apply {
-        init(false, DecoderError.wrap { signaturePublicKey.asParameter })
-        update(content, 0, content.size)
-      }.verifySignature(signature.bytes)
+  ): Either<VerifySignatureError, Unit> =
+    either {
+      val valid =
+        signer().apply {
+          init(false, DecoderError.wrap { signaturePublicKey.asParameter })
+          update(content, 0, content.size)
+        }.verifySignature(signature.bytes)
 
-    if (!valid) raise(SignatureError.BadSignature)
-  }
+      if (!valid) raise(VerifySignatureError.BadSignature)
+    }
 
   override fun generateSignatureKeyPair(): SignatureKeyPair =
     kpg.generateKeyPair().run {
       SignatureKeyPair(SignaturePrivateKey(private.bytes), SignaturePublicKey(public.bytes))
     }
 
-  override fun reconstructPublicKey(privateKey: SignaturePrivateKey): SignatureKeyPair =
-    SignatureKeyPair(
-      privateKey,
-      when (val p = privateKey.asParameter) {
-        is Ed25519PrivateKeyParameters ->
-          SignaturePublicKey(p.generatePublicKey().bytes)
+  override fun reconstructPublicKey(privateKey: SignaturePrivateKey): Either<ReconstructSignaturePublicKeyError, SignatureKeyPair> =
+    either {
+      SignatureKeyPair(
+        privateKey,
+        when (val p = privateKey.asParameter) {
+          is Ed25519PrivateKeyParameters ->
+            SignaturePublicKey(p.generatePublicKey().bytes)
 
-        is Ed448PrivateKeyParameters -> SignaturePublicKey(p.generatePublicKey().bytes)
-        is ECPrivateKeyParameters ->
-          SignaturePublicKey(
-            ECPublicKeyParameters(p.parameters.g.multiply(p.d), p.parameters).bytes,
-          )
+          is Ed448PrivateKeyParameters -> SignaturePublicKey(p.generatePublicKey().bytes)
+          is ECPrivateKeyParameters ->
+            SignaturePublicKey(
+              ECPublicKeyParameters(p.parameters.g.multiply(p.d), p.parameters).bytes,
+            )
 
-        else -> error("Unsupported")
-      },
-    )
+          else -> error("Unsupported")
+        },
+      )
+    }
 
   private fun signer(): Signer =
     when (dhKem) {
@@ -113,24 +123,35 @@ internal class SignProvider(
         else -> error("Unsupported")
       }
 
-  private val SignaturePrivateKey.asParameter: AsymmetricKeyParameter
-    get() =
-      when (dhKem) {
-        DhKem.P256_SHA256, DhKem.P384_SHA384, DhKem.P521_SHA512 ->
-          ECPrivateKeyParameters(BigInteger(1, bytes), dhKem.domainParams)
-
-        DhKem.X25519_SHA256 -> Ed25519PrivateKeyParameters(bytes)
-        DhKem.X448_SHA512 -> Ed448PrivateKeyParameters(bytes)
-      }
-
-  context(Raise<BaseDecoderError>)
+  context(Raise<MalformedPublicKey>)
   private val SignaturePublicKey.asParameter: AsymmetricKeyParameter
     get() =
-      when (dhKem) {
-        DhKem.P256_SHA256, DhKem.P384_SHA384, DhKem.P521_SHA512 ->
-          ECPublicKeyParameters(dhKem.domainParams.curve.decodePoint(bytes), dhKem.domainParams)
+      catch(
+        block = {
+          when (dhKem) {
+            DhKem.P256_SHA256, DhKem.P384_SHA384, DhKem.P521_SHA512 ->
+              ECPublicKeyParameters(dhKem.domainParams.curve.decodePoint(bytes), dhKem.domainParams)
 
-        DhKem.X25519_SHA256 -> Ed25519PublicKeyParameters(bytes)
-        DhKem.X448_SHA512 -> Ed448PublicKeyParameters(bytes)
-      }
+            DhKem.X25519_SHA256 -> Ed25519PublicKeyParameters(bytes)
+            DhKem.X448_SHA512 -> Ed448PublicKeyParameters(bytes)
+          }
+        },
+        catch = { raise(MalformedPublicKey(it.message)) },
+      )
+
+  context(Raise<MalformedPrivateKey>)
+  private val SignaturePrivateKey.asParameter: AsymmetricKeyParameter
+    get() =
+      catch(
+        block = {
+          when (dhKem) {
+            DhKem.P256_SHA256, DhKem.P384_SHA384, DhKem.P521_SHA512 ->
+              ECPrivateKeyParameters(BigInteger(1, bytes), dhKem.domainParams)
+
+            DhKem.X25519_SHA256 -> Ed25519PrivateKeyParameters(bytes)
+            DhKem.X448_SHA512 -> Ed448PrivateKeyParameters(bytes)
+          }
+        },
+        catch = { raise(MalformedPrivateKey(it.message)) },
+      )
 }

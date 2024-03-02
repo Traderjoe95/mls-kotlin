@@ -18,7 +18,7 @@ import org.bouncycastle.math.ec.WNafUtil
 import java.math.BigInteger
 import java.security.SecureRandom
 
-internal enum class DhKem(val id: Short, val hash: HashFunction, val curveName: String = "n/a") {
+internal enum class DhKem(val id: Short, val hash: HashFunction, private val curveName: String = "n/a") {
   P256_SHA256(HPKE.kem_P256_SHA256, HashFunction.SHA256, "P-256"),
   P384_SHA384(HPKE.kem_P384_SHA348, HashFunction.SHA384, "P-384"),
   P521_SHA512(HPKE.kem_P521_SHA512, HashFunction.SHA512, "P-521"),

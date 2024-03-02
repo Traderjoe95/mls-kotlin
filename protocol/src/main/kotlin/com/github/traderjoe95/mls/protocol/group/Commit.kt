@@ -1,9 +1,11 @@
 package com.github.traderjoe95.mls.protocol.group
 
+import arrow.core.Either
 import arrow.core.None
 import arrow.core.Option
 import arrow.core.getOrElse
 import arrow.core.raise.Raise
+import arrow.core.raise.either
 import arrow.core.raise.nullable
 import arrow.core.toOption
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite.Companion.zeroesNh
@@ -57,173 +59,177 @@ import com.github.traderjoe95.mls.protocol.types.tree.UpdatePath
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.LeafNodeSource
 import com.github.traderjoe95.mls.protocol.types.RatchetTree as RatchetTreeExt
 
-context(Raise<SenderCommitError>, AuthenticationService<Identity>)
 suspend fun <Identity : Any> GroupState.Active.prepareCommit(
   proposals: List<ProposalOrRef>,
+  authenticationService: AuthenticationService<Identity>,
   messageOptions: MessageOptions = UsePublicMessage,
   authenticatedData: ByteArray = byteArrayOf(),
   inReInit: Boolean = false,
   inBranch: Boolean = false,
   psks: PskLookup = this,
-): PrepareCommitResult {
-  val proposalResult = processProposals(proposals, None, leafIndex, inReInit, inBranch, psks)
+): Either<SenderCommitError, PrepareCommitResult> =
+  either {
+    val proposalResult = processProposals(proposals, None, authenticationService, leafIndex, inReInit, inBranch, psks)
 
-  val (updatedTree, updatePath, pathSecrets) =
-    if (proposalResult.updatePathRequired) {
-      createUpdatePath(
-        (proposalResult.updatedTree ?: tree),
-        proposalResult.newMemberLeafIndices(),
-        groupContext.withExtensions((proposalResult as? ProcessProposalsResult.CommitByMember)?.extensions),
-        signaturePrivateKey,
+    val (updatedTree, updatePath, pathSecrets) =
+      if (proposalResult.updatePathRequired) {
+        createUpdatePath(
+          (proposalResult.updatedTree ?: tree),
+          proposalResult.newMemberLeafIndices(),
+          groupContext.withExtensions((proposalResult as? ProcessProposalsResult.CommitByMember)?.extensions),
+          signaturePrivateKey,
+        )
+      } else {
+        Triple((proposalResult.updatedTree ?: tree), null, listOf())
+      }
+
+    val commitSecret = nullable { deriveSecret(pathSecrets.lastOrNull().bind(), "path") } ?: zeroesNh
+
+    val partialCommit =
+      messages.createAuthenticatedContent(
+        Commit(proposals, updatePath.toOption()),
+        messageOptions,
+        authenticatedData,
       )
-    } else {
-      Triple((proposalResult.updatedTree ?: tree), null, listOf())
+
+    val updatedGroupContext =
+      groupContext.evolve(
+        partialCommit.wireFormat,
+        partialCommit.content,
+        partialCommit.signature,
+        updatedTree,
+        newExtensions = (proposalResult as? ProcessProposalsResult.CommitByMember)?.extensions,
+      )
+
+    val (newKeySchedule, joinerSecret, welcomeSecret) =
+      keySchedule.nextEpoch(
+        commitSecret,
+        updatedGroupContext,
+        proposalResult.pskSecret,
+        (proposalResult as? ProcessProposalsResult.ExternalJoin)?.externalInitSecret,
+      )
+
+    val confirmationTag = mac(newKeySchedule.confirmationKey, updatedGroupContext.confirmedTranscriptHash)
+
+    val updatedGroupState =
+      proposalResult.createNextEpochState(
+        updatedGroupContext.withInterimTranscriptHash(
+          newInterimTranscriptHash(
+            cipherSuite,
+            updatedGroupContext.confirmedTranscriptHash,
+            confirmationTag,
+          ),
+        ),
+        updatedTree,
+        newKeySchedule,
+      )
+    val groupInfo =
+      GroupInfo.create(
+        updatedGroupContext,
+        confirmationTag,
+        listOfNotNull(
+          RatchetTreeExt(updatedTree),
+          *Extension.grease(),
+        ),
+        leafIndex,
+        signaturePrivateKey,
+      ).bind()
+
+    PrepareCommitResult(
+      updatedGroupState,
+      messages.protectCommit(partialCommit, confirmationTag, messageOptions),
+      proposalResult.welcomeTo
+        ?.takeIf { it.isNotEmpty() }
+        ?.let { newMembers ->
+          listOf(
+            PrepareCommitResult.WelcomeMessage(
+              newMembers.createWelcome(
+                groupInfo,
+                updatedTree,
+                pathSecrets,
+                welcomeSecret,
+                joinerSecret,
+                proposalResult.pskIds,
+              ),
+              newMembers.map { it.second },
+            ),
+          )
+        } ?: listOf(),
+    )
+  }
+
+suspend fun <Identity : Any> GroupState.Active.processCommit(
+  authenticatedCommit: AuthenticatedContent<Commit>,
+  authenticationService: AuthenticationService<Identity>,
+  psks: PskLookup = this,
+): Either<RecipientCommitError, GroupState> =
+  either {
+    val commit = authenticatedCommit.content
+    val proposalResult = commit.content.validateAndApply(commit.sender, psks, authenticationService)
+    val updatePath = commit.content.updatePath
+
+    val preTree = proposalResult.updatedTree ?: tree
+
+    with(preTree) {
+      if (leafIndex.isBlank) raise(RemovedFromGroup)
     }
 
-  val commitSecret = nullable { deriveSecret(pathSecrets.lastOrNull().bind(), "path") } ?: zeroesNh
+    val (updatedTree, commitSecret) =
+      updatePath.map { path ->
+        preTree.applyCommitUpdatePath(
+          groupContext.withExtensions((proposalResult as? ProcessProposalsResult.CommitByMember)?.extensions),
+          path,
+          commit.sender,
+          proposalResult.newMemberLeafIndices(),
+        )
+      }.getOrElse { preTree to zeroesNh }
 
-  val partialCommit =
-    messages.createAuthenticatedContent(
-      Commit(proposals, updatePath.toOption()),
-      messageOptions,
-      authenticatedData,
+    val updatedGroupContext =
+      groupContext.evolve(
+        authenticatedCommit.wireFormat,
+        commit,
+        authenticatedCommit.signature,
+        updatedTree,
+        newExtensions = (proposalResult as? ProcessProposalsResult.CommitByMember)?.extensions,
+      )
+
+    val (newKeySchedule, _, _) =
+      keySchedule.nextEpoch(
+        commitSecret,
+        updatedGroupContext,
+        proposalResult.pskSecret,
+        (proposalResult as? ProcessProposalsResult.ExternalJoin)?.externalInitSecret,
+      )
+
+    verifyMac(
+      newKeySchedule.confirmationKey,
+      updatedGroupContext.confirmedTranscriptHash,
+      authenticatedCommit.confirmationTag!!,
     )
 
-  val updatedGroupContext =
-    groupContext.evolve(
-      partialCommit.wireFormat,
-      partialCommit.content,
-      partialCommit.signature,
-      updatedTree,
-      newExtensions = (proposalResult as? ProcessProposalsResult.CommitByMember)?.extensions,
-    )
-
-  val (newKeySchedule, joinerSecret, welcomeSecret) =
-    keySchedule.nextEpoch(
-      commitSecret,
-      updatedGroupContext,
-      proposalResult.pskSecret,
-      (proposalResult as? ProcessProposalsResult.ExternalJoin)?.externalInitSecret,
-    )
-
-  val confirmationTag = mac(newKeySchedule.confirmationKey, updatedGroupContext.confirmedTranscriptHash)
-
-  val updatedGroupState =
     proposalResult.createNextEpochState(
       updatedGroupContext.withInterimTranscriptHash(
         newInterimTranscriptHash(
           cipherSuite,
           updatedGroupContext.confirmedTranscriptHash,
-          confirmationTag,
+          authenticatedCommit.confirmationTag,
         ),
       ),
       updatedTree,
       newKeySchedule,
     )
-  val groupInfo =
-    GroupInfo.create(
-      updatedGroupContext,
-      confirmationTag,
-      listOfNotNull(
-        RatchetTreeExt(updatedTree),
-        *Extension.grease(),
-      ),
-      leafIndex,
-      signaturePrivateKey,
-    )
-
-  return PrepareCommitResult(
-    updatedGroupState,
-    messages.protectCommit(partialCommit, confirmationTag, messageOptions),
-    proposalResult.welcomeTo
-      ?.takeIf { it.isNotEmpty() }
-      ?.let { newMembers ->
-        listOf(
-          PrepareCommitResult.WelcomeMessage(
-            newMembers.createWelcome(
-              groupInfo,
-              updatedTree,
-              pathSecrets,
-              welcomeSecret,
-              joinerSecret,
-              proposalResult.pskIds,
-            ),
-            newMembers.map { it.second },
-          ),
-        )
-      } ?: listOf(),
-  )
-}
-
-context(Raise<RecipientCommitError>, AuthenticationService<Identity>)
-suspend fun <Identity : Any> GroupState.Active.processCommit(
-  authenticatedCommit: AuthenticatedContent<Commit>,
-  psks: PskLookup = this,
-): GroupState {
-  val commit = authenticatedCommit.content
-  val proposalResult = commit.content.validateAndApply(commit.sender, psks)
-  val updatePath = commit.content.updatePath
-
-  val preTree = proposalResult.updatedTree ?: tree
-
-  with(preTree) {
-    if (leafIndex.isBlank) raise(RemovedFromGroup)
   }
 
-  val (updatedTree, commitSecret) =
-    updatePath.map { path ->
-      preTree.applyCommitUpdatePath(
-        groupContext.withExtensions((proposalResult as? ProcessProposalsResult.CommitByMember)?.extensions),
-        path,
-        commit.sender,
-        proposalResult.newMemberLeafIndices(),
-      )
-    }.getOrElse { preTree to zeroesNh }
-
-  val updatedGroupContext =
-    groupContext.evolve(
-      authenticatedCommit.wireFormat,
-      commit,
-      authenticatedCommit.signature,
-      updatedTree,
-      newExtensions = (proposalResult as? ProcessProposalsResult.CommitByMember)?.extensions,
-    )
-
-  val (newKeySchedule, _, _) =
-    keySchedule.nextEpoch(
-      commitSecret,
-      updatedGroupContext,
-      proposalResult.pskSecret,
-      (proposalResult as? ProcessProposalsResult.ExternalJoin)?.externalInitSecret,
-    )
-
-  verifyMac(
-    newKeySchedule.confirmationKey,
-    updatedGroupContext.confirmedTranscriptHash,
-    authenticatedCommit.confirmationTag!!,
-  )
-
-  return proposalResult.createNextEpochState(
-    updatedGroupContext.withInterimTranscriptHash(
-      newInterimTranscriptHash(
-        cipherSuite,
-        updatedGroupContext.confirmedTranscriptHash,
-        authenticatedCommit.confirmationTag,
-      ),
-    ),
-    updatedTree,
-    newKeySchedule,
-  )
-}
-
-context(GroupState.Active, AuthenticationService<Identity>, Raise<CommitError>)
+context(GroupState.Active, Raise<CommitError>)
 private suspend fun <Identity : Any> Commit.validateAndApply(
   sender: Sender,
   psks: PskLookup,
+  authenticationService: AuthenticationService<Identity>,
 ): ProcessProposalsResult =
   processProposals(
     proposals,
     updatePath,
+    authenticationService,
     when (sender.type) {
       SenderType.Member -> sender.index!!
       SenderType.NewMemberCommit -> null
@@ -291,7 +297,7 @@ private fun List<Pair<LeafIndex, KeyPackage>>.createWelcome(
 
       GroupSecrets(joinerSecret, pathSecret, pskIds)
         .encrypt(cipherSuite, keyPackage, encryptedGroupInfo)
-    }
+    }.bindAll()
 
   return MlsMessage.welcome(
     groupContext.cipherSuite,
@@ -300,10 +306,11 @@ private fun List<Pair<LeafIndex, KeyPackage>>.createWelcome(
   )
 }
 
-context(Raise<CommitError>, AuthenticationService<Identity>)
+context(Raise<CommitError>)
 private suspend fun <Identity : Any> GroupState.Active.processProposals(
   proposals: List<ProposalOrRef>,
   updatePath: Option<UpdatePath>,
+  authenticationService: AuthenticationService<Identity>,
   committerLeafIdx: LeafIndex?,
   inReInit: Boolean = false,
   inBranch: Boolean = false,
@@ -388,7 +395,7 @@ private suspend fun <Identity : Any> GroupState.Active.processProposals(
           if (committerLeafIdx == null) {
             val expectedClient = updatePath.getOrNull()!!.leafNode.credential
 
-            if (!isSameClient(expectedClient, updatedTree.leafNode(proposal.removed).credential).bind()) {
+            if (!authenticationService.isSameClient(expectedClient, updatedTree.leafNode(proposal.removed).credential).bind()) {
               raise(RemoveValidationError.UnauthorizedExternalRemove(proposal.removed))
             }
           }
@@ -400,9 +407,8 @@ private suspend fun <Identity : Any> GroupState.Active.processProposals(
         is Add -> {
           validations.validated(proposal, updatedTree).bind()
 
-          updatedTree.findEquivalentLeaf(proposal.keyPackage.leafNode)?.also {
-            raise(InvalidCommit.AlreadyMember(proposal.keyPackage, it))
-          }
+          with(authenticationService) { updatedTree.findEquivalentLeaf(proposal.keyPackage.leafNode) }
+            ?.also { raise(InvalidCommit.AlreadyMember(proposal.keyPackage, it)) }
 
           val (treeWithNewMember, newMemberLeaf) = updatedTree.insert(proposal.keyPackage.leafNode)
 
@@ -419,7 +425,7 @@ private suspend fun <Identity : Any> GroupState.Active.processProposals(
 
         is ExternalInit ->
           return ProcessProposalsResult.ExternalJoin(
-            externalInitSecret = export(proposal.kemOutput, deriveKeyPair(keySchedule.externalSecret), ""),
+            externalInitSecret = export(proposal.kemOutput, deriveKeyPair(keySchedule.externalSecret), "").bind(),
             pskSecret,
             updatedTree,
           )

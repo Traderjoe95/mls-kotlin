@@ -28,6 +28,7 @@ import com.github.traderjoe95.mls.protocol.types.crypto.Secret
 import com.github.traderjoe95.mls.protocol.types.crypto.Signature
 import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePrivateKey
 import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePublicKey
+import com.github.traderjoe95.mls.protocol.util.unsafe
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonObject
 import io.vertx.kotlin.core.json.get
@@ -216,7 +217,7 @@ data class CryptoBasicsTestVector(
             public,
             content,
             label,
-            cipherSuite.signWithLabel(private, label, content),
+            unsafe { cipherSuite.signWithLabel(private, label, content).bind() },
           )
         }
     }
@@ -232,7 +233,7 @@ data class CryptoBasicsTestVector(
     val ciphertext: Ciphertext,
   ) {
     val keyPair: HpkeKeyPair
-      get() = HpkeKeyPair(priv to pub)
+      get() = HpkeKeyPair(priv, pub)
 
     val hpkeCiphertext: HpkeCiphertext
       get() = HpkeCiphertext(kemOutput, ciphertext)
@@ -254,7 +255,10 @@ data class CryptoBasicsTestVector(
           val context = Random.nextBytes(Random.nextInt(0..128))
           val plaintext = Random.nextBytes(Random.nextInt(0..1024))
 
-          val (kemOutput, ciphertext) = cipherSuite.encryptWithLabel(public, label, context, plaintext)
+          val (kemOutput, ciphertext) =
+            unsafe {
+              cipherSuite.encryptWithLabel(public, label, context, plaintext).bind()
+            }
 
           EncryptWithLabel(
             private,

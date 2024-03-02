@@ -85,7 +85,7 @@ data class SecretTreeTestVector(
       fun generate(cipherSuite: CipherSuite): SenderData =
         cipherSuite.generateSecret(cipherSuite.hashLen).let { senderDataSecret ->
           val ciphertext = Random.nextBytes(Random.nextInt(1..2 * cipherSuite.hashLen.toInt())).asCiphertext
-          val (nonce, key) = cipherSuite.getSenderDataNonceAndKey(senderDataSecret, ciphertext)
+          val (nonce, key) = getSenderDataNonceAndKey(cipherSuite, senderDataSecret, ciphertext)
 
           SenderData(
             senderDataSecret,

@@ -4,6 +4,7 @@ import arrow.core.prependTo
 import arrow.core.raise.Raise
 import com.github.traderjoe95.mls.codec.util.uSize
 import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
+import com.github.traderjoe95.mls.protocol.error.HpkeDecryptError
 import com.github.traderjoe95.mls.protocol.error.JoinError
 import com.github.traderjoe95.mls.protocol.error.RecipientTreeUpdateError
 import com.github.traderjoe95.mls.protocol.error.SenderTreeUpdateError
@@ -79,7 +80,7 @@ internal fun createUpdatePath(
         from,
         groupContext.groupId,
         signaturePrivateKey,
-      )
+      ).bind()
     val updatedTree =
       updatedTreeWithoutLeaf.set(
         from,
@@ -103,7 +104,7 @@ internal fun createUpdatePath(
               "UpdatePathNode",
               provisionalGroupCtx.encoded,
               pathSecret.bytes,
-            )
+            ).bind()
           },
         )
       }
@@ -181,6 +182,7 @@ internal fun RatchetTree.mergeUpdatePath(
     }
 }
 
+context(Raise<HpkeDecryptError>)
 internal fun RatchetTree.extractCommonPathSecret(
   fromLeafIdx: LeafIndex,
   updatePath: UpdatePath,
@@ -205,7 +207,7 @@ internal fun RatchetTree.extractCommonPathSecret(
               "UpdatePathNode",
               groupContext.encoded,
               ciphertext,
-            ).asSecret
+            ).bind().asSecret
           }
 
       nodeIdx to pathSecret

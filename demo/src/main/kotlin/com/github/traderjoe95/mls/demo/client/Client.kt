@@ -16,6 +16,7 @@ import com.github.traderjoe95.mls.demo.util.getOrElse
 import com.github.traderjoe95.mls.demo.util.plus
 import com.github.traderjoe95.mls.demo.util.set
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
+import com.github.traderjoe95.mls.protocol.error.CreateSignatureError
 import com.github.traderjoe95.mls.protocol.error.EpochError
 import com.github.traderjoe95.mls.protocol.error.ExternalJoinError
 import com.github.traderjoe95.mls.protocol.error.GroupCreationError
@@ -76,7 +77,7 @@ class Client(
   ) = repeat(amount.toInt()) {
     DeliveryService.addKeyPackage(
       userName,
-      newKeyPackage(cipherSuite).public,
+      either { newKeyPackage(cipherSuite) }.getOrElse { error("Error creating key package: $it") }.public,
     )
   }
 
@@ -86,7 +87,7 @@ class Client(
         newGroup(
           newKeyPackage(Config.cipherSuite),
           RequiredCapabilities(credentialTypes = listOf(CredentialType.Basic)),
-        ),
+        ).bind(),
         this@Client,
       ).apply {
         if (public) makePublic().getOrThrow()
@@ -96,7 +97,11 @@ class Client(
   suspend fun joinPublicGroup(groupId: GroupId): Either<ExternalJoinError, GroupChat> =
     either {
       val groupInfo = DeliveryService.getPublicGroupInfo(groupId).getOrThrow()
-      val (group, commit) = groupInfo.joinGroupExternal(newKeyPackage(groupInfo.groupContext.cipherSuite))
+      val (group, commit) =
+        groupInfo.joinGroupExternal(
+          newKeyPackage(groupInfo.groupContext.cipherSuite),
+          this@Client,
+        ).bind()
 
       DeliveryService.sendMessageToGroup(commit, groupId)
 
@@ -142,7 +147,12 @@ class Client(
           val keyPackage = body.secrets.firstNotNullOf { getKeyPackage(it.newMember) }
 
           GroupChat(
-            body.joinGroup(keyPackage, psks = this@Client, resumptionGroup = body.resolveResumption(keyPackage)),
+            body.joinGroup(
+              keyPackage,
+              this@Client,
+              psks = this@Client,
+              resumingFrom = body.resolveResumption(keyPackage),
+            ).bind(),
             this@Client,
           ).register()
         }.getOrElse { error("[$userName] Failed to join group: $it") }
@@ -152,7 +162,7 @@ class Client(
 
   context(Raise<WelcomeJoinError>)
   private fun Welcome.resolveResumption(keyPackage: KeyPackage.Private): GroupState? =
-    decryptGroupSecrets(keyPackage).preSharedKeyIds
+    decryptGroupSecrets(keyPackage).bind().preSharedKeyIds
       .filterIsInstance<ResumptionPskId>()
       .firstOrNull { it.usage == ResumptionPskUsage.ReInit || it.usage == ResumptionPskUsage.Branch }
       ?.let { groups[it.pskGroupId] }
@@ -167,6 +177,7 @@ class Client(
 
   fun getKeyPackage(ref: KeyPackage.Ref): KeyPackage.Private? = keyPackages[ref.hashCode]
 
+  context(Raise<CreateSignatureError>)
   fun newKeyPackage(cipherSuite: CipherSuite): KeyPackage.Private {
     val initKeyPair = cipherSuite.generateHpkeKeyPair()
     val encryptionKeyPair = cipherSuite.generateHpkeKeyPair()
@@ -195,10 +206,10 @@ class Client(
               ApplicationId(applicationId.toBytes()),
             ),
           signaturePrivateKey = signingKey,
-        ),
+        ).bind(),
         extensions = listOf(),
         signaturePrivateKey = signingKey,
-      )
+      ).bind()
 
     return KeyPackage.Private(keyPackage, initKeyPair.private, encryptionKeyPair.private, signingKey).also {
       keyPackages[cipherSuite.makeKeyPackageRef(keyPackage).hashCode] = it
@@ -206,7 +217,7 @@ class Client(
   }
 
   context(Raise<PskError>)
-  override suspend fun getPreSharedKey(id: PreSharedKeyId): Secret =
+  override suspend fun resolvePsk(id: PreSharedKeyId): Secret =
     when (id) {
       is ResumptionPskId ->
         groups.getOrElse(id.pskGroupId) { raise(UnknownGroup(id.pskGroupId)) }

@@ -7,24 +7,24 @@ import com.github.traderjoe95.mls.protocol.types.crypto.Secret
 
 interface PskLookup {
   context(Raise<PskError>)
-  suspend fun getPreSharedKey(id: PreSharedKeyId): Secret
+  suspend fun resolvePsk(id: PreSharedKeyId): Secret
 
   companion object {
     val EMPTY: PskLookup =
       object : PskLookup {
         context(Raise<PskError>)
-        override suspend fun getPreSharedKey(id: PreSharedKeyId): Secret = raise(PskError.PskNotFound(id))
+        override suspend fun resolvePsk(id: PreSharedKeyId): Secret = raise(PskError.PskNotFound(id))
       }
 
     infix fun PskLookup.delegatingTo(fallback: PskLookup): PskLookup =
       object : PskLookup {
         context(Raise<PskError>)
-        override suspend fun getPreSharedKey(id: PreSharedKeyId): Secret =
+        override suspend fun resolvePsk(id: PreSharedKeyId): Secret =
           recover(
-            block = { this@delegatingTo.getPreSharedKey(id) },
+            block = { this@delegatingTo.resolvePsk(id) },
             recover = { err ->
               when (err) {
-                is PskError.PskNotFound -> fallback.getPreSharedKey(id)
+                is PskError.PskNotFound -> fallback.resolvePsk(id)
                 else -> raise(err)
               }
             },
