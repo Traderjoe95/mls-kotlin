@@ -1,13 +1,13 @@
 package com.github.traderjoe95.mls.protocol.interop.crypto
 
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
-import com.github.traderjoe95.mls.protocol.crypto.calculatePskSecret
 import com.github.traderjoe95.mls.protocol.interop.util.getCipherSuite
 import com.github.traderjoe95.mls.protocol.interop.util.getHexBinary
 import com.github.traderjoe95.mls.protocol.interop.util.getNonce
 import com.github.traderjoe95.mls.protocol.interop.util.getSecret
 import com.github.traderjoe95.mls.protocol.interop.util.nextUShort
 import com.github.traderjoe95.mls.protocol.psk.ExternalPskId
+import com.github.traderjoe95.mls.protocol.psk.ResolvedPsk
 import com.github.traderjoe95.mls.protocol.types.crypto.Nonce
 import com.github.traderjoe95.mls.protocol.types.crypto.Nonce.Companion.asNonce
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret
@@ -50,7 +50,7 @@ data class PskSecretTestVector(
             Random.nextBytes(cipherSuite.hashLen.toInt()).asNonce,
           )
         }
-      val pskSecret = calculatePskSecret(cipherSuite, psks.map { ExternalPskId(it.pskId, it.pskNonce) to it.psk })
+      val pskSecret = ResolvedPsk.calculatePskSecret(cipherSuite, psks.map(ExternalPsk::asResolved))
 
       return PskSecretTestVector(cipherSuite, psks, pskSecret)
     }
@@ -66,5 +66,7 @@ data class PskSecretTestVector(
       json.getSecret("psk"),
       json.getNonce("psk_nonce"),
     )
+
+    fun asResolved(): ResolvedPsk = ResolvedPsk(ExternalPskId(pskId, pskNonce), psk)
   }
 }

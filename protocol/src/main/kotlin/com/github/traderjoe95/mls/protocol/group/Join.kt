@@ -6,7 +6,6 @@ import arrow.core.raise.Raise
 import arrow.core.raise.either
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.crypto.KeySchedule
-import com.github.traderjoe95.mls.protocol.crypto.calculatePskSecret
 import com.github.traderjoe95.mls.protocol.error.DecoderError
 import com.github.traderjoe95.mls.protocol.error.ExtensionSupportError
 import com.github.traderjoe95.mls.protocol.error.ExternalJoinError
@@ -22,6 +21,7 @@ import com.github.traderjoe95.mls.protocol.message.MlsMessage
 import com.github.traderjoe95.mls.protocol.message.PublicMessage
 import com.github.traderjoe95.mls.protocol.message.Welcome
 import com.github.traderjoe95.mls.protocol.psk.PskLookup
+import com.github.traderjoe95.mls.protocol.psk.ResolvedPsk
 import com.github.traderjoe95.mls.protocol.psk.ResumptionPskId
 import com.github.traderjoe95.mls.protocol.service.AuthenticationService
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
@@ -94,22 +94,20 @@ suspend fun <Identity : Any> Welcome.joinGroup(
 
       val groupSecrets = decryptGroupSecrets(keyPackage).bind()
 
-      var hasResumptionPsk = false
-      val resolvedPsks =
-        groupSecrets.preSharedKeyIds.map {
-          if (hasResumptionPsk && it.isProtocolResumption) {
-            raise(WelcomeJoinError.MultipleResumptionPsks)
-          }
-
-          hasResumptionPsk = hasResumptionPsk || it.isProtocolResumption
-
-          it to psks.resolvePsk(it)
+      val hasResumptionPsk =
+        when (groupSecrets.preSharedKeyIds.count { it.isProtocolResumption }) {
+          1 -> true
+          0 -> false
+          else -> raise(WelcomeJoinError.MultipleResumptionPsks)
         }
-      val pskSecret = calculatePskSecret(cipherSuite, resolvedPsks)
+
+      val resolvedPsks = PskLookup.resolvePsks(psks, groupSecrets.preSharedKeyIds).bind()
+      val pskSecret = ResolvedPsk.calculatePskSecret(cipherSuite, resolvedPsks)
 
       val groupInfo = decryptGroupInfo(groupSecrets.joinerSecret, pskSecret).bind()
 
-      val publicTree = groupInfo.extension<RatchetTreeExt>()?.tree ?: optionalTree ?: raise(JoinError.MissingRatchetTree)
+      val publicTree =
+        groupInfo.extension<RatchetTreeExt>()?.tree ?: optionalTree ?: raise(JoinError.MissingRatchetTree)
 
       groupInfo.verifySignature(publicTree).bind()
       publicTree.check(groupInfo.groupContext).bind()
@@ -134,7 +132,11 @@ suspend fun <Identity : Any> Welcome.joinGroup(
           groupContext,
         )
 
-      cipherSuite.verifyMac(keySchedule.confirmationKey, groupContext.confirmedTranscriptHash, groupInfo.confirmationTag)
+      cipherSuite.verifyMac(
+        keySchedule.confirmationKey,
+        groupContext.confirmedTranscriptHash,
+        groupInfo.confirmationTag,
+      )
       groupContext =
         groupContext.withInterimTranscriptHash(
           newInterimTranscriptHash(
@@ -224,7 +226,7 @@ suspend fun <Identity : Any> GroupInfo.joinGroupExternal(
 
     groupContext = groupContext.evolve(WireFormat.MlsPublicMessage, framedContent, signature, updatedTree)
 
-    val pskSecret = calculatePskSecret(cipherSuite, listOf())
+    val pskSecret = ResolvedPsk.calculatePskSecret(cipherSuite, listOf())
 
     val keySchedule =
       KeySchedule.init(

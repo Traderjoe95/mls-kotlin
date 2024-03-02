@@ -152,12 +152,13 @@ sealed class GroupState(
         signaturePrivateKey,
       )
 
-    context(Raise<PskError>)
-    override suspend fun resolvePsk(id: PreSharedKeyId): Secret =
-      if (id is ResumptionPskId && id.pskGroupId == groupId && id.pskEpoch == epoch) {
-        keySchedule.resumptionPsk
-      } else {
-        raise(PskError.PskNotFound(id))
+    override suspend fun getPreSharedKey(id: PreSharedKeyId): Either<PskError, Secret> =
+      either {
+        if (id is ResumptionPskId && id.pskGroupId eq groupId && id.pskEpoch == epoch) {
+          keySchedule.resumptionPsk
+        } else {
+          raise(PskError.PskNotFound(id))
+        }
       }
 
     suspend fun <Identity : Any> process(
@@ -252,12 +253,13 @@ sealed class GroupState(
     keySchedule: KeySchedule,
     val reInit: ReInit,
   ) : GroupState(groupContext, tree, keySchedule), PskLookup {
-    context(Raise<PskError>)
-    override suspend fun resolvePsk(id: PreSharedKeyId): Secret =
-      if (id is ResumptionPskId && id.pskGroupId == groupId && id.pskEpoch == epoch) {
-        keySchedule.resumptionPsk
-      } else {
-        raise(PskError.PskNotFound(id))
+    override suspend fun getPreSharedKey(id: PreSharedKeyId): Either<PskError, Secret> =
+      either {
+        if (id is ResumptionPskId && id.pskGroupId eq groupId && id.pskEpoch == epoch) {
+          keySchedule.resumptionPsk
+        } else {
+          raise(PskError.PskNotFound(id))
+        }
       }
   }
 

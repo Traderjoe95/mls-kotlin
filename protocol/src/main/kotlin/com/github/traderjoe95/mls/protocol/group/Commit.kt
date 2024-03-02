@@ -10,7 +10,6 @@ import arrow.core.raise.nullable
 import arrow.core.toOption
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite.Companion.zeroesNh
 import com.github.traderjoe95.mls.protocol.crypto.KeySchedule
-import com.github.traderjoe95.mls.protocol.crypto.updatePskSecret
 import com.github.traderjoe95.mls.protocol.error.CommitError
 import com.github.traderjoe95.mls.protocol.error.InvalidCommit
 import com.github.traderjoe95.mls.protocol.error.RecipientCommitError
@@ -28,6 +27,7 @@ import com.github.traderjoe95.mls.protocol.message.UsePublicMessage
 import com.github.traderjoe95.mls.protocol.message.Welcome
 import com.github.traderjoe95.mls.protocol.psk.PreSharedKeyId
 import com.github.traderjoe95.mls.protocol.psk.PskLookup
+import com.github.traderjoe95.mls.protocol.psk.ResolvedPsk.Companion.updatePskSecret
 import com.github.traderjoe95.mls.protocol.service.AuthenticationService
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.tree.RatchetTree

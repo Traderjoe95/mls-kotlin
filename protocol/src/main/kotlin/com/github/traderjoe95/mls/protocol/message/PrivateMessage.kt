@@ -18,7 +18,6 @@ import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.codec.type.uint32
 import com.github.traderjoe95.mls.codec.type.uint64
 import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
-import com.github.traderjoe95.mls.protocol.crypto.getSenderDataNonceAndKey
 import com.github.traderjoe95.mls.protocol.error.DecoderError
 import com.github.traderjoe95.mls.protocol.error.MessageSenderError
 import com.github.traderjoe95.mls.protocol.error.PrivateMessageRecipientError
@@ -34,6 +33,7 @@ import com.github.traderjoe95.mls.protocol.types.GroupId
 import com.github.traderjoe95.mls.protocol.types.crypto.Aad.Companion.asAad
 import com.github.traderjoe95.mls.protocol.types.crypto.Ciphertext
 import com.github.traderjoe95.mls.protocol.types.crypto.Mac
+import com.github.traderjoe95.mls.protocol.types.crypto.Nonce
 import com.github.traderjoe95.mls.protocol.types.crypto.ReuseGuard
 import com.github.traderjoe95.mls.protocol.types.crypto.Secret
 import com.github.traderjoe95.mls.protocol.types.crypto.Signature
@@ -232,6 +232,28 @@ data class PrivateMessage<out C : Content<C>>(
 
       return PrivateMessage(authContent.content, encryptedSenderData, ciphertext)
     }
+
+    fun getSenderDataNonceAndKey(
+      cipherSuite: ICipherSuite,
+      senderDataSecret: Secret,
+      ciphertext: Ciphertext,
+    ): Pair<Nonce, Secret> =
+      with(cipherSuite) {
+        ciphertext.bytes.sliceArray(0..<minOf(ciphertext.size, hashLen.toInt())).let { ciphertextSample ->
+          expandWithLabel(
+            senderDataSecret,
+            "nonce",
+            ciphertextSample,
+            nonceLen,
+          ).asNonce to
+            expandWithLabel(
+              senderDataSecret,
+              "key",
+              ciphertextSample,
+              keyLen,
+            )
+        }
+      }
 
     @Suppress("kotlin:S1481")
     private fun encodePrivateMessageContent(

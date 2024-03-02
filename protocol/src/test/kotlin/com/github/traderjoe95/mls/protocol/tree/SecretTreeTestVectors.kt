@@ -2,8 +2,8 @@ package com.github.traderjoe95.mls.protocol.tree
 
 import com.github.traderjoe95.mls.codec.util.uSize
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
-import com.github.traderjoe95.mls.protocol.crypto.getSenderDataNonceAndKey
 import com.github.traderjoe95.mls.protocol.interop.tree.SecretTreeTestVector
+import com.github.traderjoe95.mls.protocol.message.PrivateMessage.Companion.getSenderDataNonceAndKey
 import com.github.traderjoe95.mls.protocol.testing.VertxFunSpec
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ContentType
 import com.github.traderjoe95.mls.protocol.util.hex

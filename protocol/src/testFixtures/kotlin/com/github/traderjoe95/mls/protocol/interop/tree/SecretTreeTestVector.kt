@@ -1,12 +1,12 @@
 package com.github.traderjoe95.mls.protocol.interop.tree
 
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
-import com.github.traderjoe95.mls.protocol.crypto.getSenderDataNonceAndKey
 import com.github.traderjoe95.mls.protocol.interop.util.getCipherSuite
 import com.github.traderjoe95.mls.protocol.interop.util.getCiphertext
 import com.github.traderjoe95.mls.protocol.interop.util.getNonce
 import com.github.traderjoe95.mls.protocol.interop.util.getSecret
 import com.github.traderjoe95.mls.protocol.interop.util.getUInt
+import com.github.traderjoe95.mls.protocol.message.PrivateMessage.Companion.getSenderDataNonceAndKey
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.tree.SecretTree
 import com.github.traderjoe95.mls.protocol.types.crypto.Ciphertext

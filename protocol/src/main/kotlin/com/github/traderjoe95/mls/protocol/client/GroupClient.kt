@@ -1,11 +1,15 @@
 package com.github.traderjoe95.mls.protocol.client
 
 import arrow.core.Either
+import arrow.core.flatMap
+import arrow.core.left
+import arrow.core.prependTo
 import arrow.core.raise.Raise
 import arrow.core.raise.either
 import arrow.core.raise.ensure
-import arrow.core.raise.recover
+import arrow.core.recover
 import com.github.traderjoe95.mls.codec.util.uSize
+import com.github.traderjoe95.mls.protocol.client.ProcessHandshakeResult.CommitProcessedWithNewMembers
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.error.CreateAddError
 import com.github.traderjoe95.mls.protocol.error.CreatePreSharedKeyError
@@ -24,6 +28,7 @@ import com.github.traderjoe95.mls.protocol.error.PrivateMessageRecipientError
 import com.github.traderjoe95.mls.protocol.error.PrivateMessageSenderError
 import com.github.traderjoe95.mls.protocol.error.ProcessMessageError
 import com.github.traderjoe95.mls.protocol.error.PskError
+import com.github.traderjoe95.mls.protocol.error.ReInitError
 import com.github.traderjoe95.mls.protocol.error.SenderCommitError
 import com.github.traderjoe95.mls.protocol.error.WelcomeJoinError
 import com.github.traderjoe95.mls.protocol.group.GroupState
@@ -31,6 +36,7 @@ import com.github.traderjoe95.mls.protocol.group.WelcomeMessages
 import com.github.traderjoe95.mls.protocol.group.joinGroup
 import com.github.traderjoe95.mls.protocol.group.joinGroupExternal
 import com.github.traderjoe95.mls.protocol.group.prepareCommit
+import com.github.traderjoe95.mls.protocol.group.resumption.resumeReInit
 import com.github.traderjoe95.mls.protocol.message.GroupInfo
 import com.github.traderjoe95.mls.protocol.message.GroupInfo.Companion.encodeUnsafe
 import com.github.traderjoe95.mls.protocol.message.HandshakeMessage
@@ -46,6 +52,7 @@ import com.github.traderjoe95.mls.protocol.message.UsePrivateMessage
 import com.github.traderjoe95.mls.protocol.message.UsePublicMessage
 import com.github.traderjoe95.mls.protocol.message.Welcome
 import com.github.traderjoe95.mls.protocol.message.padding.randomized.CovertPadding
+import com.github.traderjoe95.mls.protocol.psk.ExternalPskHolder
 import com.github.traderjoe95.mls.protocol.psk.ExternalPskId
 import com.github.traderjoe95.mls.protocol.psk.PreSharedKeyId
 import com.github.traderjoe95.mls.protocol.psk.PskLookup
@@ -64,141 +71,11 @@ import com.github.traderjoe95.mls.protocol.types.framing.enums.WireFormat
 import com.github.traderjoe95.mls.protocol.types.tree.LeafNode
 import com.github.traderjoe95.mls.protocol.util.hex
 
-class GroupClient<Identity : Any>(
-  private val stateHistory: MutableList<GroupState>,
-  private val authService: AuthenticationService<Identity>,
-  var applicationMessageOptions: UsePrivateMessage = UsePrivateMessage(paddingStrategy = CovertPadding()),
-  var handshakeMessageOptions: MessageOptions = UsePublicMessage,
-  parentPskLookup: PskLookup = PskLookup.EMPTY,
+sealed class GroupClient<Identity : Any, State : GroupState>(
+  internal val stateHistory: MutableList<GroupState>,
+  internal val authService: AuthenticationService<Identity>,
+  internal val parentPskLookup: PskLookup? = null,
 ) : PskLookup {
-  companion object {
-    fun <Identity : Any> newGroup(
-      ownKeyPackage: KeyPackage.Private,
-      authenticationService: AuthenticationService<Identity>,
-      groupId: GroupId? = null,
-      parentPskLookup: PskLookup = PskLookup.EMPTY,
-    ): Either<GroupCreationError, GroupClient<Identity>> =
-      com.github.traderjoe95.mls.protocol.group.newGroup(ownKeyPackage, groupId = groupId)
-        .map { GroupClient(mutableListOf(it), authenticationService, parentPskLookup = parentPskLookup) }
-
-    suspend fun <Identity : Any> joinFromWelcomeMessage(
-      welcomeMessageBytes: ByteArray,
-      ownKeyPackage: KeyPackage.Private,
-      authenticationService: AuthenticationService<Identity>,
-      resumingFrom: GroupState? = null,
-      optionalTree: PublicRatchetTree? = null,
-      parentPskLookup: PskLookup = PskLookup.EMPTY,
-    ): Either<WelcomeJoinError, GroupClient<Identity>> =
-      either {
-        val msg = decodeMessage(welcomeMessageBytes).bind().ensureFormat<Welcome>()
-
-        joinFromWelcome(
-          msg.message,
-          ownKeyPackage,
-          authenticationService,
-          resumingFrom,
-          optionalTree,
-          parentPskLookup
-        ).bind()
-      }
-
-    suspend fun <Identity : Any> joinFromWelcome(
-      welcome: Welcome,
-      ownKeyPackage: KeyPackage.Private,
-      authenticationService: AuthenticationService<Identity>,
-      resumingFrom: GroupState? = null,
-      optionalTree: PublicRatchetTree? = null,
-      parentPskLookup: PskLookup = PskLookup.EMPTY,
-    ): Either<WelcomeJoinError, GroupClient<Identity>> =
-      either {
-        val groupState =
-          welcome.joinGroup(
-            ownKeyPackage,
-            authenticationService,
-            psks = parentPskLookup,
-            resumingFrom = resumingFrom,
-            optionalTree = optionalTree,
-          ).bind()
-
-        GroupClient(
-          mutableListOf(groupState),
-          authenticationService,
-          parentPskLookup = parentPskLookup,
-        )
-      }
-
-    suspend fun <Identity : Any> joinFromGroupInfoMessage(
-      groupInfoMessageBytes: ByteArray,
-      ownKeyPackage: KeyPackage.Private,
-      authenticationService: AuthenticationService<Identity>,
-      authenticatedData: ByteArray = byteArrayOf(),
-      optionalTree: PublicRatchetTree? = null,
-      parentPskLookup: PskLookup = PskLookup.EMPTY,
-    ): Either<ExternalJoinError, Pair<GroupClient<Identity>, ByteArray>> =
-      either {
-        val msg = decodeMessage(groupInfoMessageBytes).bind().ensureFormat<GroupInfo>()
-
-        joinFromGroupInfo(
-          msg.message,
-          ownKeyPackage,
-          authenticationService,
-          authenticatedData,
-          optionalTree,
-          parentPskLookup
-        ).bind()
-      }
-
-    suspend fun <Identity : Any> joinFromGroupInfo(
-      groupInfoBytes: ByteArray,
-      ownKeyPackage: KeyPackage.Private,
-      authenticationService: AuthenticationService<Identity>,
-      authenticatedData: ByteArray = byteArrayOf(),
-      optionalTree: PublicRatchetTree? = null,
-      parentPskLookup: PskLookup = PskLookup.EMPTY,
-    ): Either<ExternalJoinError, Pair<GroupClient<Identity>, ByteArray>> =
-      either {
-        val groupInfo = DecoderError.wrap { GroupInfo.decode(groupInfoBytes) }
-
-        joinFromGroupInfo(
-          groupInfo,
-          ownKeyPackage,
-          authenticationService,
-          authenticatedData,
-          optionalTree,
-          parentPskLookup
-        ).bind()
-      }
-
-    suspend fun <Identity : Any> joinFromGroupInfo(
-      groupInfo: GroupInfo,
-      ownKeyPackage: KeyPackage.Private,
-      authenticationService: AuthenticationService<Identity>,
-      authenticatedData: ByteArray = byteArrayOf(),
-      optionalTree: PublicRatchetTree? = null,
-      parentPskLookup: PskLookup = PskLookup.EMPTY,
-    ): Either<ExternalJoinError, Pair<GroupClient<Identity>, ByteArray>> =
-      either {
-        val (groupState, commitMsg) =
-          groupInfo.joinGroupExternal(
-            ownKeyPackage,
-            authenticationService,
-            authenticatedData = authenticatedData,
-            optionalTree = optionalTree,
-          ).bind()
-
-        GroupClient(
-          mutableListOf(groupState),
-          authenticationService,
-          parentPskLookup = parentPskLookup,
-        ) to commitMsg.encodeUnsafe()
-      }
-
-    internal fun decodeMessage(byteArray: ByteArray): Either<DecoderError, MlsMessage<*>> =
-      either {
-        DecoderError.wrap { MlsMessage.decode(byteArray) }
-      }
-  }
-
   val cipherSuite: CipherSuite
     get() = state.cipherSuite
   val groupId: GroupId
@@ -212,18 +89,15 @@ class GroupClient<Identity : Any>(
   val epochAuthenticator: Secret
     get() = state.keySchedule.epochAuthenticator
 
-  private inline val state: GroupState
-    get() = stateHistory.first()
+  val state: State
+    get() = stateHistory.first().coerceState()
 
-  private val commitCache: MutableMap<String, CachedCommit> = mutableMapOf()
-
-  private val externalPsks: MutableMap<String, Secret> = mutableMapOf()
-  private val psks: PskLookup = this delegatingTo parentPskLookup
+  protected val psks: PskLookup by lazy { this delegatingTo parentPskLookup }
 
   suspend fun open(applicationMessage: ByteArray): Either<PrivateMessageRecipientError, ApplicationData> =
     either {
       val msg =
-        decodeMessage(applicationMessage).bind()
+        ActiveGroupClient.decodeMessage(applicationMessage).bind()
           .ensureFormatAndContent<_, PrivateMessage<ApplicationData>>(
             WireFormat.MlsPrivateMessage,
             ContentType.Application,
@@ -236,6 +110,190 @@ class GroupClient<Identity : Any>(
         .content
     }
 
+  override suspend fun getPreSharedKey(id: PreSharedKeyId): Either<PskError, Secret> =
+    when (id) {
+      is ResumptionPskId ->
+        either { getStateForEpoch(id.pskGroupId, id.pskEpoch) }
+          .recover {
+            when (it) {
+              is EpochError -> raise(it)
+              else -> raise(PskError.PskNotFound(id))
+            }
+          }
+          .flatMap {
+            when (it) {
+              is PskLookup -> it.getPreSharedKey(id)
+              else -> PskError.PskNotFound(id).left()
+            }
+          }
+
+      is ExternalPskId -> PskError.PskNotFound(id).left()
+    }
+
+  protected abstract fun GroupState.coerceState(): State
+
+  context(Raise<HistoryAccessError>)
+  protected fun getStateForEpoch(
+    groupId: GroupId,
+    epoch: ULong,
+  ): GroupState {
+    ensure(groupId eq this@GroupClient.groupId) { WrongGroup(groupId, this@GroupClient.groupId) }
+
+    ensure(epoch <= this@GroupClient.epoch) { FutureEpoch(groupId, epoch, this@GroupClient.epoch) }
+
+    return stateHistory
+      .find { it.epoch == epoch }
+      ?: raise(EpochNotAvailable(groupId, epoch))
+  }
+
+  protected fun replaceCurrentState(newState: GroupState) {
+    stateHistory[0] = newState
+  }
+
+  protected open fun advanceCurrentState(newState: GroupState) {
+    stateHistory.add(0, newState)
+  }
+}
+
+class ActiveGroupClient<Identity : Any>(
+  stateHistory: MutableList<GroupState>,
+  authService: AuthenticationService<Identity>,
+  var applicationMessageOptions: UsePrivateMessage = UsePrivateMessage(paddingStrategy = CovertPadding()),
+  var handshakeMessageOptions: MessageOptions = UsePublicMessage,
+  parentPskLookup: PskLookup? = null,
+) : GroupClient<Identity, GroupState.Active>(stateHistory, authService, parentPskLookup),
+  ExternalPskHolder<ActiveGroupClient<Identity>> {
+  companion object {
+    fun <Identity : Any> newGroup(
+      ownKeyPackage: KeyPackage.Private,
+      authenticationService: AuthenticationService<Identity>,
+      groupId: GroupId? = null,
+      parentPskLookup: PskLookup = PskLookup.EMPTY,
+    ): Either<GroupCreationError, ActiveGroupClient<Identity>> =
+      com.github.traderjoe95.mls.protocol.group.newGroup(ownKeyPackage, groupId = groupId)
+        .map { ActiveGroupClient(mutableListOf(it), authenticationService, parentPskLookup = parentPskLookup) }
+
+    suspend fun <Identity : Any> joinFromWelcomeMessage(
+      welcomeMessageBytes: ByteArray,
+      ownKeyPackage: KeyPackage.Private,
+      authenticationService: AuthenticationService<Identity>,
+      resumingFrom: GroupState? = null,
+      optionalTree: PublicRatchetTree? = null,
+      parentPskLookup: PskLookup = PskLookup.EMPTY,
+    ): Either<WelcomeJoinError, ActiveGroupClient<Identity>> =
+      either {
+        val msg = decodeMessage(welcomeMessageBytes).bind().ensureFormat<Welcome>()
+
+        joinFromWelcome(
+          msg.message,
+          ownKeyPackage,
+          authenticationService,
+          resumingFrom,
+          optionalTree,
+          parentPskLookup,
+        ).bind()
+      }
+
+    suspend fun <Identity : Any> joinFromWelcome(
+      welcome: Welcome,
+      ownKeyPackage: KeyPackage.Private,
+      authenticationService: AuthenticationService<Identity>,
+      resumingFrom: GroupState? = null,
+      optionalTree: PublicRatchetTree? = null,
+      parentPskLookup: PskLookup = PskLookup.EMPTY,
+    ): Either<WelcomeJoinError, ActiveGroupClient<Identity>> =
+      either {
+        val groupState =
+          welcome.joinGroup(
+            ownKeyPackage,
+            authenticationService,
+            psks = parentPskLookup,
+            resumingFrom = resumingFrom,
+            optionalTree = optionalTree,
+          ).bind()
+
+        ActiveGroupClient(
+          mutableListOf(groupState),
+          authenticationService,
+          parentPskLookup = parentPskLookup,
+        )
+      }
+
+    suspend fun <Identity : Any> joinFromGroupInfoMessage(
+      groupInfoMessageBytes: ByteArray,
+      ownKeyPackage: KeyPackage.Private,
+      authenticationService: AuthenticationService<Identity>,
+      authenticatedData: ByteArray = byteArrayOf(),
+      optionalTree: PublicRatchetTree? = null,
+      parentPskLookup: PskLookup = PskLookup.EMPTY,
+    ): Either<ExternalJoinError, Pair<ActiveGroupClient<Identity>, ByteArray>> =
+      either {
+        val msg = decodeMessage(groupInfoMessageBytes).bind().ensureFormat<GroupInfo>()
+
+        joinFromGroupInfo(
+          msg.message,
+          ownKeyPackage,
+          authenticationService,
+          authenticatedData,
+          optionalTree,
+          parentPskLookup,
+        ).bind()
+      }
+
+    suspend fun <Identity : Any> joinFromGroupInfo(
+      groupInfoBytes: ByteArray,
+      ownKeyPackage: KeyPackage.Private,
+      authenticationService: AuthenticationService<Identity>,
+      authenticatedData: ByteArray = byteArrayOf(),
+      optionalTree: PublicRatchetTree? = null,
+      parentPskLookup: PskLookup = PskLookup.EMPTY,
+    ): Either<ExternalJoinError, Pair<ActiveGroupClient<Identity>, ByteArray>> =
+      either {
+        val groupInfo = DecoderError.wrap { GroupInfo.decode(groupInfoBytes) }
+
+        joinFromGroupInfo(
+          groupInfo,
+          ownKeyPackage,
+          authenticationService,
+          authenticatedData,
+          optionalTree,
+          parentPskLookup,
+        ).bind()
+      }
+
+    suspend fun <Identity : Any> joinFromGroupInfo(
+      groupInfo: GroupInfo,
+      ownKeyPackage: KeyPackage.Private,
+      authenticationService: AuthenticationService<Identity>,
+      authenticatedData: ByteArray = byteArrayOf(),
+      optionalTree: PublicRatchetTree? = null,
+      parentPskLookup: PskLookup = PskLookup.EMPTY,
+    ): Either<ExternalJoinError, Pair<ActiveGroupClient<Identity>, ByteArray>> =
+      either {
+        val (groupState, commitMsg) =
+          groupInfo.joinGroupExternal(
+            ownKeyPackage,
+            authenticationService,
+            authenticatedData = authenticatedData,
+            optionalTree = optionalTree,
+          ).bind()
+
+        ActiveGroupClient(
+          mutableListOf(groupState),
+          authenticationService,
+          parentPskLookup = parentPskLookup,
+        ) to commitMsg.encodeUnsafe()
+      }
+
+    internal fun decodeMessage(byteArray: ByteArray): Either<DecoderError, MlsMessage<*>> =
+      either {
+        DecoderError.wrap { MlsMessage.decode(byteArray) }
+      }
+  }
+
+  private val externalPsks: MutableMap<String, Secret> = mutableMapOf()
+  private val commitCache: MutableMap<String, CachedCommit> = mutableMapOf()
+
   suspend fun seal(
     data: ApplicationData,
     authenticatedData: ByteArray,
@@ -246,14 +304,14 @@ class GroupClient<Identity : Any>(
         .encodeUnsafe()
     }
 
-  suspend fun process(handshakeMessage: ByteArray): Either<ProcessMessageError, WelcomeMessages?> =
+  suspend fun processHandshake(handshakeMessageBytes: ByteArray): Either<ProcessMessageError, ProcessHandshakeResult<Identity>> =
     either {
       with(authService) {
         val msg: MlsHandshakeMessage =
-          decodeMessage(handshakeMessage).bind()
+          decodeMessage(handshakeMessageBytes).bind()
             .ensureFormat<HandshakeMessage>(handshakeMessageOptions.wireFormat)
 
-        val cached = commitCache[handshakeMessage.hex]
+        val cached = commitCache[handshakeMessageBytes.hex]
 
         val newState =
           state.ensureActive {
@@ -261,11 +319,25 @@ class GroupClient<Identity : Any>(
           }.bind()
 
         when (newState.epoch) {
-          epoch -> replaceCurrentState(newState)
-          else -> advanceCurrentState(newState)
-        }
+          epoch -> {
+            replaceCurrentState(newState)
+            ProcessHandshakeResult.ProposalReceived
+          }
 
-        cached?.welcomeMessages
+          else ->
+            when (newState) {
+              is GroupState.Active -> {
+                advanceCurrentState(newState)
+                cached?.welcomeMessages
+                  ?.takeIf { it.isNotEmpty() }
+                  ?.let(::CommitProcessedWithNewMembers)
+                  ?: ProcessHandshakeResult.CommitProcessed
+              }
+
+              is GroupState.Suspended ->
+                ProcessHandshakeResult.ReInitProcessed(SuspendedGroupClient(this@ActiveGroupClient, newState))
+            }
+        }
       }
     }
 
@@ -328,15 +400,6 @@ class GroupClient<Identity : Any>(
       state.ensureActive { groupInfo(inlineTree = true, public = true).bind() }.encodeUnsafe()
     }
 
-  fun registerExternalPsk(
-    pskId: ByteArray,
-    psk: Secret,
-  ): GroupClient<Identity> = apply { externalPsks[pskId.hex] = psk }
-
-  fun deleteExternalPsk(pskId: ByteArray): GroupClient<Identity> = apply { externalPsks.remove(pskId.hex) }
-
-  fun clearExternalPsks(): GroupClient<Identity> = apply { externalPsks.clear() }
-
   fun leafIndexFor(memberIdx: UInt): Either<CreateRemoveError.MemberIndexOutOfBounds, LeafIndex> =
     either {
       members.uSize.let {
@@ -346,26 +409,42 @@ class GroupClient<Identity : Any>(
       tree.nonBlankLeafIndices[memberIdx.toInt()]
     }
 
-  context(Raise<HistoryAccessError>)
-  private fun getStateForEpoch(
-    groupId: GroupId,
-    epoch: ULong,
-  ): GroupState {
-    ensure(groupId eq this@GroupClient.groupId) { WrongGroup(groupId, this@GroupClient.groupId) }
+  override fun registerExternalPsk(
+    pskId: ByteArray,
+    psk: Secret,
+  ): ActiveGroupClient<Identity> =
+    apply {
+      externalPsks[pskId.hex] = psk
+    }
 
-    ensure(epoch <= this@GroupClient.epoch) { FutureEpoch(groupId, epoch, this@GroupClient.epoch) }
+  override fun deleteExternalPsk(pskId: ByteArray): ActiveGroupClient<Identity> = apply { externalPsks.remove(pskId.hex) }
 
-    return stateHistory
-      .find { it.epoch == epoch }
-      ?: raise(EpochNotAvailable(groupId, epoch))
-  }
+  override fun clearExternalPsks(): ActiveGroupClient<Identity> = apply { externalPsks.clear() }
 
-  private fun replaceCurrentState(newState: GroupState) {
-    stateHistory[0] = newState
-  }
+  override suspend fun getPreSharedKey(id: PreSharedKeyId): Either<PskError, Secret> =
+    when (id) {
+      is ResumptionPskId ->
+        either { getStateForEpoch(id.pskGroupId, id.pskEpoch) }
+          .recover {
+            when (it) {
+              is EpochError -> raise(it)
+              else -> raise(PskError.PskNotFound(id))
+            }
+          }
+          .flatMap {
+            when (it) {
+              is PskLookup -> it.getPreSharedKey(id)
+              else -> PskError.PskNotFound(id).left()
+            }
+          }
 
-  private fun advanceCurrentState(newState: GroupState) {
-    stateHistory.add(0, newState)
+      is ExternalPskId -> either { externalPsks[id.pskId.hex] ?: raise(PskError.PskNotFound(id)) }
+    }
+
+  override fun GroupState.coerceState(): GroupState.Active = coerceActive()
+
+  override fun advanceCurrentState(newState: GroupState) {
+    super.advanceCurrentState(newState)
     commitCache.clear()
   }
 
@@ -373,21 +452,30 @@ class GroupClient<Identity : Any>(
     val newState: GroupState,
     val welcomeMessages: WelcomeMessages,
   )
+}
 
-  context(Raise<PskError>)
-  override suspend fun resolvePsk(id: PreSharedKeyId): Secret =
-    when (id) {
-      is ResumptionPskId ->
-        recover(
-          block = { getStateForEpoch(id.pskGroupId, id.pskEpoch) },
-          recover = {
-            when (it) {
-              is EpochError -> raise(it)
-              else -> raise(PskError.PskNotFound(id))
-            }
-          },
-        ).keySchedule.resumptionPsk
+class SuspendedGroupClient<Identity : Any>(
+  private val lastActiveState: ActiveGroupClient<Identity>,
+  suspendedState: GroupState.Suspended,
+) : GroupClient<Identity, GroupState.Suspended>(
+    suspendedState.prependTo(lastActiveState.stateHistory).toMutableList(),
+    lastActiveState.authService,
+  ) {
+  suspend fun resume(
+    ownKeyPackage: KeyPackage.Private,
+    otherKeyPackages: List<KeyPackage>,
+  ): Either<ReInitError, Pair<ActiveGroupClient<Identity>, WelcomeMessages>> =
+    either {
+      val (newGroup, welcomeMessages) = state.resumeReInit(ownKeyPackage, otherKeyPackages, authService).bind()
 
-      is ExternalPskId -> externalPsks[id.pskId.hex] ?: raise(PskError.PskNotFound(id))
+      ActiveGroupClient(
+        mutableListOf(newGroup),
+        authService,
+        lastActiveState.applicationMessageOptions,
+        lastActiveState.handshakeMessageOptions,
+        parentPskLookup = lastActiveState.parentPskLookup,
+      ) to welcomeMessages
     }
+
+  override fun GroupState.coerceState(): GroupState.Suspended = coerceSuspended()
 }

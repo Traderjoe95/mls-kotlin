@@ -31,7 +31,5 @@ include("protocol")
 include("interop")
 
 include("ulid")
-include("service:auth")
-include("service:delivery")
 
 include("demo")

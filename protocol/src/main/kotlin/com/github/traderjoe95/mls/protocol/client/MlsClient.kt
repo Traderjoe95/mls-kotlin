@@ -12,9 +12,9 @@ import com.github.traderjoe95.mls.protocol.error.PskError
 import com.github.traderjoe95.mls.protocol.error.UnknownGroup
 import com.github.traderjoe95.mls.protocol.message.KeyPackage
 import com.github.traderjoe95.mls.protocol.message.MlsMessage
+import com.github.traderjoe95.mls.protocol.psk.ExternalPskHolder
 import com.github.traderjoe95.mls.protocol.psk.ExternalPskId
 import com.github.traderjoe95.mls.protocol.psk.PreSharedKeyId
-import com.github.traderjoe95.mls.protocol.psk.PskLookup
 import com.github.traderjoe95.mls.protocol.psk.ResumptionPskId
 import com.github.traderjoe95.mls.protocol.service.AuthenticationService
 import com.github.traderjoe95.mls.protocol.types.Credential
@@ -29,8 +29,8 @@ import com.github.traderjoe95.mls.protocol.util.hex
 
 class MlsClient<Identity : Any>(
   val authenticationService: AuthenticationService<Identity>,
-) : PskLookup {
-  private val groups: MutableMap<String, GroupClient<Identity>> = mutableMapOf()
+) : ExternalPskHolder<MlsClient<Identity>> {
+  private val groups: MutableMap<String, ActiveGroupClient<Identity>> = mutableMapOf()
   private val externalPsks: MutableMap<String, Secret> = mutableMapOf()
   private val keyPackages: MutableMap<String, KeyPackage.Private> = mutableMapOf()
 
@@ -42,9 +42,9 @@ class MlsClient<Identity : Any>(
     capabilities: Capabilities = Capabilities.default(),
     keyPackageExtensions: KeyPackageExtensions = listOf(),
     leafNodeExtensions: LeafNodeExtensions = listOf(),
-  ): Either<GroupCreationError, GroupClient<Identity>> =
+  ): Either<GroupCreationError, ActiveGroupClient<Identity>> =
     either {
-      GroupClient.newGroup(
+      ActiveGroupClient.newGroup(
         generateKeyPackage(
           cipherSuite,
           signatureKeyPair.move(),
@@ -105,10 +105,9 @@ class MlsClient<Identity : Any>(
       .bind()
       .also { if (store) keyPackages[cipherSuite.makeKeyPackageRef(it.public).hex] = it }
 
-  fun decodeMessage(messageBytes: ByteArray): Either<DecoderError, MlsMessage<*>> =
-    GroupClient.decodeMessage(messageBytes)
+  fun decodeMessage(messageBytes: ByteArray): Either<DecoderError, MlsMessage<*>> = ActiveGroupClient.decodeMessage(messageBytes)
 
-  fun registerExternalPsk(
+  override fun registerExternalPsk(
     pskId: ByteArray,
     psk: Secret,
   ): MlsClient<Identity> =
@@ -116,14 +115,15 @@ class MlsClient<Identity : Any>(
       externalPsks[pskId.hex] = psk
     }
 
-  fun deleteExternalPsk(pskId: ByteArray): MlsClient<Identity> = apply { externalPsks.remove(pskId.hex) }
+  override fun deleteExternalPsk(pskId: ByteArray): MlsClient<Identity> = apply { externalPsks.remove(pskId.hex) }
 
-  fun clearExternalPsks(): MlsClient<Identity> = apply { externalPsks.clear() }
+  override fun clearExternalPsks(): MlsClient<Identity> = apply { externalPsks.clear() }
 
-  context(Raise<PskError>)
-  override suspend fun resolvePsk(id: PreSharedKeyId): Secret =
-    when (id) {
-      is ExternalPskId -> externalPsks[id.pskId.hex] ?: raise(ExternalPskError.UnknownExternalPsk(id.pskId))
-      is ResumptionPskId -> groups[id.pskGroupId.hex]?.resolvePsk(id) ?: raise(UnknownGroup(id.pskGroupId))
+  override suspend fun getPreSharedKey(id: PreSharedKeyId): Either<PskError, Secret> =
+    either {
+      when (id) {
+        is ExternalPskId -> externalPsks[id.pskId.hex] ?: raise(ExternalPskError.UnknownExternalPsk(id.pskId))
+        is ResumptionPskId -> groups[id.pskGroupId.hex]?.getPreSharedKey(id)?.bind() ?: raise(UnknownGroup(id.pskGroupId))
+      }
     }
 }

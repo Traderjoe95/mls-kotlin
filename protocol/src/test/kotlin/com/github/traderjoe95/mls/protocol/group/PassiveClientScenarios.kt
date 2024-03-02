@@ -1,7 +1,6 @@
 package com.github.traderjoe95.mls.protocol.group
 
 import arrow.core.Either
-import arrow.core.raise.Raise
 import arrow.core.raise.either
 import arrow.core.right
 import com.github.traderjoe95.mls.protocol.crypto.KeySchedule
@@ -106,23 +105,24 @@ class PassiveClientScenarios : VertxFunSpec({ vertx ->
       oldKeySchedules: Map<ULong, KeySchedule> = mapOf(),
     ): PskLookup =
       object : PskLookup {
-        context(Raise<PskError>)
-        override suspend fun resolvePsk(id: PreSharedKeyId): Secret =
-          when (id) {
-            is ExternalPskId ->
-              this@asPskLookup
-                .find { it.pskId.contentEquals(id.pskId) }
-                ?.psk
-                ?: raise(PskError.PskNotFound(id))
-
-            is ResumptionPskId ->
-              if (groupId != null && id.pskGroupId eq groupId) {
-                oldKeySchedules[id.pskEpoch]
-                  ?.resumptionPsk
+        override suspend fun getPreSharedKey(id: PreSharedKeyId): Either<PskError, Secret> =
+          either {
+            when (id) {
+              is ExternalPskId ->
+                this@asPskLookup
+                  .find { it.pskId.contentEquals(id.pskId) }
+                  ?.psk
                   ?: raise(PskError.PskNotFound(id))
-              } else {
-                raise(PskError.PskNotFound(id))
-              }
+
+              is ResumptionPskId ->
+                if (groupId != null && id.pskGroupId eq groupId) {
+                  oldKeySchedules[id.pskEpoch]
+                    ?.resumptionPsk
+                    ?: raise(PskError.PskNotFound(id))
+                } else {
+                  raise(PskError.PskNotFound(id))
+                }
+            }
           }
       }
 

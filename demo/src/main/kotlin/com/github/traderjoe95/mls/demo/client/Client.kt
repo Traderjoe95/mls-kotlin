@@ -216,20 +216,21 @@ class Client(
     }
   }
 
-  context(Raise<PskError>)
-  override suspend fun resolvePsk(id: PreSharedKeyId): Secret =
-    when (id) {
-      is ResumptionPskId ->
-        groups.getOrElse(id.pskGroupId) { raise(UnknownGroup(id.pskGroupId)) }
-          .state
-          .run {
-            when {
-              id.pskEpoch == epoch -> keySchedule.resumptionPsk
-              id.pskEpoch < epoch -> raise(EpochError.EpochNotAvailable(id.pskGroupId, id.pskEpoch))
-              else -> raise(EpochError.FutureEpoch(id.pskGroupId, id.pskEpoch, epoch))
+  override suspend fun getPreSharedKey(id: PreSharedKeyId): Either<PskError, Secret> =
+    either {
+      when (id) {
+        is ResumptionPskId ->
+          groups.getOrElse(id.pskGroupId) { raise(UnknownGroup(id.pskGroupId)) }
+            .state
+            .run {
+              when {
+                id.pskEpoch == epoch -> keySchedule.resumptionPsk
+                id.pskEpoch < epoch -> raise(EpochError.EpochNotAvailable(id.pskGroupId, id.pskEpoch))
+                else -> raise(EpochError.FutureEpoch(id.pskGroupId, id.pskEpoch, epoch))
+              }
             }
-          }
 
-      is ExternalPskId -> externalPsks[id.pskId.hex] ?: raise(PskError.PskNotFound(id))
+        is ExternalPskId -> externalPsks[id.pskId.hex] ?: raise(PskError.PskNotFound(id))
+      }
     }
 }

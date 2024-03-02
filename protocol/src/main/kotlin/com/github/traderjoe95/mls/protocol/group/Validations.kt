@@ -173,7 +173,7 @@ class Validations(
     either {
       preSharedKey.pskId.validate(cipherSuite, inReInit, inBranch)
 
-      psks?.resolvePsk(preSharedKey.pskId)
+      psks?.getPreSharedKey(preSharedKey.pskId)?.bind()
     }
 
   fun validated(reInit: ReInit): Either<ReInitValidationError, ReInit> =
