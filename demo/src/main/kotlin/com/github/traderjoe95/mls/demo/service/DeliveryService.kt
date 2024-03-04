@@ -7,7 +7,6 @@ import com.github.traderjoe95.mls.demo.util.compute
 import com.github.traderjoe95.mls.demo.util.get
 import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.error.DecoderError
-import com.github.traderjoe95.mls.protocol.error.EncoderError
 import com.github.traderjoe95.mls.protocol.error.GetGroupInfoError
 import com.github.traderjoe95.mls.protocol.error.KeyPackageRetrievalError
 import com.github.traderjoe95.mls.protocol.error.SendToGroupError
@@ -16,8 +15,6 @@ import com.github.traderjoe95.mls.protocol.error.UnknownGroup
 import com.github.traderjoe95.mls.protocol.error.UnknownUser
 import com.github.traderjoe95.mls.protocol.message.GroupInfo
 import com.github.traderjoe95.mls.protocol.message.KeyPackage
-import com.github.traderjoe95.mls.protocol.message.MlsMessage
-import com.github.traderjoe95.mls.protocol.message.MlsMessage.Companion.encode
 import com.github.traderjoe95.mls.protocol.service.DeliveryService
 import com.github.traderjoe95.mls.protocol.types.GroupId
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
@@ -73,63 +70,41 @@ object DeliveryService : DeliveryService<String> {
     }
 
   suspend fun sendMessageToGroup(
-    message: MlsMessage<*>,
+    message: ByteArray,
     toGroup: GroupId,
-    fromUser: String,
+    fromUser: String? = null,
   ): Either<SendToGroupError, ULID> =
     either {
-      val encoded = EncoderError.wrap { message.encode().bind() }
       val messageId = ULID.new()
 
       groups[toGroup]?.members?.forEach {
-        if (it != fromUser) users[it]?.send(messageId to encoded)
-      } ?: raise(UnknownGroup(toGroup))
-
-      messageId
-    }
-
-  suspend fun sendMessageToGroup(
-    message: MlsMessage<*>,
-    toGroup: GroupId,
-  ): Either<SendToGroupError, ULID> =
-    either {
-      val encoded = EncoderError.wrap { message.encode().bind() }
-      val messageId = ULID.new()
-
-      groups[toGroup]?.members?.forEach {
-        users[it]?.send(messageId to encoded)
+        if (it != fromUser) users[it]?.send(messageId to message)
       } ?: raise(UnknownGroup(toGroup))
 
       messageId
     }
 
   suspend fun sendMessageToIdentity(
-    message: MlsMessage<*>,
+    message: ByteArray,
     to: String,
   ): Either<SendToUserError<String>, ULID> =
     either {
-      val encoded = EncoderError.wrap { message.encode().bind() }
       val messageId = ULID.new()
 
-      users[to]?.send(messageId to encoded) ?: raise(UnknownUser(to))
+      users[to]?.send(messageId to message) ?: raise(UnknownUser(to))
 
       messageId
     }
 
   suspend fun sendMessageToIdentities(
-    message: MlsMessage<*>,
+    message: ByteArray,
     to: List<String>,
   ): Map<String, Either<SendToUserError<String>, ULID>> {
-    val encoded =
-      either {
-        EncoderError.wrap { message.encode().bind() }
-      }
-
     return to.associateWith { toUser ->
       val messageId = ULID.new()
 
       either {
-        users[toUser]?.send(messageId to encoded.bind()) ?: raise(UnknownUser(toUser))
+        users[toUser]?.send(messageId to message) ?: raise(UnknownUser(toUser))
         messageId
       }
     }

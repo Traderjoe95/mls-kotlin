@@ -29,6 +29,7 @@ import com.github.traderjoe95.mls.protocol.types.crypto.SignatureKeyPair
 import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePrivateKey
 import com.github.traderjoe95.mls.protocol.types.extensionList
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
+import com.github.traderjoe95.mls.protocol.types.framing.enums.WireFormat
 import com.github.traderjoe95.mls.protocol.types.tree.KeyPackageLeafNode
 import com.github.traderjoe95.mls.protocol.types.tree.LeafNode
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.Capabilities
@@ -48,11 +49,12 @@ data class KeyPackage(
 ) : HasExtensions<KeyPackageExtension<*>>(),
   Message,
   Struct6T.Shape<ProtocolVersion, CipherSuite, HpkePublicKey, KeyPackageLeafNode, KeyPackageExtensions, Signature> {
+  override val wireFormat: WireFormat = WireFormat.MlsKeyPackage
+
   @get:JvmName("ref")
   val ref: Ref by lazy { cipherSuite.makeKeyPackageRef(this) }
 
-  @get:JvmName("encoded")
-  val encoded: ByteArray by lazy { encodeUnsafe() }
+  override val encoded: ByteArray by lazy { encodeUnsafe() }
 
   fun verifySignature(): Either<VerifySignatureError, KeyPackage> =
     either {

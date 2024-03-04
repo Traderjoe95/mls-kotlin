@@ -2,7 +2,7 @@ package com.github.traderjoe95.mls.protocol.error
 
 import com.github.traderjoe95.mls.protocol.types.GroupId
 
-sealed interface HistoryAccessError : MessageRecipientError
+sealed interface HistoryAccessError : MessageRecipientError, WelcomeJoinError
 
 sealed interface EpochError : MessageRecipientError, ResumptionPskError, HistoryAccessError {
   data class FutureEpoch(val groupId: GroupId, val epoch: ULong, val currentEpoch: ULong) : EpochError

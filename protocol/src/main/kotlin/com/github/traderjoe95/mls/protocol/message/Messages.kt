@@ -175,14 +175,14 @@ class GroupMessageFactory internal constructor(
   suspend fun reInit(
     cipherSuite: CipherSuite,
     version: ProtocolVersion = ProtocolVersion.MLS_1_0,
-    groupId: GroupId = GroupId.new(),
+    groupId: GroupId? = null,
     extensions: List<GroupContextExtension<*>> = listOf(),
     options: MessageOptions = UsePublicMessage,
     authenticatedData: ByteArray = byteArrayOf(),
   ): Either<CreateReInitError, MlsProposalMessage> =
     either {
       protect(
-        validations.validated(ReInit(groupId, version, cipherSuite, extensions)).bind(),
+        validations.validated(ReInit(groupId ?: GroupId.new(), version, cipherSuite, extensions)).bind(),
         options,
         authenticatedData,
       )

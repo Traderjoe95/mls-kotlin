@@ -21,6 +21,7 @@ import com.github.traderjoe95.mls.protocol.types.crypto.Mac
 import com.github.traderjoe95.mls.protocol.types.crypto.Signature
 import com.github.traderjoe95.mls.protocol.types.crypto.SignaturePrivateKey
 import com.github.traderjoe95.mls.protocol.types.extensionList
+import com.github.traderjoe95.mls.protocol.types.framing.enums.WireFormat
 
 data class GroupInfo(
   val groupContext: GroupContext,
@@ -31,8 +32,9 @@ data class GroupInfo(
 ) : HasExtensions<GroupInfoExtension<*>>(),
   Message,
   Struct5T.Shape<GroupContext, GroupInfoExtensions, Mac, LeafIndex, Signature> {
-  @get:JvmName("encoded")
-  val encoded: ByteArray by lazy { encodeUnsafe() }
+  override val wireFormat: WireFormat = WireFormat.MlsGroupInfo
+
+  override val encoded: ByteArray by lazy { encodeUnsafe() }
 
   fun verifySignature(tree: RatchetTreeOps): Either<VerifySignatureError, GroupInfo> =
     either {

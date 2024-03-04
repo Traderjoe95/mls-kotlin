@@ -18,22 +18,30 @@ import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion.MLS_1_0
 import com.github.traderjoe95.mls.protocol.types.framing.enums.WireFormat
 
-data class MlsMessage<out M : Message>
+class MlsMessage<out M : Message>
   @PublishedApi
   internal constructor(
     val protocolVersion: ProtocolVersion,
-    val wireFormat: WireFormat,
     val message: M,
   ) : Struct3T.Shape<ProtocolVersion, WireFormat, M> {
+    constructor(message: M) : this(MLS_1_0, message)
+
     @get:JvmName("encoded")
     val encoded: ByteArray by lazy { encodeUnsafe() }
 
-    companion object : Encodable<MlsMessage<*>> {
-      internal fun <C : Content<C>> public(message: PublicMessage<C>): MlsMessage<PublicMessage<C>> =
-        MlsMessage(MLS_1_0, WireFormat.MlsPublicMessage, message)
+    val wireFormat: WireFormat
+      get() = message.wireFormat
 
-      internal fun <C : Content<C>> private(message: PrivateMessage<C>): MlsMessage<PrivateMessage<C>> =
-        MlsMessage(MLS_1_0, WireFormat.MlsPrivateMessage, message)
+    override fun component1(): ProtocolVersion = protocolVersion
+
+    override fun component2(): WireFormat = message.wireFormat
+
+    override fun component3(): M = message
+
+    companion object : Encodable<MlsMessage<*>> {
+      internal fun <C : Content<C>> public(message: PublicMessage<C>): MlsMessage<PublicMessage<C>> = MlsMessage(MLS_1_0, message)
+
+      internal fun <C : Content<C>> private(message: PrivateMessage<C>): MlsMessage<PrivateMessage<C>> = MlsMessage(MLS_1_0, message)
 
       internal fun welcome(
         cipherSuite: CipherSuite,
@@ -42,29 +50,20 @@ data class MlsMessage<out M : Message>
       ): MlsMessage<Welcome> = welcome(Welcome(cipherSuite, encryptedGroupSecrets, encryptedGroupInfo))
 
       @JvmStatic
-      fun welcome(message: Welcome): MlsMessage<Welcome> = MlsMessage(MLS_1_0, WireFormat.MlsWelcome, message)
+      fun welcome(message: Welcome): MlsMessage<Welcome> = MlsMessage(MLS_1_0, message)
 
       @JvmStatic
-      fun groupInfo(message: GroupInfo): MlsMessage<GroupInfo> = MlsMessage(MLS_1_0, WireFormat.MlsGroupInfo, message)
+      fun groupInfo(message: GroupInfo): MlsMessage<GroupInfo> = MlsMessage(MLS_1_0, message)
 
       @JvmStatic
-      fun keyPackage(message: KeyPackage): MlsMessage<KeyPackage> = MlsMessage(MLS_1_0, WireFormat.MlsKeyPackage, message)
+      fun keyPackage(message: KeyPackage): MlsMessage<KeyPackage> = MlsMessage(MLS_1_0, message)
 
-      inline fun <reified M : Message> MlsMessage<Message>.coerceFormat(): MlsMessage<M> =
-        MlsMessage(protocolVersion, wireFormat, message as M)
+      inline fun <reified M : Message> MlsMessage<Message>.coerceFormat(): MlsMessage<M> = MlsMessage(protocolVersion, message as M)
 
       context(Raise<MessageRecipientError.UnexpectedWireFormat>)
-      inline fun <reified M : Message> MlsMessage<Message>.ensureFormat(): MlsMessage<M> =
+      inline fun <reified M : Message> MlsMessage<Message>.ensureFormat(wireFormat: WireFormat? = null): MlsMessage<M> =
         if (message is M) {
-          MlsMessage(protocolVersion, wireFormat, message)
-        } else {
-          raise(MessageRecipientError.UnexpectedWireFormat(this.wireFormat, wireFormat))
-        }
-
-      context(Raise<MessageRecipientError.UnexpectedWireFormat>)
-      inline fun <reified M : GroupMessage<*>> MlsMessage<Message>.ensureFormat(wireFormat: WireFormat): MlsMessage<M> =
-        if (message is M && this.wireFormat == wireFormat) {
-          MlsMessage(protocolVersion, wireFormat, message)
+          MlsMessage(protocolVersion, message)
         } else {
           raise(MessageRecipientError.UnexpectedWireFormat(this.wireFormat, wireFormat))
         }
@@ -75,7 +74,7 @@ data class MlsMessage<out M : Message>
         contentType: ContentType<C>,
       ): MlsMessage<M> =
         if (message is M && this.wireFormat == wireFormat) {
-          MlsMessage(protocolVersion, wireFormat, message).also {
+          MlsMessage(protocolVersion, message).also {
             ensure(message.contentType == contentType) {
               MessageRecipientError.UnexpectedContent(
                 message.contentType,
@@ -99,7 +98,7 @@ data class MlsMessage<out M : Message>
                   .case(WireFormat.MlsGroupInfo).then(GroupInfo.dataT, "group_info")
                   .case(WireFormat.MlsKeyPackage).then(KeyPackage.dataT, "key_package")
               }
-          }.lift(::MlsMessage)
+          }.lift { v, _, msg -> MlsMessage(v, msg) }
         }
     }
   }

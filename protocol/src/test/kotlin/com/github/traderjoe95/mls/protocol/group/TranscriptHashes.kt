@@ -39,7 +39,7 @@ class TranscriptHashes : VertxFunSpec({ vertx ->
                 v.confirmedTranscriptHashAfter,
                 v.authenticatedContent.also {
                   it.contentType shouldBe ContentType.Commit
-                  it.content.content.shouldBeInstanceOf<Commit>()
+                  it.framedContent.content.shouldBeInstanceOf<Commit>()
                 }.confirmationTag.shouldNotBeNull(),
               ).shouldBeRight()
             }
@@ -51,7 +51,7 @@ class TranscriptHashes : VertxFunSpec({ vertx ->
                 cipherSuite,
                 v.interimTranscriptHashBefore,
                 v.authenticatedContent.wireFormat,
-                v.authenticatedContent.content as FramedContent<Commit>,
+                v.authenticatedContent.framedContent as FramedContent<Commit>,
                 v.authenticatedContent.signature,
               ) shouldBe v.confirmedTranscriptHashAfter
             }

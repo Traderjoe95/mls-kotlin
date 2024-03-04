@@ -43,11 +43,15 @@ data class PublicMessage<out C : Content<C>>(
   val membershipTag: Mac?,
 ) : GroupMessage<C>, Struct4T.Shape<FramedContent<C>, Signature, Mac?, Mac?> {
   constructor(authContent: AuthenticatedContent<C>, membershipTag: Mac?) : this(
-    authContent.content,
+    authContent.framedContent,
     authContent.signature,
     authContent.confirmationTag,
     membershipTag,
   )
+
+  override val wireFormat: WireFormat = WireFormat.MlsPublicMessage
+
+  override val encoded: ByteArray by lazy { encodeUnsafe() }
 
   override val groupId: GroupId
     get() = content.groupId
@@ -129,7 +133,7 @@ data class PublicMessage<out C : Content<C>>(
     ): PublicMessage<C> {
       if (content.contentType == ContentType.Application) raise(PublicMessageError.ApplicationMessageMustNotBePublic)
 
-      val inner = content.content.content
+      val inner = content.framedContent.content
 
       if (content.senderType == NewMemberCommit && inner !is Commit) {
         raise(
@@ -157,7 +161,7 @@ data class PublicMessage<out C : Content<C>>(
       }
 
       val membershipTag: Mac? =
-        if (content.content.sender.type == SenderType.Member) {
+        if (content.framedContent.sender.type == SenderType.Member) {
           groupContext.cipherSuite.mac(membershipKey, content.tbm(groupContext).encodeUnsafe())
         } else {
           null

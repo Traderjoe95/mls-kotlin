@@ -61,7 +61,7 @@ class MessageProtection : VertxFunSpec({ vertx ->
             context("with group context ${groupContext.toShortString()}") {
               test("should be able to unprotect a public message containing a Proposal") {
                 v.proposalPub.message.unprotect(groupContext, v.membershipKey, v.signaturePub)
-                  .shouldBeRight().content.content.shouldBeInstanceOf<Proposal>() shouldBeEqual v.proposal
+                  .shouldBeRight().framedContent.content.shouldBeInstanceOf<Proposal>() shouldBeEqual v.proposal
               }
 
               test("should be able to protect a public message containing a Proposal, which can be unprotected again") {
@@ -69,12 +69,12 @@ class MessageProtection : VertxFunSpec({ vertx ->
                   unsafe { messages().protect(v.proposal, UsePublicMessage) }.coerceFormat()
 
                 pub.message.unprotect(groupContext, v.membershipKey, v.signaturePub)
-                  .shouldBeRight().content.content.shouldBeInstanceOf<Proposal>() shouldBeEqual v.proposal
+                  .shouldBeRight().framedContent.content.shouldBeInstanceOf<Proposal>() shouldBeEqual v.proposal
               }
 
               test("should be able to unprotect a public message containing a Commit") {
                 v.commitPub.message.unprotect(groupContext, v.membershipKey, v.signaturePub)
-                  .shouldBeRight().content.content.shouldBeInstanceOf<Commit>() shouldBeEqual v.commit
+                  .shouldBeRight().framedContent.content.shouldBeInstanceOf<Commit>() shouldBeEqual v.commit
               }
 
               test("should be able to protect a public message containing a Commit, which can be unprotected again") {
@@ -91,7 +91,7 @@ class MessageProtection : VertxFunSpec({ vertx ->
                   }.coerceFormat()
 
                 pub.message.unprotect(groupContext, v.membershipKey, v.signaturePub)
-                  .shouldBeRight().content.content.shouldBeInstanceOf<Commit>() shouldBeEqual v.commit
+                  .shouldBeRight().framedContent.content.shouldBeInstanceOf<Commit>() shouldBeEqual v.commit
               }
 
               test("should be able to unprotect a private message containing a Proposal") {
@@ -103,7 +103,7 @@ class MessageProtection : VertxFunSpec({ vertx ->
                   secretTree,
                   SignaturePublicKeyLookup.only(v.signaturePub),
                 )
-                  .shouldBeRight().content.content.shouldBeInstanceOf<Proposal>() shouldBeEqual v.proposal
+                  .shouldBeRight().framedContent.content.shouldBeInstanceOf<Proposal>() shouldBeEqual v.proposal
               }
 
               test("should be able to protect a private message containing a Proposal, which can be unprotected again") {
@@ -118,7 +118,7 @@ class MessageProtection : VertxFunSpec({ vertx ->
                   recipientSecretTree,
                   SignaturePublicKeyLookup.only(v.signaturePub),
                 )
-                  .shouldBeRight().content.content.shouldBeInstanceOf<Proposal>() shouldBeEqual v.proposal
+                  .shouldBeRight().framedContent.content.shouldBeInstanceOf<Proposal>() shouldBeEqual v.proposal
               }
 
               test("should be able to unprotect a private message containing a Commit") {
@@ -130,7 +130,7 @@ class MessageProtection : VertxFunSpec({ vertx ->
                   secretTree,
                   SignaturePublicKeyLookup.only(v.signaturePub),
                 )
-                  .shouldBeRight().content.content.shouldBeInstanceOf<Commit>() shouldBeEqual v.commit
+                  .shouldBeRight().framedContent.content.shouldBeInstanceOf<Commit>() shouldBeEqual v.commit
               }
 
               test("should be able to protect a private message containing a Commit, which can be unprotected again") {
@@ -154,7 +154,7 @@ class MessageProtection : VertxFunSpec({ vertx ->
                   recipientSecretTree,
                   SignaturePublicKeyLookup.only(v.signaturePub),
                 )
-                  .shouldBeRight().content.content.shouldBeInstanceOf<Commit>() shouldBeEqual v.commit
+                  .shouldBeRight().framedContent.content.shouldBeInstanceOf<Commit>() shouldBeEqual v.commit
               }
 
               test("should be able to unprotect a private message containing application data") {
@@ -166,7 +166,7 @@ class MessageProtection : VertxFunSpec({ vertx ->
                   secretTree,
                   SignaturePublicKeyLookup.only(v.signaturePub),
                 )
-                  .shouldBeRight().content.content.shouldBeInstanceOf<ApplicationData>() shouldBeEq v.application
+                  .shouldBeRight().framedContent.content.shouldBeInstanceOf<ApplicationData>() shouldBeEq v.application
               }
 
               test("should be able to protect a private message containing application data, which can be unprotected again") {
@@ -180,7 +180,7 @@ class MessageProtection : VertxFunSpec({ vertx ->
                   recipientSecretTree,
                   SignaturePublicKeyLookup.only(v.signaturePub),
                 )
-                  .shouldBeRight().content.content.shouldBeInstanceOf<ApplicationData>() shouldBeEq v.application
+                  .shouldBeRight().framedContent.content.shouldBeInstanceOf<ApplicationData>() shouldBeEq v.application
               }
 
               test("should raise an error when trying to protect a public message containing application data") {

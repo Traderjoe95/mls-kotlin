@@ -5,7 +5,9 @@ import com.github.traderjoe95.mls.protocol.types.GroupContextExtension
 import com.github.traderjoe95.mls.protocol.types.tree.leaf.Capabilities
 
 sealed interface WelcomeJoinError {
-  data object WelcomeNotForYou : WelcomeJoinError
+  data object NoMatchingKeyPackage : WelcomeJoinError
+
+  data object NoGroupSecretsForKeyPackage : WelcomeJoinError
 
   data object OwnLeafNotFound : WelcomeJoinError
 

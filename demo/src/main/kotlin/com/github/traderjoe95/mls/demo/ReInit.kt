@@ -1,136 +1,154 @@
 package com.github.traderjoe95.mls.demo
 
 import com.github.traderjoe95.mls.demo.client.Client
+import com.github.traderjoe95.mls.demo.service.AuthenticationService
+import com.github.traderjoe95.mls.demo.service.DeliveryService
+import com.github.traderjoe95.mls.demo.util.makePublic
+import com.github.traderjoe95.mls.protocol.client.ActiveGroupClient
+import com.github.traderjoe95.mls.protocol.client.SuspendedGroupClient
 import com.github.traderjoe95.mls.protocol.util.debug
+import com.github.traderjoe95.mls.protocol.util.unsafe
 
 suspend fun main() {
   val alice = Client("Alice")
   val bob = Client("Bob")
   val charlie = Client("Charlie")
 
-  alice.generateKeyPackages(10U, Config.reInitCipherSuite)
-  bob.generateKeyPackages(10U, Config.reInitCipherSuite)
-  charlie.generateKeyPackages(10U, Config.reInitCipherSuite)
+  alice.generateKeyPackages(10U, cipherSuite = Config.reInitCipherSuite)
+  bob.generateKeyPackages(10U, cipherSuite = Config.reInitCipherSuite)
+  charlie.generateKeyPackages(10U, cipherSuite = Config.reInitCipherSuite)
 
   // Alice creates the group. At this point, she is the only member
-  val aliceGroup1 = alice.createGroup(public = true).getOrThrow()
+  val aliceGroup = alice.createGroup().getOrThrow()
+  aliceGroup.makePublic()
   println("ALICE EPOCH 0 (Only Alice):")
   println("================================================================")
-  println(aliceGroup1.state.debug)
+  println(aliceGroup.state.debug)
   println()
 
-  val bobGroup1 = bob.joinPublicGroup(aliceGroup1.state.groupId).getOrThrow()
-  val aliceGroup2 = alice.processNextMessage()!!
+  val bobGroup = bob.joinPublicGroup(aliceGroup.state.groupId).getOrThrow()
 
-  println("ALICE EPOCH 1 (Alice+Bob):")
+  alice.processNextMessage().getOrThrow()
+  bobGroup.makePublic()
+
+  val charlieGroup = charlie.joinPublicGroup(bobGroup.state.groupId).getOrThrow()
+
+  alice.processNextMessage().getOrThrow()
+  bob.processNextMessage().getOrThrow()
+
+  println("ALICE EPOCH 2 (Alice+Charlie):")
   println("================================================================")
-  println(aliceGroup2.state.debug)
-  println()
-
-  println("Bob EPOCH 1 (Alice+Bob):")
-  println("================================================================")
-  println(bobGroup1.state.debug)
-  println()
-
-  bobGroup1.makePublic().getOrThrow()
-
-  val charlieGroup1 = charlie.joinPublicGroup(bobGroup1.state.groupId).getOrThrow()
-  val aliceGroup3 = alice.processNextMessage()!!
-  val bobGroup2 = bob.processNextMessage()!!
-
-  println("ALICE EPOCH 2 (Alice+Bob+Charlie):")
-  println("================================================================")
-  println(aliceGroup3.state.debug)
+  println(aliceGroup.state.debug)
   println()
 
   println("Bob EPOCH 2 (Alice+Bob+Charlie):")
   println("================================================================")
-  println(bobGroup2.state.debug)
+  println(bobGroup.state.debug)
   println()
 
   println("Charlie EPOCH 2 (Alice+Bob+Charlie):")
   println("================================================================")
-  println(charlieGroup1.state.debug)
+  println(charlieGroup.state.debug)
   println()
 
-  val aliceGroup4 = aliceGroup3.reInit(Config.reInitCipherSuite).getOrThrow()
+  val reInitCommit = aliceGroup.triggerReInit(Config.reInitCipherSuite).getOrThrow()
+  DeliveryService.sendMessageToGroup(reInitCommit, aliceGroup.groupId)
+
+  val aliceGroupSuspended = alice.processNextMessage().getOrThrow()!! as SuspendedGroupClient<String>
+  val bobGroupSuspended = bob.processNextMessage().getOrThrow()!! as SuspendedGroupClient<String>
+  val charlieGroupSuspended = charlie.processNextMessage().getOrThrow()!! as SuspendedGroupClient<String>
 
   println("ALICE EPOCH 3 (Alice+Bob+Charlie) // SUSPENDED:")
   println("================================================================")
-  println(aliceGroup4.state.debug)
+  println(aliceGroupSuspended.state.debug)
   println()
-
-  val bobGroup3 = bob.processNextMessage()!!
-  val charlieGroup2 = charlie.processNextMessage()!!
 
   println("Bob EPOCH 3 (Alice+Bob+Charlie) // SUSPENDED:")
   println("================================================================")
-  println(bobGroup3.state.debug)
+  println(bobGroupSuspended.state.debug)
   println()
 
   println("Charlie EPOCH 3 (Alice+Bob+Charlie) // SUSPENDED:")
   println("================================================================")
-  println(charlieGroup2.state.debug)
+  println(charlieGroupSuspended.state.debug)
   println()
 
   println("#####################################################################################################")
   println()
 
   // Bob can also send the welcome:
-  val bobNewGroup1 = bobGroup3.createReInitGroup().getOrThrow()
+  val (bobNewGroup, welcome) =
+    bobGroupSuspended.resume(
+      unsafe { bob.newKeyPackage(Config.reInitCipherSuite) },
+      listOf(
+        bob.getKeyPackageFor(Config.reInitCipherSuite, "Alice"),
+        bob.getKeyPackageFor(Config.reInitCipherSuite, "Charlie"),
+      ),
+    ).getOrThrow()
+
+  DeliveryService.registerForGroup(bobNewGroup.groupId, "Bob")
+
+  welcome.forEach { (welcome, to) ->
+    DeliveryService.sendMessageToIdentities(
+      welcome.encoded,
+      AuthenticationService.authenticateCredentials(
+        to.map { it.leafNode.signaturePublicKey to it.leafNode.credential },
+      ).map { it.getOrThrow() },
+    )
+  }
 
   // Alice and Charlie receive the Welcome
-  val aliceNewGroup1 = alice.processNextMessage()!!
-  val charlieNewGroup1 = charlie.processNextMessage()!!
+  val aliceNewGroup = alice.processNextMessage().getOrThrow()!! as ActiveGroupClient<String>
+  val charlieNewGroup = charlie.processNextMessage().getOrThrow()!! as ActiveGroupClient<String>
 
   println("Bob EPOCH 1 (Alice+Bob+Charlie) // RE-INIT:")
   println("================================================================")
-  println(bobNewGroup1.state.debug)
+  println(bobNewGroup.state.debug)
   println()
 
   println("Alice EPOCH 1 (Alice+Bob+Charlie) // RE-INIT:")
   println("================================================================")
-  println(aliceNewGroup1.state.debug)
+  println(aliceNewGroup.state.debug)
   println()
 
   println("Charlie EPOCH 1 (Alice+Bob+Charlie) // RE-INIT:")
   println("================================================================")
-  println(charlieNewGroup1.state.debug)
+  println(charlieNewGroup.state.debug)
   println()
 
   println()
   println("Sending messages:")
 
   println("Alice: ")
-  aliceNewGroup1.sendTextMessage("Hello, this is Alice!")
+  alice.sendMessage(aliceNewGroup.groupId, "Hello, this is Alice!")
   print("  [Bob] ")
   bob.processNextMessage()
   print("  [Charlie] ")
   charlie.processNextMessage()
 
   println("Bob: ")
-  bobNewGroup1.sendTextMessage("Hello, this is Bob!")
+  bob.sendMessage(bobNewGroup.groupId, "Hello, this is Bob!")
   print("  [Alice] ")
   alice.processNextMessage()
   print("  [Charlie] ")
   charlie.processNextMessage()
 
   println("Charlie: ")
-  charlieNewGroup1.sendTextMessage("How are you, Bob?")
+  charlie.sendMessage(charlieNewGroup.groupId, "How are you, Bob?")
   print("  [Alice] ")
   alice.processNextMessage()
   print("  [Bob] ")
   bob.processNextMessage()
 
   println("Bob: ")
-  bobNewGroup1.sendTextMessage("I'm fine, thanks!")
+  bob.sendMessage(bobNewGroup.groupId, "I'm fine, thanks!")
   print("  [Alice] ")
   alice.processNextMessage()
   print("  [Charlie] ")
   charlie.processNextMessage()
 
   println("Charlie: ")
-  charlieNewGroup1.sendTextMessage("Good to hear!")
+  charlie.sendMessage(charlieNewGroup.groupId, "Good to hear!")
   print("  [Alice] ")
   alice.processNextMessage()
   print("  [Bob] ")

@@ -29,6 +29,6 @@ data class Lifetime(
           .field("not_after", uint64.asULong)
       }.lift(::Lifetime)
 
-    fun always(): Lifetime = Lifetime(0U, ULong.MAX_VALUE)
+    fun always(): Lifetime = Lifetime(0U, Instant.MAX.epochSecond.toULong())
   }
 }

@@ -35,7 +35,7 @@ val GroupContext.debug: String
   get() =
     """Protocol Version:          $protocolVersion
       |Cipher Suite:              $cipherSuite
-      |Group ID:                  $groupId
+      |Group ID:                  ${groupId.hex}
       |Epoch:                     $epoch
       |Tree Hash:                 ${treeHash.hex}
       |Confirmed Transcript Hash: ${confirmedTranscriptHash.hex}

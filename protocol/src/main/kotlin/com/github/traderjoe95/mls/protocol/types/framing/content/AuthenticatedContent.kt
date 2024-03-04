@@ -23,7 +23,7 @@ import com.github.traderjoe95.mls.protocol.types.framing.enums.WireFormat
 
 data class AuthenticatedContent<out C : Content<C>>(
   val wireFormat: WireFormat,
-  val content: FramedContent<C>,
+  val framedContent: FramedContent<C>,
   val signature: Signature,
   val confirmationTag: Mac?,
 ) : Struct4T.Shape<WireFormat, FramedContent<C>, Signature, Mac?> {
@@ -31,7 +31,7 @@ data class AuthenticatedContent<out C : Content<C>>(
     groupContext: GroupContext,
     signaturePublicKey: SignaturePublicKey,
   ): Either<VerifySignatureError, Unit> =
-    content.verifySignature(
+    framedContent.verifySignature(
       FramedContent.AuthData(signature, confirmationTag),
       wireFormat,
       groupContext,
@@ -39,17 +39,17 @@ data class AuthenticatedContent<out C : Content<C>>(
     )
 
   val sender: Sender
-    get() = content.sender
+    get() = framedContent.sender
   val senderType: SenderType
     get() = sender.type
   val contentType: ContentType<C>
-    get() = content.contentType
+    get() = framedContent.contentType
   val groupId: GroupId
-    get() = content.groupId
+    get() = framedContent.groupId
   val epoch: ULong
-    get() = content.epoch
+    get() = framedContent.epoch
 
-  fun tbm(groupContext: GroupContext): Tbm = Tbm(content.tbs(wireFormat, groupContext), signature, confirmationTag)
+  fun tbm(groupContext: GroupContext): Tbm = Tbm(framedContent.tbs(wireFormat, groupContext), signature, confirmationTag)
 
   override fun equals(other: Any?): Boolean {
     if (this === other) return true
@@ -58,7 +58,7 @@ data class AuthenticatedContent<out C : Content<C>>(
     other as AuthenticatedContent<*>
 
     if (wireFormat != other.wireFormat) return false
-    if (content != other.content) return false
+    if (framedContent != other.framedContent) return false
     if (!signature.bytes.contentEquals(other.signature.bytes)) return false
     if (confirmationTag != null) {
       if (other.confirmationTag == null) return false
@@ -72,7 +72,7 @@ data class AuthenticatedContent<out C : Content<C>>(
 
   override fun hashCode(): Int {
     var result = wireFormat.hashCode()
-    result = 31 * result + content.hashCode()
+    result = 31 * result + framedContent.hashCode()
     result = 31 * result + signature.bytes.contentHashCode()
     result = 31 * result + (confirmationTag?.bytes?.contentHashCode() ?: 0)
     return result

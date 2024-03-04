@@ -57,6 +57,10 @@ data class PrivateMessage<out C : Content<C>>(
   val ciphertext: Ciphertext,
 ) : GroupMessage<C>,
   Struct6T.Shape<GroupId, ULong, ContentType<C>, ByteArray, Ciphertext, Ciphertext> {
+  override val wireFormat: WireFormat = WireFormat.MlsPrivateMessage
+
+  override val encoded: ByteArray by lazy { encodeUnsafe() }
+
   constructor(framedContent: FramedContent<C>, encryptedSenderData: Ciphertext, ciphertext: Ciphertext) : this(
     framedContent.groupId,
     framedContent.epoch,
@@ -162,7 +166,7 @@ data class PrivateMessage<out C : Content<C>>(
           ),
           authData.signature,
           authData.confirmationTag,
-        ).apply { verify(groupContext, signaturePublicKeyLookup.getSignaturePublicKey(groupContext, this.content)) }
+        ).apply { verify(groupContext, signaturePublicKeyLookup.getSignaturePublicKey(groupContext, this.framedContent)) }
       }
     }
 
@@ -205,7 +209,7 @@ data class PrivateMessage<out C : Content<C>>(
           cipherSuite.encryptAead(
             key,
             guardedNonce,
-            AAD_T.encodeUnsafe(aad(authContent.content)).asAad,
+            AAD_T.encodeUnsafe(aad(authContent.framedContent)).asAad,
             encodePrivateMessageContent(authContent, paddingStrategy),
           )
         } finally {
@@ -222,7 +226,7 @@ data class PrivateMessage<out C : Content<C>>(
           cipherSuite.encryptAead(
             senderDataKey,
             senderDataNonce,
-            SENDER_DATA_AAD_T.encodeUnsafe(senderDataAad(authContent.content)).asAad,
+            SENDER_DATA_AAD_T.encodeUnsafe(senderDataAad(authContent.framedContent)).asAad,
             senderData,
           )
         } finally {
@@ -230,7 +234,7 @@ data class PrivateMessage<out C : Content<C>>(
           senderDataKey.wipe()
         }
 
-      return PrivateMessage(authContent.content, encryptedSenderData, ciphertext)
+      return PrivateMessage(authContent.framedContent, encryptedSenderData, ciphertext)
     }
 
     fun getSenderDataNonceAndKey(
@@ -264,17 +268,17 @@ data class PrivateMessage<out C : Content<C>>(
         when (authContent.contentType) {
           ContentType.Application ->
             APPLICATION_CONTENT_T.encodeUnsafe(
-              Struct2(authContent.content.content as ApplicationData, authContent.signature),
+              Struct2(authContent.framedContent.content as ApplicationData, authContent.signature),
             )
 
           ContentType.Proposal ->
             PROPOSAL_CONTENT_T.encodeUnsafe(
-              Struct2(authContent.content.content as Proposal, authContent.signature),
+              Struct2(authContent.framedContent.content as Proposal, authContent.signature),
             )
 
           ContentType.Commit -> {
             COMMIT_CONTENT_T.encodeUnsafe(
-              Struct3(authContent.content.content as Commit, authContent.signature, authContent.confirmationTag!!),
+              Struct3(authContent.framedContent.content as Commit, authContent.signature, authContent.confirmationTag!!),
             )
           }
 

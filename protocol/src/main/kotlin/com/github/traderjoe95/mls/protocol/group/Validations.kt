@@ -88,7 +88,7 @@ class Validations(
 
   suspend fun validated(proposal: AuthenticatedContent<Proposal>): Either<ProposalValidationError, AuthenticatedContent<Proposal>> =
     either {
-      proposal.apply { validated(content.content, sender).bind() }
+      proposal.apply { validated(framedContent.content, sender).bind() }
     }
 
   suspend fun validated(

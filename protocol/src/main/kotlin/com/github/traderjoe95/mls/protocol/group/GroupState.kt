@@ -191,7 +191,7 @@ sealed class GroupState(
         ProcessMessageError.HandshakeMessageForWrongEpoch(groupId, message.epoch, epoch)
       }
 
-      return when (message.content.content) {
+      return when (message.framedContent.content) {
         is Proposal ->
           storeProposal(message as AuthenticatedContent<Proposal>)
 
@@ -281,7 +281,7 @@ sealed class GroupState(
     ) : this(
       cipherSuite.makeProposalRef(proposal),
       proposal.sender.takeIf { it.type == Member }?.index,
-      proposal.content.content,
+      proposal.framedContent.content,
     )
   }
 

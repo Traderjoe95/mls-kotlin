@@ -21,7 +21,7 @@ sealed interface MessageSenderError : PrivateMessageSenderError, PublicMessageSe
 sealed interface MessageRecipientError : PrivateMessageRecipientError, PublicMessageRecipientError {
   data class UnexpectedWireFormat(
     val wireFormat: WireFormat,
-    val expectedWireFormat: WireFormat,
+    val expectedWireFormat: WireFormat? = null,
   ) : MessageRecipientError, CreateAddError, WelcomeJoinError, ExternalJoinError
 
   data class UnexpectedContent(

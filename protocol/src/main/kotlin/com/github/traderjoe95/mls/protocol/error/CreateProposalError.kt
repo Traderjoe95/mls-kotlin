@@ -14,4 +14,4 @@ sealed interface CreatePreSharedKeyError
 
 sealed interface CreateGroupContextExtensionsError
 
-sealed interface CreateReInitError
+sealed interface CreateReInitError : ReInitError

@@ -95,7 +95,7 @@ suspend fun <Identity : Any> GroupState.Active.prepareCommit(
     val updatedGroupContext =
       groupContext.evolve(
         partialCommit.wireFormat,
-        partialCommit.content,
+        partialCommit.framedContent,
         partialCommit.signature,
         updatedTree,
         newExtensions = (proposalResult as? ProcessProposalsResult.CommitByMember)?.extensions,
@@ -164,7 +164,7 @@ suspend fun <Identity : Any> GroupState.Active.processCommit(
   psks: PskLookup = this,
 ): Either<RecipientCommitError, GroupState> =
   either {
-    val commit = authenticatedCommit.content
+    val commit = authenticatedCommit.framedContent
     val proposalResult = commit.content.validateAndApply(commit.sender, psks, authenticationService)
     val updatePath = commit.content.updatePath
 
