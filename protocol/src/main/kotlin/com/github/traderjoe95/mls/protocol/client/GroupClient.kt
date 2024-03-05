@@ -40,6 +40,7 @@ import com.github.traderjoe95.mls.protocol.group.joinGroupExternal
 import com.github.traderjoe95.mls.protocol.group.prepareCommit
 import com.github.traderjoe95.mls.protocol.group.resumption.branchGroup
 import com.github.traderjoe95.mls.protocol.group.resumption.resumeReInit
+import com.github.traderjoe95.mls.protocol.group.resumption.triggerReInit
 import com.github.traderjoe95.mls.protocol.message.ApplicationMessage
 import com.github.traderjoe95.mls.protocol.message.GroupInfo
 import com.github.traderjoe95.mls.protocol.message.HandshakeMessage
@@ -72,9 +73,7 @@ import com.github.traderjoe95.mls.protocol.types.crypto.Secret
 import com.github.traderjoe95.mls.protocol.types.framing.content.ApplicationData
 import com.github.traderjoe95.mls.protocol.types.framing.content.AuthenticatedContent
 import com.github.traderjoe95.mls.protocol.types.framing.content.Proposal
-import com.github.traderjoe95.mls.protocol.types.framing.content.ReInit
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ContentType
-import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
 import com.github.traderjoe95.mls.protocol.types.framing.enums.WireFormat
 import com.github.traderjoe95.mls.protocol.types.tree.LeafNode
 import com.github.traderjoe95.mls.protocol.util.hex
@@ -452,7 +451,8 @@ class JoiningGroupClient<Identity : Any> internal constructor(
       externalPsks[pskId.hex] = psk
     }
 
-  override fun deleteExternalPsk(pskId: ByteArray): JoiningGroupClient<Identity> = apply { externalPsks.remove(pskId.hex) }
+  override fun deleteExternalPsk(pskId: ByteArray): JoiningGroupClient<Identity> =
+    apply { externalPsks.remove(pskId.hex) }
 
   override fun clearExternalPsks(): JoiningGroupClient<Identity> = apply { externalPsks.clear() }
 
@@ -547,7 +547,10 @@ class ActiveGroupClient<Identity : Any> internal constructor(
 
   suspend fun addMember(keyPackage: KeyPackage): Either<CreateAddError, ByteArray> =
     either {
-      state.ensureActive { messages.add(keyPackage) }.bind().encodeUnsafe()
+      state.messages
+        .add(keyPackage, handshakeMessageOptions)
+        .bind()
+        .encodeUnsafe()
     }
 
   suspend fun addMember(keyPackageBytes: ByteArray): Either<CreateAddError, ByteArray> =
@@ -557,22 +560,34 @@ class ActiveGroupClient<Identity : Any> internal constructor(
 
   suspend fun update(): Either<CreateUpdateError, ByteArray> =
     either {
-      state.ensureActive { messages.update(updateLeafNode(cipherSuite.generateHpkeKeyPair())) }.bind().encodeUnsafe()
+      state.messages
+        .update(state.updateLeafNode(cipherSuite.generateHpkeKeyPair()), handshakeMessageOptions)
+        .bind()
+        .encodeUnsafe()
     }
 
   suspend fun removeMember(memberIdx: UInt): Either<CreateRemoveError, ByteArray> =
     either {
-      state.ensureActive { messages.remove(leafIndexFor(memberIdx).bind()) }.bind().encodeUnsafe()
+      state.messages
+        .remove(leafIndexFor(memberIdx).bind(), handshakeMessageOptions)
+        .bind()
+        .encodeUnsafe()
     }
 
   suspend fun injectExternalPsk(pskId: ByteArray): Either<CreatePreSharedKeyError, ByteArray> =
     either {
-      state.ensureActive { messages.preSharedKey(pskId, psks = psks) }.bind().encodeUnsafe()
+      state.messages
+        .preSharedKey(pskId, psks = psks, options = handshakeMessageOptions)
+        .bind()
+        .encodeUnsafe()
     }
 
-  suspend fun injectResumptionPsk(epoch: ULong): Either<CreatePreSharedKeyError, ByteArray> =
+  suspend fun injectResumptionPsk(epoch: ULong, groupId: GroupId = this.groupId): Either<CreatePreSharedKeyError, ByteArray> =
     either {
-      state.ensureActive { messages.preSharedKey(groupId, epoch, psks = psks) }.bind().encodeUnsafe()
+      state.messages
+        .preSharedKey(groupId, epoch, psks = psks, options = handshakeMessageOptions)
+        .bind()
+        .encodeUnsafe()
     }
 
   suspend fun proposeReInit(
@@ -581,24 +596,10 @@ class ActiveGroupClient<Identity : Any> internal constructor(
     newGroupId: GroupId? = null,
   ): Either<CreateReInitError, ByteArray> =
     either {
-      state.ensureActive { messages.reInit(newCipherSuite, extensions = newExtensions, groupId = newGroupId) }
+      state.messages
+        .reInit(newCipherSuite, extensions = newExtensions, groupId = newGroupId, options = handshakeMessageOptions)
         .bind()
         .encodeUnsafe()
-    }
-
-  suspend fun triggerReInit(
-    newCipherSuite: CipherSuite,
-    newExtensions: List<GroupContextExtension<*>> = state.extensions,
-    newGroupId: GroupId? = null,
-  ): Either<ReInitError, ByteArray> =
-    either {
-      commit(
-        listOf(
-          state.validations.validated(
-            ReInit(newGroupId ?: GroupId.new(), ProtocolVersion.MLS_1_0, newCipherSuite, newExtensions),
-          ).bind(),
-        ),
-      ).bind()
     }
 
   @JvmOverloads
@@ -607,21 +608,18 @@ class ActiveGroupClient<Identity : Any> internal constructor(
     proposalFilter: (Proposal) -> Boolean = { true },
   ): Either<SenderCommitError, ByteArray> =
     either {
-      state.ensureActive {
-        val proposalRefs =
-          getStoredProposals()
-            .sortedBy { it.received }
-            .filter { proposalFilter(it.proposal) }
-            .map { it.ref }
+      val proposalRefs =
+        state.getStoredProposals()
+          .sortedBy { it.received }
+          .filter { proposalFilter(it.proposal) }
+          .map { it.ref }
 
-        with(authService) {
-          val (newState, commitMsg, welcomeMsgs) =
-            prepareCommit(proposalRefs + additionalProposals, authService, handshakeMessageOptions, psks = psks).bind()
+      val (newState, commitMsg, welcomeMsgs) =
+        state.prepareCommit(proposalRefs + additionalProposals, authService, handshakeMessageOptions, psks = psks)
+          .bind()
 
-          commitMsg.encodeUnsafe().also {
-            commitCache[makeCommitRef(commitMsg.message).hex] = CachedCommit(newState, welcomeMsgs)
-          }
-        }
+      commitMsg.encodeUnsafe().also {
+        commitCache[makeCommitRef(commitMsg.message).hex] = CachedCommit(newState, welcomeMsgs)
       }
     }
 
@@ -632,7 +630,7 @@ class ActiveGroupClient<Identity : Any> internal constructor(
   ): Either<BranchError, Pair<ActiveGroupClient<Identity>, WelcomeMessages>> =
     either {
       val (branchedGroup, welcome) =
-        state.ensureActive { branchGroup(ownKeyPackage, otherMembers, authService, groupId = groupId) }.bind()
+        state.branchGroup(ownKeyPackage, otherMembers, authService, groupId = groupId).bind()
 
       ActiveGroupClient(
         branchedGroup,
@@ -644,9 +642,26 @@ class ActiveGroupClient<Identity : Any> internal constructor(
       ).also { managedBy?.register(it) } to welcome
     }
 
+  suspend fun triggerReInit(
+    newCipherSuite: CipherSuite,
+    newExtensions: List<GroupContextExtension<*>> = state.extensions,
+    newGroupId: GroupId? = null,
+  ): Either<ReInitError, ByteArray> =
+    state.triggerReInit(
+      authService,
+      groupId = newGroupId,
+      cipherSuite = newCipherSuite,
+      extensions = newExtensions,
+      messageOptions = handshakeMessageOptions
+    ).map { (suspendedGroup, commitMsg) ->
+      commitMsg.encodeUnsafe().also {
+        commitCache[makeCommitRef(commitMsg.message).hex] = CachedCommit(suspendedGroup, listOf())
+      }
+    }
+
   fun groupInfo(): Either<GroupInfoError, GroupInfo> =
     either {
-      state.ensureActive { groupInfo(inlineTree = true, public = true).bind() }
+      state.groupInfo(inlineTree = true, public = true).bind()
     }
 
   fun leafIndexFor(memberIdx: UInt): Either<CreateRemoveError.MemberIndexOutOfBounds, LeafIndex> =
@@ -666,7 +681,8 @@ class ActiveGroupClient<Identity : Any> internal constructor(
       externalPsks[pskId.hex] = psk
     }
 
-  override fun deleteExternalPsk(pskId: ByteArray): ActiveGroupClient<Identity> = apply { externalPsks.remove(pskId.hex) }
+  override fun deleteExternalPsk(pskId: ByteArray): ActiveGroupClient<Identity> =
+    apply { externalPsks.remove(pskId.hex) }
 
   override fun clearExternalPsks(): ActiveGroupClient<Identity> = apply { externalPsks.clear() }
 
@@ -709,11 +725,11 @@ class SuspendedGroupClient<Identity : Any> internal constructor(
   private val lastActiveState: ActiveGroupClient<Identity>,
   suspendedState: GroupState.Suspended,
 ) : GroupClient<Identity, GroupState.Suspended>(
-    suspendedState.prependTo(lastActiveState.stateHistory).toMutableList(),
-    lastActiveState.authService,
-    managedBy = lastActiveState.managedBy,
-    parentPskLookup = null,
-  ) {
+  suspendedState.prependTo(lastActiveState.stateHistory).toMutableList(),
+  lastActiveState.authService,
+  managedBy = lastActiveState.managedBy,
+  parentPskLookup = null,
+) {
   init {
     lastActiveState.managedBy?.register(this)
   }
