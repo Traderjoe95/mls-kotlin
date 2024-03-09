@@ -22,6 +22,10 @@ data class Lifetime(
   val notAfterInstant: Instant
     get() = Instant.ofEpochSecond(notAfter.toLong())
 
+  operator fun contains(instant: Instant): Boolean = instant.epochSecond in this
+  operator fun contains(epochSeconds: ULong): Boolean = epochSeconds in notBefore..notAfter
+  operator fun contains(epochSeconds: Long): Boolean = epochSeconds.toULong() in this
+
   companion object : Encodable<Lifetime> {
     override val dataT: DataType<Lifetime> =
       struct("Lifetime") {
@@ -29,6 +33,6 @@ data class Lifetime(
           .field("not_after", uint64.asULong)
       }.lift(::Lifetime)
 
-    fun always(): Lifetime = Lifetime(0U, Instant.MAX.epochSecond.toULong())
+    fun always(): Lifetime = Lifetime(0U, ULong.MAX_VALUE)
   }
 }

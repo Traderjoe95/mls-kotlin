@@ -31,7 +31,7 @@ fun LeafNode<*>.validate(
   // Check lifetime
   lifetime?.let { lt ->
     Instant.now().let { now ->
-      if (lt.notBeforeInstant > now || lt.notAfterInstant < now) {
+      if (now in lt) {
         raise(LeafNodeCheckError.LifetimeExceeded(lt.notBeforeInstant, lt.notAfterInstant, now))
       }
     }
