@@ -23,11 +23,14 @@ data class Lifetime(
     get() = Instant.ofEpochSecond(notAfter.toLong())
 
   operator fun contains(instant: Instant): Boolean = instant.epochSecond in this
+
   operator fun contains(epochSeconds: ULong): Boolean = epochSeconds in notBefore..notAfter
+
   operator fun contains(epochSeconds: Long): Boolean = epochSeconds.toULong() in this
 
   companion object : Encodable<Lifetime> {
-    override val dataT: DataType<Lifetime> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<Lifetime> =
       struct("Lifetime") {
         it.field("not_before", uint64.asULong)
           .field("not_after", uint64.asULong)

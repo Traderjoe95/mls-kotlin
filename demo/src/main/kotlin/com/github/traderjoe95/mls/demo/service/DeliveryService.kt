@@ -55,7 +55,7 @@ object DeliveryService : DeliveryService<String> {
   }
 
   fun storeGroupInfo(groupInfo: GroupInfo) {
-    groups.compute(groupInfo.groupContext.groupId) { _, view ->
+    groups.compute(groupInfo.groupId) { _, view ->
       view?.copy(info = groupInfo) ?: GroupView(info = groupInfo)
     }
   }
@@ -66,7 +66,7 @@ object DeliveryService : DeliveryService<String> {
   ): Either<BaseEncoderError, Unit> =
     either {
       keyPackages.computeIfAbsent(Triple(user, keyPackage.version, keyPackage.cipherSuite)) { ConcurrentLinkedQueue() }
-        .offer(KeyPackage.dataT.encode(keyPackage))
+        .offer(KeyPackage.T.encode(keyPackage))
     }
 
   suspend fun sendMessageToGroup(
@@ -126,7 +126,7 @@ object DeliveryService : DeliveryService<String> {
       DecoderError.wrap {
         keyPackages.computeIfAbsent(Triple(forUser, protocolVersion, cipherSuite)) { ConcurrentLinkedQueue() }
           .poll()
-          ?.decodeAs(KeyPackage.dataT)
+          ?.decodeAs(KeyPackage.T)
           ?: raise(KeyPackageRetrievalError.NoKeyPackage(protocolVersion, cipherSuite))
       }
     }

@@ -43,6 +43,7 @@ import com.github.traderjoe95.mls.protocol.types.framing.content.AuthenticatedCo
 import com.github.traderjoe95.mls.protocol.types.framing.content.Commit
 import com.github.traderjoe95.mls.protocol.types.framing.content.ExternalInit
 import com.github.traderjoe95.mls.protocol.types.framing.content.FramedContent
+import com.github.traderjoe95.mls.protocol.types.framing.content.PreSharedKey
 import com.github.traderjoe95.mls.protocol.types.framing.content.Remove
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ProtocolVersion
 import com.github.traderjoe95.mls.protocol.types.framing.enums.WireFormat
@@ -171,13 +172,12 @@ suspend fun <Identity : Any> GroupInfo.joinGroupExternal(
   keyPackage: KeyPackage.Private,
   authenticationService: AuthenticationService<Identity>,
   resync: Boolean = false,
+  addPsks: List<ResolvedPsk> = listOf(),
   authenticatedData: ByteArray = byteArrayOf(),
   optionalTree: PublicRatchetTree? = null,
 ): Either<ExternalJoinError, Pair<GroupState, MlsMessage<PublicMessage<Commit>>>> =
   either {
     keyPackage.checkParametersCompatible(this@joinGroupExternal)
-
-    val cipherSuite = groupContext.cipherSuite
 
     val externalPub = extension<ExternalPub>()?.externalPub ?: raise(ExternalJoinError.MissingExternalPub)
     val (kemOutput, externalInitSecret) = cipherSuite.export(externalPub, "").bind()
@@ -213,7 +213,7 @@ suspend fun <Identity : Any> GroupInfo.joinGroupExternal(
       listOfNotNull(
         oldLeafIdx?.let { Remove(oldLeafIdx) },
         ExternalInit(kemOutput),
-      )
+      ) + addPsks.map { PreSharedKey(it.pskId) }
     val framedContent =
       FramedContent(
         groupContext.groupId,
@@ -226,7 +226,7 @@ suspend fun <Identity : Any> GroupInfo.joinGroupExternal(
 
     groupContext = groupContext.evolve(WireFormat.MlsPublicMessage, framedContent, signature, updatedTree)
 
-    val pskSecret = ResolvedPsk.calculatePskSecret(cipherSuite, listOf())
+    val pskSecret = ResolvedPsk.calculatePskSecret(cipherSuite, addPsks)
 
     val keySchedule =
       KeySchedule.init(
@@ -237,7 +237,8 @@ suspend fun <Identity : Any> GroupInfo.joinGroupExternal(
         pskSecret = pskSecret,
       )
 
-    val confirmationTag = cipherSuite.mac(keySchedule.confirmationKey, groupContext.confirmedTranscriptHash)
+    val confirmationTag =
+      cipherSuite.mac(keySchedule.confirmationKey, groupContext.confirmedTranscriptHash)
 
     groupContext =
       groupContext.withInterimTranscriptHash(
@@ -267,7 +268,7 @@ suspend fun <Identity : Any> GroupInfo.joinGroupExternal(
   }
 
 context(Raise<ExtensionSupportError>)
-private fun KeyPackageLeafNode.checkSupport(
+internal fun KeyPackageLeafNode.checkSupport(
   extensions: GroupContextExtensions,
   ownLeaf: LeafIndex,
 ) {

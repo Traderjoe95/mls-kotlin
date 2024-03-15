@@ -69,11 +69,12 @@ data class Welcome(
     }
 
   companion object : Encodable<Welcome> {
-    override val dataT: DataType<Welcome> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<Welcome> =
       struct("Welcome") {
         it.field("cipher_suite", CipherSuite.T)
-          .field("secrets", EncryptedGroupSecrets.dataT[V])
-          .field("encrypted_group_info", Ciphertext.dataT)
+          .field("secrets", EncryptedGroupSecrets.T[V])
+          .field("encrypted_group_info", Ciphertext.T)
       }.lift(::Welcome)
   }
 }
@@ -101,11 +102,12 @@ data class GroupSecrets(
     }
 
   companion object : Encodable<GroupSecrets> {
-    override val dataT: DataType<GroupSecrets> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<GroupSecrets> =
       struct("GroupSecrets") {
-        it.field("joiner_secret", Secret.dataT)
-          .field("path_secret", optional[Secret.dataT])
-          .field("psks", PreSharedKeyId.dataT[V])
+        it.field("joiner_secret", Secret.T)
+          .field("path_secret", optional[Secret.T])
+          .field("psks", PreSharedKeyId.T[V])
       }.lift(::GroupSecrets)
   }
 }
@@ -126,14 +128,15 @@ data class EncryptedGroupSecrets(
         "Welcome",
         encryptedGroupInfo.bytes,
         encryptedGroupSecrets,
-      ).bind().decodeAs(GroupSecrets.dataT)
+      ).bind().decodeAs(GroupSecrets.T)
     }
 
   companion object : Encodable<EncryptedGroupSecrets> {
-    override val dataT: DataType<EncryptedGroupSecrets> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<EncryptedGroupSecrets> =
       struct("GroupSecrets") {
-        it.field("new_member", KeyPackage.Ref.dataT)
-          .field("encrypted_group_secrets", HpkeCiphertext.dataT)
+        it.field("new_member", KeyPackage.Ref.T)
+          .field("encrypted_group_secrets", HpkeCiphertext.T)
       }.lift(::EncryptedGroupSecrets)
   }
 }

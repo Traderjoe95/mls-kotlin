@@ -34,7 +34,8 @@ sealed class Proposal(
   open val requiresPath: Boolean = true
 
   companion object : Encodable<Proposal> {
-    override val dataT: DataType<Proposal> by lazy {
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<Proposal> by lazy {
       struct("Proposal") {
         it.field("proposal_type", ProposalType.T)
           .select<Proposal, _>(ProposalType.T, "proposal_type") {
@@ -75,7 +76,7 @@ data class Add(
   companion object {
     val T: DataType<Add> =
       struct("Add") {
-        it.field("key_package", KeyPackage.dataT)
+        it.field("key_package", KeyPackage.T)
       }.lift(::Add)
   }
 }
@@ -86,7 +87,7 @@ data class Update(
   companion object {
     val T: DataType<Update> =
       struct("Update") {
-        it.field("leaf_node", LeafNode.dataT)
+        it.field("leaf_node", LeafNode.T)
       }.lift(::Update)
   }
 }
@@ -99,7 +100,7 @@ data class Remove(
   companion object {
     val T: DataType<Remove> =
       struct("Remove") {
-        it.field("removed", LeafIndex.dataT)
+        it.field("removed", LeafIndex.T)
       }.lift(::Remove)
   }
 }
@@ -113,12 +114,12 @@ data class PreSharedKey(
   companion object {
     val T: DataType<PreSharedKey> =
       struct("PreSharedKey") {
-        it.field("psk", PreSharedKeyId.dataT)
+        it.field("psk", PreSharedKeyId.T)
       }.lift(::PreSharedKey)
   }
 }
 
-data class ReInit internal constructor(
+data class ReInit constructor(
   val groupId: GroupId,
   val protocolVersion: ProtocolVersion,
   val cipherSuite: CipherSuite,
@@ -131,7 +132,7 @@ data class ReInit internal constructor(
   companion object {
     val T: DataType<ReInit> =
       struct("ReInit") {
-        it.field("group_id", GroupId.dataT)
+        it.field("group_id", GroupId.T)
           .field("version", ProtocolVersion.T)
           .field("cipher_suite", CipherSuite.T)
           .field("extensions", Extension.T.extensionList())
@@ -171,7 +172,7 @@ data class ExternalInit(
   companion object {
     val T: DataType<ExternalInit> =
       struct("ExternalInit") {
-        it.field("kem_output", KemOutput.dataT)
+        it.field("kem_output", KemOutput.T)
       }.lift(::ExternalInit)
   }
 
@@ -200,7 +201,7 @@ data class GroupContextExtensions(
   companion object {
     val T: DataType<GroupContextExtensions> =
       struct("GroupContextExtensions") {
-        it.field("extensions", GroupContextExtension.dataT.extensionList())
+        it.field("extensions", GroupContextExtension.T.extensionList())
       }.lift(::GroupContextExtensions)
   }
 }

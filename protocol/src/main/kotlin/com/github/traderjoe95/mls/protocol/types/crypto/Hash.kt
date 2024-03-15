@@ -16,7 +16,8 @@ value class HashReference(override val bytes: ByteArray) : RefinedBytes<HashRefe
     get() = Proposal.Ref(bytes)
 
   companion object : Encodable<HashReference> {
-    override val dataT: DataType<HashReference> = RefinedBytes.dataT(::HashReference, name = "HashReference")
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<HashReference> = RefinedBytes.dataT(::HashReference, name = "HashReference")
 
     val ByteArray.asHashReference: HashReference
       get() = HashReference(this)
@@ -25,7 +26,8 @@ value class HashReference(override val bytes: ByteArray) : RefinedBytes<HashRefe
 
 internal data class RefHashInput(val label: String, val value: ByteArray) : Struct2T.Shape<String, ByteArray> {
   companion object : Encodable<RefHashInput> {
-    override val dataT = bytesAndLabel("RefHashInput", "value").lift(::RefHashInput)
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T = bytesAndLabel("RefHashInput", "value").lift(::RefHashInput)
 
     fun keyPackage(value: ByteArray): RefHashInput = RefHashInput("MLS 1.0 KeyPackage Reference", value)
 

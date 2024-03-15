@@ -53,7 +53,8 @@ data class Capabilities(
       "credentials=${credentials.map { CredentialType(it) ?: it }}"
 
   companion object : Encodable<Capabilities> {
-    override val dataT: DataType<Capabilities> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<Capabilities> =
       struct("Capabilities") {
         it.field("versions", ProtocolVersion.T[V])
           .field("cipher_suites", uint16.asUShort[V])

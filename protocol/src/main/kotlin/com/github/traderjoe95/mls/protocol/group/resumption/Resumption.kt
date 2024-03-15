@@ -61,6 +61,8 @@ suspend fun <Identity : Any> GroupState.Suspended.resumeReInit(
   ownKeyPackage: KeyPackage.Private,
   authenticationService: AuthenticationService<Identity>,
   deliveryService: DeliveryService<Identity>,
+  inlineTree: Boolean = true,
+  forcePath: Boolean = false,
 ): Either<ReInitError, ResumptionResult> =
   either {
     resumeReInit(
@@ -75,6 +77,8 @@ suspend fun <Identity : Any> GroupState.Suspended.resumeReInit(
         ).bindAll(),
       ).values.bindAll(),
       authenticationService,
+      inlineTree,
+      forcePath,
     ).bind()
   }
 
@@ -82,6 +86,8 @@ suspend fun <Identity : Any> GroupState.Suspended.resumeReInit(
   ownKeyPackage: KeyPackage.Private,
   otherKeyPackages: List<KeyPackage>,
   authenticationService: AuthenticationService<Identity>,
+  inlineTree: Boolean = true,
+  forcePath: Boolean = false,
 ): Either<ReInitError, ResumptionResult> =
   either {
     val newGroupInitial =
@@ -99,6 +105,8 @@ suspend fun <Identity : Any> GroupState.Suspended.resumeReInit(
         authenticationService,
         inReInit = true,
         psks = this@resumeReInit,
+        inlineTree = inlineTree,
+        forcePath = forcePath,
       ).bind()
 
     ResumptionResult(newGroup.coerceActive(), newMemberWelcome)
@@ -111,6 +119,8 @@ suspend fun <Identity : Any> GroupState.Active.branchGroup(
   deliveryService: DeliveryService<Identity>,
   groupId: GroupId? = null,
   extensions: GroupContextExtensions = this.extensions,
+  inlineTree: Boolean = true,
+  forcePath: Boolean = false,
 ): Either<BranchError, ResumptionResult> =
   either {
     val leafNodes =
@@ -137,6 +147,8 @@ suspend fun <Identity : Any> GroupState.Active.branchGroup(
       authenticationService,
       groupId,
       extensions,
+      inlineTree,
+      forcePath,
     ).bind()
   }
 
@@ -146,6 +158,8 @@ suspend fun <Identity : Any> GroupState.Active.branchGroup(
   authenticationService: AuthenticationService<Identity>,
   groupId: GroupId? = null,
   extensions: GroupContextExtensions = this.extensions,
+  inlineTree: Boolean = true,
+  forcePath: Boolean = false,
 ): Either<BranchError, ResumptionResult> =
   either {
     val newGroupInitial =
@@ -161,6 +175,8 @@ suspend fun <Identity : Any> GroupState.Active.branchGroup(
         authenticationService,
         inBranch = true,
         psks = this@branchGroup,
+        inlineTree = inlineTree,
+        forcePath = forcePath,
       ).bind()
 
     ResumptionResult(newGroupAfterCommit.coerceActive(), welcome)

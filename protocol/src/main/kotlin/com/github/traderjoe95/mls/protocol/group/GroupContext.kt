@@ -80,16 +80,16 @@ data class GroupContext(
   fun toShortString(): String = "GroupContext[v=$protocolVersion, id=${groupId.hex}, epoch=$epoch]"
 
   companion object : Encodable<GroupContext> {
-    @Suppress("kotlin:S6531")
-    override val dataT: DataType<GroupContext> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<GroupContext> =
       struct("GroupContext") {
         it.field("version", ProtocolVersion.T, ProtocolVersion.MLS_1_0)
           .field("cipher_suite", CipherSuite.T)
-          .field("group_id", GroupId.dataT)
+          .field("group_id", GroupId.T)
           .field("epoch", uint64.asULong)
           .field("tree_hash", opaque[V])
           .field("confirmed_transcript_hash", opaque[V])
-          .field("extensions", GroupContextExtension.dataT.extensionList())
+          .field("extensions", GroupContextExtension.T.extensionList())
       }.lift(::GroupContext)
 
     context(Raise<GroupCreationError>)
@@ -117,11 +117,12 @@ data class GroupContext(
     val signature: Signature,
   ) : Struct3T.Shape<WireFormat, FramedContent<*>, Signature> {
     companion object : Encodable<ConfirmedTranscriptHashInput> {
-      override val dataT: DataType<ConfirmedTranscriptHashInput> =
+      @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+      override val T: DataType<ConfirmedTranscriptHashInput> =
         struct("ConfirmedTranscriptHashInput") {
           it.field("wire_format", WireFormat.T)
-            .field("content", FramedContent.dataT)
-            .field("signature", Signature.dataT)
+            .field("content", FramedContent.T)
+            .field("signature", Signature.T)
         }.lift(::ConfirmedTranscriptHashInput)
     }
   }
@@ -130,9 +131,10 @@ data class GroupContext(
     val confirmationTag: Mac,
   ) : Struct1T.Shape<Mac> {
     companion object : Encodable<InterimTranscriptHashInput> {
-      override val dataT: DataType<InterimTranscriptHashInput> =
+      @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+      override val T: DataType<InterimTranscriptHashInput> =
         struct("InterimTranscriptHashInput") {
-          it.field("confirmation_tag", Mac.dataT)
+          it.field("confirmation_tag", Mac.T)
         }.lift(::InterimTranscriptHashInput)
     }
   }

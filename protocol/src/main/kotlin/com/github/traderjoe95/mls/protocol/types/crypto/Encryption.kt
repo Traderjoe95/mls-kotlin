@@ -31,7 +31,8 @@ value class HpkePrivateKey(override val bytes: ByteArray) : RefinedBytes<HpkePri
 @JvmInline
 value class HpkePublicKey(override val bytes: ByteArray) : RefinedBytes<HpkePublicKey> {
   companion object : Encodable<HpkePublicKey> {
-    override val dataT: DataType<HpkePublicKey> = RefinedBytes.dataT(::HpkePublicKey, name = "HPKEPublicKey")
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<HpkePublicKey> = RefinedBytes.dataT(::HpkePublicKey, name = "HPKEPublicKey")
 
     val ByteArray.asHpkePublicKey: HpkePublicKey
       get() = HpkePublicKey(this)
@@ -67,7 +68,8 @@ value class Nonce(override val bytes: ByteArray) : RefinedBytes<Nonce> {
   fun wipe(): Unit = bytes.wipe()
 
   companion object : Encodable<Nonce> {
-    override val dataT: DataType<Nonce> = RefinedBytes.dataT(::Nonce)
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<Nonce> = RefinedBytes.dataT(::Nonce)
 
     val ByteArray.asNonce: Nonce
       get() = Nonce(this)
@@ -79,7 +81,8 @@ value class ReuseGuard(val value: Int) {
   companion object : Encodable<ReuseGuard> {
     private val RANDOM = SecureRandom()
 
-    override val dataT: DataType<ReuseGuard> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<ReuseGuard> =
       opaque[4U].derive(
         { ReuseGuard(Int.fromBytes(it)) },
         { it.value.toBytes(4U) },
@@ -106,7 +109,8 @@ value class Ciphertext(override val bytes: ByteArray) : RefinedBytes<Ciphertext>
     get() = bytes.size
 
   companion object : Encodable<Ciphertext> {
-    override val dataT: DataType<Ciphertext> = RefinedBytes.dataT(::Ciphertext)
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<Ciphertext> = RefinedBytes.dataT(::Ciphertext)
 
     val ByteArray.asCiphertext: Ciphertext
       get() = Ciphertext(this)
@@ -119,7 +123,8 @@ value class KemOutput(override val bytes: ByteArray) : RefinedBytes<KemOutput> {
     get() = bytes.size
 
   companion object : Encodable<KemOutput> {
-    override val dataT: DataType<KemOutput> = RefinedBytes.dataT(::KemOutput)
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<KemOutput> = RefinedBytes.dataT(::KemOutput)
 
     val ByteArray.asKemOutput: KemOutput
       get() = KemOutput(this)
@@ -131,17 +136,19 @@ data class HpkeCiphertext(
   val ciphertext: Ciphertext,
 ) : Struct2T.Shape<KemOutput, Ciphertext> {
   companion object : Encodable<HpkeCiphertext> {
-    override val dataT: DataType<HpkeCiphertext> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<HpkeCiphertext> =
       struct("HPKECiphertext") {
-        it.field("kem_output", KemOutput.dataT)
-          .field("ciphertext", Ciphertext.dataT)
+        it.field("kem_output", KemOutput.T)
+          .field("ciphertext", Ciphertext.T)
       }.lift(::HpkeCiphertext)
   }
 }
 
 internal data class EncryptContext(val label: String, val context: ByteArray) : Struct2T.Shape<String, ByteArray> {
   companion object : Encodable<EncryptContext> {
-    override val dataT = bytesAndLabel("EncryptContext", "context").lift(::EncryptContext)
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T = bytesAndLabel("EncryptContext", "context").lift(::EncryptContext)
 
     fun create(
       label: String,

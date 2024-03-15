@@ -95,15 +95,15 @@ data class KeyPackage(
   }
 
   companion object : Encodable<KeyPackage> {
-    @Suppress("kotlin:S6531")
-    override val dataT: DataType<KeyPackage> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<KeyPackage> =
       struct("KeyPackage") {
         it.field("version", ProtocolVersion.T)
           .field("cipher_suite", CipherSuite.T)
-          .field("init_key", HpkePublicKey.dataT)
+          .field("init_key", HpkePublicKey.T)
           .field("leaf_node", LeafNode.t(LeafNodeSource.KeyPackage))
-          .field("extensions", KeyPackageExtension.dataT.extensionList())
-          .field("signature", Signature.dataT)
+          .field("extensions", KeyPackageExtension.T.extensionList())
+          .field("signature", Signature.T)
       }.lift(::KeyPackage)
 
     fun generate(
@@ -194,14 +194,14 @@ data class KeyPackage(
     val extensions: KeyPackageExtensions,
   ) : Struct5T.Shape<ProtocolVersion, CipherSuite, HpkePublicKey, KeyPackageLeafNode, KeyPackageExtensions> {
     companion object : Encodable<Tbs> {
-      @Suppress("kotlin:S6531")
-      override val dataT: DataType<Tbs> =
+      @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+      override val T: DataType<Tbs> =
         struct("KeyPackageTBS") {
           it.field("version", ProtocolVersion.T)
             .field("cipher_suite", CipherSuite.T)
-            .field("init_key", HpkePublicKey.dataT)
+            .field("init_key", HpkePublicKey.T)
             .field("leaf_node", LeafNode.t(LeafNodeSource.KeyPackage))
-            .field("extensions", KeyPackageExtension.dataT.extensionList())
+            .field("extensions", KeyPackageExtension.T.extensionList())
         }.lift(KeyPackage::Tbs)
     }
   }
@@ -209,7 +209,8 @@ data class KeyPackage(
   @JvmInline
   value class Ref(override val bytes: ByteArray) : RefinedBytes<Ref> {
     companion object : Encodable<Ref> {
-      override val dataT: DataType<Ref> = RefinedBytes.dataT(KeyPackage::Ref, name = "KeyPackageRef")
+      @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+      override val T: DataType<Ref> = RefinedBytes.dataT(KeyPackage::Ref, name = "KeyPackageRef")
     }
   }
 
@@ -238,7 +239,7 @@ data class KeyPackage(
 
     context(Raise<KeyPackageMismatchError>)
     fun checkParametersCompatible(groupInfo: GroupInfo) =
-      checkParametersCompatible(groupInfo.groupContext.protocolVersion, groupInfo.groupContext.cipherSuite)
+      checkParametersCompatible(groupInfo.groupContext.protocolVersion, groupInfo.cipherSuite)
 
     context(Raise<KeyPackageMismatchError>)
     fun checkParametersCompatible(

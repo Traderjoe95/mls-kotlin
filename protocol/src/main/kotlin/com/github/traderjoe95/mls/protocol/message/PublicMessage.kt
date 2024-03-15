@@ -32,6 +32,7 @@ import com.github.traderjoe95.mls.protocol.types.framing.content.FramedContent
 import com.github.traderjoe95.mls.protocol.types.framing.content.Proposal
 import com.github.traderjoe95.mls.protocol.types.framing.enums.ContentType
 import com.github.traderjoe95.mls.protocol.types.framing.enums.SenderType
+import com.github.traderjoe95.mls.protocol.types.framing.enums.SenderType.Member
 import com.github.traderjoe95.mls.protocol.types.framing.enums.SenderType.NewMemberCommit
 import com.github.traderjoe95.mls.protocol.types.framing.enums.SenderType.NewMemberProposal
 import com.github.traderjoe95.mls.protocol.types.framing.enums.WireFormat
@@ -80,7 +81,7 @@ data class PublicMessage<out C : Content<C>>(
     either {
       if (content.contentType == ContentType.Application) raise(PublicMessageError.ApplicationMessageMustNotBePublic)
 
-      if (content.sender.type == SenderType.Member) {
+      if (content.sender.type == Member) {
         groupContext.cipherSuite.verifyMac(
           membershipKey,
           authenticatedContent.tbm(groupContext).encodeUnsafe(),
@@ -92,17 +93,18 @@ data class PublicMessage<out C : Content<C>>(
     }
 
   companion object : Encodable<PublicMessage<*>> {
-    override val dataT: DataType<PublicMessage<*>> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<PublicMessage<*>> =
       throwAnyError {
         struct("PublicMessage") {
-          it.field("content", FramedContent.dataT)
-            .field("signature", Signature.dataT)
+          it.field("content", FramedContent.T)
+            .field("signature", Signature.T)
             .select<Mac?, _>(ContentType.T, "content", "content_type") {
-              case(ContentType.Commit).then(Mac.dataT, "confirmation_tag")
+              case(ContentType.Commit).then(Mac.T, "confirmation_tag")
                 .orElseNothing()
             }
             .select<Mac?, _>(SenderType.T, "content", "sender", "sender_type") {
-              case(SenderType.Member).then(Mac.dataT, "membership_tag")
+              case(Member).then(Mac.T, "membership_tag")
                 .orElseNothing()
             }
         }.lift(
@@ -129,7 +131,7 @@ data class PublicMessage<out C : Content<C>>(
     fun <C : Content<C>> create(
       content: AuthenticatedContent<C>,
       groupContext: GroupContext,
-      membershipKey: Secret,
+      membershipKey: Secret?,
     ): PublicMessage<C> {
       if (content.contentType == ContentType.Application) raise(PublicMessageError.ApplicationMessageMustNotBePublic)
 
@@ -161,8 +163,16 @@ data class PublicMessage<out C : Content<C>>(
       }
 
       val membershipTag: Mac? =
-        if (content.framedContent.sender.type == SenderType.Member) {
-          groupContext.cipherSuite.mac(membershipKey, content.tbm(groupContext).encodeUnsafe())
+        if (content.framedContent.sender.type == Member) {
+          groupContext.cipherSuite.mac(
+            membershipKey ?: raise(
+              InvalidSenderType(
+                Member,
+                "Membership key required, but none specified",
+              ),
+            ),
+            content.tbm(groupContext).encodeUnsafe(),
+          )
         } else {
           null
         }

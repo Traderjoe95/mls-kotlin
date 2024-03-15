@@ -171,14 +171,15 @@ data class PrivateMessage<out C : Content<C>>(
     }
 
   companion object : Encodable<PrivateMessage<*>> {
-    override val dataT: DataType<PrivateMessage<*>> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<PrivateMessage<*>> =
       struct("PrivateMessage") {
-        it.field("group_id", GroupId.dataT)
+        it.field("group_id", GroupId.T)
           .field("epoch", uint64.asULong)
           .field("content_type", ContentType.T)
           .field("authenticated_data", opaque[V])
-          .field("encrypted_sender_data", Ciphertext.dataT)
-          .field("ciphertext", Ciphertext.dataT)
+          .field("encrypted_sender_data", Ciphertext.T)
+          .field("ciphertext", Ciphertext.T)
       }.lift { g, e, ct, aad, esd, ciph -> PrivateMessage(g, e, ct as ContentType<Content<*>>, aad, esd, ciph) }
 
     context(Raise<PrivateMessageSenderError>)
@@ -290,21 +291,21 @@ data class PrivateMessage<out C : Content<C>>(
 
     private val APPLICATION_CONTENT_T =
       struct("PrivateMessageContent") {
-        it.field("application_data", ApplicationData.dataT)
-          .field("signature", Signature.dataT)
+        it.field("application_data", ApplicationData.T)
+          .field("signature", Signature.T)
       }
 
     private val PROPOSAL_CONTENT_T =
       struct("PrivateMessageContent") {
-        it.field("proposal", Proposal.dataT)
-          .field("signature", Signature.dataT)
+        it.field("proposal", Proposal.T)
+          .field("signature", Signature.T)
       }
 
     private val COMMIT_CONTENT_T =
       struct("PrivateMessageContent") {
-        it.field("commit", Commit.dataT)
-          .field("signature", Signature.dataT)
-          .field("confirmation_tag", Mac.dataT)
+        it.field("commit", Commit.T)
+          .field("signature", Signature.T)
+          .field("confirmation_tag", Mac.T)
       }
 
     private fun <C : Content<C>> aad(framedContent: FramedContent<C>): Struct4<GroupId, ULong, ContentType<C>, ByteArray> =
@@ -312,7 +313,7 @@ data class PrivateMessage<out C : Content<C>>(
 
     private val AAD_T =
       struct("PrivateContentAAD") {
-        it.field("group_id", GroupId.dataT)
+        it.field("group_id", GroupId.T)
           .field("epoch", uint64.asULong)
           .field("content_type", ContentType.T)
           .field("authenticated_data", opaque[V])
@@ -320,9 +321,9 @@ data class PrivateMessage<out C : Content<C>>(
 
     private val SENDER_DATA_T =
       struct("SenderData") {
-        it.field("leaf_index", LeafIndex.dataT)
+        it.field("leaf_index", LeafIndex.T)
           .field("generation", uint32.asUInt)
-          .field("reuse_guard", ReuseGuard.dataT)
+          .field("reuse_guard", ReuseGuard.T)
       }
 
     private fun <C : Content<C>> senderDataAad(framedContent: FramedContent<C>): Struct3<GroupId, ULong, ContentType<C>> =
@@ -330,7 +331,7 @@ data class PrivateMessage<out C : Content<C>>(
 
     private val SENDER_DATA_AAD_T =
       struct("SenderDataAAD") {
-        it.field("group_id", GroupId.dataT)
+        it.field("group_id", GroupId.T)
           .field("epoch", uint64.asULong)
           .field("content_type", ContentType.T)
       }

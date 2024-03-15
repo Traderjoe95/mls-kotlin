@@ -19,11 +19,12 @@ data class ParentNode(
   override fun withParentHash(parentHash: ParentHash): Node = copy(parentHash = parentHash)
 
   companion object : Encodable<ParentNode> {
-    override val dataT: DataType<ParentNode> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<ParentNode> =
       struct("ParentNode") {
-        it.field("encryption_key", HpkePublicKey.dataT)
-          .field("parent_hash", ParentHash.dataT)
-          .field("unmerged_leaves", LeafIndex.dataT[V])
+        it.field("encryption_key", HpkePublicKey.T)
+          .field("parent_hash", ParentHash.T)
+          .field("unmerged_leaves", LeafIndex.T[V])
       }.lift(::ParentNode)
 
     fun new(encryptionKey: HpkePublicKey): ParentNode = ParentNode(encryptionKey, ParentHash.empty, listOf())

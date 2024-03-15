@@ -11,6 +11,7 @@ value class ApplicationData(override val bytes: ByteArray) : Content<Application
     get() = ContentType.Application
 
   companion object : Encodable<ApplicationData> {
-    override val dataT: DataType<ApplicationData> = RefinedBytes.dataT(::ApplicationData)
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<ApplicationData> = RefinedBytes.dataT(::ApplicationData)
   }
 }

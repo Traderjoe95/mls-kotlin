@@ -57,7 +57,8 @@ value class LeafIndex(val value: UInt) : TreeIndex {
   infix fun eq(index: Int): Boolean = value == index.toUInt()
 
   companion object : Encodable<LeafIndex> {
-    override val dataT: DataType<LeafIndex> = uint32.asUInt.derive({ LeafIndex(it) }, { it.value })
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<LeafIndex> = uint32.asUInt.derive({ LeafIndex(it) }, { it.value })
   }
 }
 

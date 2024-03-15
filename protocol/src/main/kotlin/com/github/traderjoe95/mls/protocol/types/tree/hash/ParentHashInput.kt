@@ -16,10 +16,11 @@ data class ParentHashInput(
   val originalSiblingTreeHash: ByteArray,
 ) : Struct3T.Shape<HpkePublicKey, ParentHash, ByteArray> {
   companion object : Encodable<ParentHashInput> {
-    override val dataT: DataType<ParentHashInput> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<ParentHashInput> =
       struct("ParentHashInput") {
-        it.field("encryption_key", HpkePublicKey.dataT)
-          .field("parent_hash", ParentHash.dataT)
+        it.field("encryption_key", HpkePublicKey.T)
+          .field("parent_hash", ParentHash.T)
           .field("original_sibling_tree_hash", opaque[V])
       }.lift(::ParentHashInput)
   }

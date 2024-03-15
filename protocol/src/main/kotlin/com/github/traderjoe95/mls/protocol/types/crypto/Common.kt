@@ -22,7 +22,8 @@ value class Secret(override val bytes: ByteArray) : RefinedBytes<Secret>, MoveCo
   override fun wipe(): Unit = bytes.wipe()
 
   companion object : Encodable<Secret> {
-    override val dataT: DataType<Secret> = RefinedBytes.dataT(::Secret)
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<Secret> = RefinedBytes.dataT(::Secret)
 
     val ByteArray.asSecret: Secret
       get() = Secret(this)

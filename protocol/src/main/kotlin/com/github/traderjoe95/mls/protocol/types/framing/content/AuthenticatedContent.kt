@@ -79,14 +79,15 @@ data class AuthenticatedContent<out C : Content<C>>(
   }
 
   companion object : Encodable<AuthenticatedContent<*>> {
-    override val dataT: DataType<AuthenticatedContent<*>> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<AuthenticatedContent<*>> =
       throwAnyError {
         struct("AuthenticatedContent") {
           it.field("wire_format", WireFormat.T)
-            .field("content", FramedContent.dataT)
-            .field("signature", Signature.dataT)
+            .field("content", FramedContent.T)
+            .field("signature", Signature.T)
             .select<Mac?, _>(ContentType.T, "content", "content_type") {
-              case(ContentType.Commit).then(Mac.dataT, "confirmation_tag")
+              case(ContentType.Commit).then(Mac.T, "confirmation_tag")
                 .orElseNothing()
             }
         }.lift { wf, c, sig, ct -> AuthenticatedContent<Content<*>>(wf, c, sig, ct) }
@@ -99,13 +100,14 @@ data class AuthenticatedContent<out C : Content<C>>(
     val confirmationTag: Mac?,
   ) : Struct3T.Shape<FramedContent.Tbs, Signature, Mac?> {
     companion object : Encodable<Tbm> {
-      override val dataT: DataType<Tbm> =
+      @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+      override val T: DataType<Tbm> =
         throwAnyError {
           struct("AuthenticatedContentTBM") {
-            it.field("content_tbs", FramedContent.Tbs.dataT)
-              .field("signature", Signature.dataT)
+            it.field("content_tbs", FramedContent.Tbs.T)
+              .field("signature", Signature.T)
               .select<Mac?, _>(ContentType.T, "content_tbs", "content", "content_type") {
-                case(ContentType.Commit).then(Mac.dataT, "confirmation_tag")
+                case(ContentType.Commit).then(Mac.T, "confirmation_tag")
                   .orElseNothing()
               }
           }.lift(::Tbm)

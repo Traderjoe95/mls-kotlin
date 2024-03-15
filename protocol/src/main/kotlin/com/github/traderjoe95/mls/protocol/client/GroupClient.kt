@@ -451,8 +451,7 @@ class JoiningGroupClient<Identity : Any> internal constructor(
       externalPsks[pskId.hex] = psk
     }
 
-  override fun deleteExternalPsk(pskId: ByteArray): JoiningGroupClient<Identity> =
-    apply { externalPsks.remove(pskId.hex) }
+  override fun deleteExternalPsk(pskId: ByteArray): JoiningGroupClient<Identity> = apply { externalPsks.remove(pskId.hex) }
 
   override fun clearExternalPsks(): JoiningGroupClient<Identity> = apply { externalPsks.clear() }
 
@@ -582,7 +581,10 @@ class ActiveGroupClient<Identity : Any> internal constructor(
         .encodeUnsafe()
     }
 
-  suspend fun injectResumptionPsk(epoch: ULong, groupId: GroupId = this.groupId): Either<CreatePreSharedKeyError, ByteArray> =
+  suspend fun injectResumptionPsk(
+    epoch: ULong,
+    groupId: GroupId = this.groupId,
+  ): Either<CreatePreSharedKeyError, ByteArray> =
     either {
       state.messages
         .preSharedKey(groupId, epoch, psks = psks, options = handshakeMessageOptions)
@@ -652,7 +654,7 @@ class ActiveGroupClient<Identity : Any> internal constructor(
       groupId = newGroupId,
       cipherSuite = newCipherSuite,
       extensions = newExtensions,
-      messageOptions = handshakeMessageOptions
+      messageOptions = handshakeMessageOptions,
     ).map { (suspendedGroup, commitMsg) ->
       commitMsg.encodeUnsafe().also {
         commitCache[makeCommitRef(commitMsg.message).hex] = CachedCommit(suspendedGroup, listOf())
@@ -681,8 +683,7 @@ class ActiveGroupClient<Identity : Any> internal constructor(
       externalPsks[pskId.hex] = psk
     }
 
-  override fun deleteExternalPsk(pskId: ByteArray): ActiveGroupClient<Identity> =
-    apply { externalPsks.remove(pskId.hex) }
+  override fun deleteExternalPsk(pskId: ByteArray): ActiveGroupClient<Identity> = apply { externalPsks.remove(pskId.hex) }
 
   override fun clearExternalPsks(): ActiveGroupClient<Identity> = apply { externalPsks.clear() }
 
@@ -725,11 +726,11 @@ class SuspendedGroupClient<Identity : Any> internal constructor(
   private val lastActiveState: ActiveGroupClient<Identity>,
   suspendedState: GroupState.Suspended,
 ) : GroupClient<Identity, GroupState.Suspended>(
-  suspendedState.prependTo(lastActiveState.stateHistory).toMutableList(),
-  lastActiveState.authService,
-  managedBy = lastActiveState.managedBy,
-  parentPskLookup = null,
-) {
+    suspendedState.prependTo(lastActiveState.stateHistory).toMutableList(),
+    lastActiveState.authService,
+    managedBy = lastActiveState.managedBy,
+    parentPskLookup = null,
+  ) {
   init {
     lastActiveState.managedBy?.register(this)
   }

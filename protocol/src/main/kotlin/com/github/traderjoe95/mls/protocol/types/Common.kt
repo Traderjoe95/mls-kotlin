@@ -55,7 +55,8 @@ value class GroupId(override val bytes: ByteArray) : RefinedBytes<GroupId> {
   companion object : Encodable<GroupId> {
     private val RANDOM = SecureRandom()
 
-    override val dataT: DataType<GroupId> = RefinedBytes.dataT(::GroupId)
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<GroupId> = RefinedBytes.dataT(::GroupId)
 
     val ByteArray.asGroupId: GroupId
       get() = GroupId(this)

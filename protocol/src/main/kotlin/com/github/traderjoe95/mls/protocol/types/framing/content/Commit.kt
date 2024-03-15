@@ -31,10 +31,11 @@ data class Commit(
   override val contentType: ContentType.Commit = ContentType.Commit
 
   companion object : Encodable<Commit> {
-    override val dataT: DataType<Commit> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<Commit> =
       struct("Commit") {
-        it.field("proposals", ProposalOrRef.dataT[V])
-          .field("update_path", optional[UpdatePath.dataT])
+        it.field("proposals", ProposalOrRef.T[V])
+          .field("update_path", optional[UpdatePath.T])
       }.lift(::Commit)
 
     val empty: Commit
@@ -78,11 +79,12 @@ sealed interface ProposalOrRef {
     get() = hashCode()
 
   companion object : Encodable<ProposalOrRef> {
-    override val dataT: DataType<ProposalOrRef> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<ProposalOrRef> =
       struct("ProposalOrRef") {
         it.field("type", ProposalOrRefType.T)
           .select<ProposalOrRef, _>(ProposalOrRefType.T, "type") {
-            case(ProposalOrRefType.Proposal).then(Proposal.dataT)
+            case(ProposalOrRefType.Proposal).then(Proposal.T)
               .case(ProposalOrRefType.Reference).then(Proposal.Ref.T)
           }
       }.lift({ _, p -> p }, { Struct2(it.proposalOrRef, it) })

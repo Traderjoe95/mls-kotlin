@@ -23,12 +23,13 @@ sealed interface Node {
     get() = this as LeafNode<*>
 
   companion object : Encodable<Node> {
-    override val dataT: DataType<Node> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<Node> =
       struct("Node") {
         it.field("node_type", NodeType.T)
           .select<Node, _>(NodeType.T, "node_type") {
-            case(NodeType.Leaf).then(LeafNode.dataT, "leaf_node")
-              .case(NodeType.Parent).then(ParentNode.dataT, "parent")
+            case(NodeType.Leaf).then(LeafNode.T, "leaf_node")
+              .case(NodeType.Parent).then(ParentNode.T, "parent")
           }
       }.lift({ _, node -> node }) {
         when (it) {

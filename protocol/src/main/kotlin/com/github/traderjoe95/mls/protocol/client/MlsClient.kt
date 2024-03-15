@@ -117,7 +117,7 @@ class MlsClient<Identity : Any>(
       joinFromGroupInfo(
         groupInfo,
         newKeyPackage(
-          groupInfo.groupContext.cipherSuite,
+          groupInfo.cipherSuite,
           signatureKeyPair,
           credential,
           lifetime,

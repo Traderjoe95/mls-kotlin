@@ -9,14 +9,15 @@ import com.github.traderjoe95.mls.codec.type.DataType
 import com.github.traderjoe95.mls.codec.util.throwAnyError
 
 interface Encodable<T> {
-  val dataT: DataType<T>
+  @Suppress("PropertyName")
+  val T: DataType<T>
 
-  fun T.encode(): Either<EncoderError, ByteArray> = either { dataT.encode(this@encode) }
+  fun T.encode(): Either<EncoderError, ByteArray> = either { T.encode(this@encode) }
 
-  fun T.encodeUnsafe(): ByteArray = dataT.encodeUnsafe(this)
+  fun T.encodeUnsafe(): ByteArray = T.encodeUnsafe(this)
 
   context(Raise<DecoderError>)
-  fun decode(bytes: ByteArray): T = bytes.decodeAs(dataT)
+  fun decode(bytes: ByteArray): T = bytes.decodeAs(T)
 
   fun decodeUnsafe(bytes: ByteArray): T = throwAnyError { decode(bytes) }
 }

@@ -27,7 +27,8 @@ value class SignaturePrivateKey(override val bytes: ByteArray) :
 @JvmInline
 value class SignaturePublicKey(override val bytes: ByteArray) : RefinedBytes<SignaturePublicKey> {
   companion object : Encodable<SignaturePublicKey> {
-    override val dataT: DataType<SignaturePublicKey> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<SignaturePublicKey> =
       RefinedBytes.dataT(::SignaturePublicKey, name = "SignaturePublicKey")
 
     val ByteArray.asSignaturePublicKey: SignaturePublicKey
@@ -49,7 +50,8 @@ data class SignatureKeyPair(
 @JvmInline
 value class Signature(override val bytes: ByteArray) : RefinedBytes<Signature> {
   companion object : Encodable<Signature> {
-    override val dataT: DataType<Signature> = RefinedBytes.dataT(::Signature)
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<Signature> = RefinedBytes.dataT(::Signature)
 
     val ByteArray.asSignature: Signature
       get() = Signature(this)
@@ -58,7 +60,8 @@ value class Signature(override val bytes: ByteArray) : RefinedBytes<Signature> {
 
 internal data class SignContent(val label: String, val content: ByteArray) : Struct2T.Shape<String, ByteArray> {
   companion object : Encodable<SignContent> {
-    override val dataT: DataType<SignContent> = bytesAndLabel("SignContent", "content").lift(::SignContent)
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<SignContent> = bytesAndLabel("SignContent", "content").lift(::SignContent)
 
     fun create(
       label: String,

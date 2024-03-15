@@ -13,13 +13,14 @@ import com.github.traderjoe95.mls.protocol.types.framing.enums.SenderType
 
 data class Sender(val type: SenderType, val index: LeafIndex?) : Struct2T.Shape<SenderType, LeafIndex?> {
   companion object : Encodable<Sender> {
-    override val dataT: DataType<Sender> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<Sender> =
       throwAnyError {
         struct("Sender") {
           it.field("sender_type", SenderType.T)
             .select<LeafIndex?, _>(SenderType.T, "sender_type") {
-              case(SenderType.Member).then(LeafIndex.dataT, "leaf_index")
-                .case(SenderType.External).then(LeafIndex.dataT, "sender_index")
+              case(SenderType.Member).then(LeafIndex.T, "leaf_index")
+                .case(SenderType.External).then(LeafIndex.T, "sender_index")
                 .orElseNothing()
             }
         }.lift(::Sender)
@@ -27,7 +28,7 @@ data class Sender(val type: SenderType, val index: LeafIndex?) : Struct2T.Shape<
 
     fun member(leafIndex: LeafIndex): Sender = Sender(SenderType.Member, leafIndex)
 
-    fun external(senderIndex: LeafIndex): Sender = Sender(SenderType.External, senderIndex)
+    fun external(senderIndex: UInt): Sender = Sender(SenderType.External, LeafIndex(senderIndex))
 
     fun newMemberProposal(): Sender = Sender(SenderType.NewMemberProposal, null)
 

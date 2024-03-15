@@ -67,12 +67,14 @@ suspend fun <Identity : Any> GroupState.Active.prepareCommit(
   inReInit: Boolean = false,
   inBranch: Boolean = false,
   psks: PskLookup = this,
+  inlineTree: Boolean = true,
+  forcePath: Boolean = false,
 ): Either<SenderCommitError, PrepareCommitResult> =
   either {
     val proposalResult = processProposals(proposals, None, authenticationService, leafIndex, inReInit, inBranch, psks)
 
     val (updatedTree, updatePath, pathSecrets) =
-      if (proposalResult.updatePathRequired) {
+      if (proposalResult.updatePathRequired || forcePath) {
         createUpdatePath(
           (proposalResult.updatedTree ?: tree),
           proposalResult.newMemberLeafIndices(),
@@ -128,7 +130,7 @@ suspend fun <Identity : Any> GroupState.Active.prepareCommit(
         updatedGroupContext,
         confirmationTag,
         listOfNotNull(
-          RatchetTreeExt(updatedTree),
+          RatchetTreeExt(updatedTree).takeIf { inlineTree },
           *Extension.grease(),
         ),
         leafIndex,

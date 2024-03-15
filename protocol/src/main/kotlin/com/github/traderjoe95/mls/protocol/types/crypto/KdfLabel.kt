@@ -16,7 +16,8 @@ internal data class KdfLabel(
   val context: ByteArray,
 ) : Struct3T.Shape<UShort, String, ByteArray> {
   companion object : Encodable<KdfLabel> {
-    override val dataT: DataType<KdfLabel> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<KdfLabel> =
       struct("KDFLabel") {
         it.field("length", uint16.asUShort)
           .field("label", opaque[V].asUtf8String)

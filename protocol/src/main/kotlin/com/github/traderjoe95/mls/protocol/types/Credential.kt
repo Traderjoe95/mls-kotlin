@@ -98,7 +98,8 @@ sealed class Credential(
   override fun component2(): Credential = this
 
   companion object : Encodable<Credential> {
-    override val dataT: DataType<Credential> by lazy {
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<Credential> by lazy {
       throwAnyError {
         struct("Credential") {
           it.field("credential_type", CredentialType.T)

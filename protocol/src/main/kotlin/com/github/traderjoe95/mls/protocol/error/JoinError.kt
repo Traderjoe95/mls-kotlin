@@ -22,7 +22,9 @@ sealed interface ExternalJoinError {
   data object MissingExternalPub : ExternalJoinError
 }
 
-sealed interface JoinError : WelcomeJoinError, ExternalJoinError {
+sealed interface NewMemberAddProposalError
+
+sealed interface JoinError : WelcomeJoinError, ExternalJoinError, NewMemberAddProposalError {
   data object MissingRatchetTree : JoinError
 
   data object AlreadyMember : JoinError

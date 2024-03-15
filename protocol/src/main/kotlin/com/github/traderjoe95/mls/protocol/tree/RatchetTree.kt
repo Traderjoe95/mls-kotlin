@@ -15,6 +15,7 @@ import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.error.VerifySignatureError
 import com.github.traderjoe95.mls.protocol.group.GroupContext
 import com.github.traderjoe95.mls.protocol.message.KeyPackage
+import com.github.traderjoe95.mls.protocol.tree.PublicRatchetTree.Companion.encodeUnsafe
 import com.github.traderjoe95.mls.protocol.tree.PublicRatchetTree.Companion.newTree
 import com.github.traderjoe95.mls.protocol.types.crypto.HpkeKeyPair
 import com.github.traderjoe95.mls.protocol.types.crypto.HpkePrivateKey
@@ -82,6 +83,8 @@ class RatchetTree(
 ) : RatchetTreeOps by public {
   val leafIndex: LeafIndex
     get() = private.leafIndex
+
+  val encoded: ByteArray by lazy { public.encodeUnsafe() }
 
   fun insert(newLeaf: LeafNode<*>): Pair<RatchetTree, LeafIndex> =
     public.insert(newLeaf).let { (newPublic, newLeaf) ->
@@ -481,8 +484,9 @@ value class PublicRatchetTree private constructor(private val nodes: Array<Node?
   override fun leafNodeOrNull(idx: TreeIndex): LeafNode<*>? = this[idx.nodeIndex]?.asLeaf
 
   companion object : Encodable<PublicRatchetTree> {
-    override val dataT: DataType<PublicRatchetTree> =
-      optional[Node.dataT][V].derive(
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<PublicRatchetTree> =
+      optional[Node.T][V].derive(
         { nodes ->
           if (nodes.last().isNone()) {
             raise(DecoderError.UnexpectedError("Last node of an encoded ratchet tree must not be blank"))

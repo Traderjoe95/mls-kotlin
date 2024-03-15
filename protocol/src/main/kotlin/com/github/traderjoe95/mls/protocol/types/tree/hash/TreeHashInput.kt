@@ -22,13 +22,14 @@ data class TreeHashInput(
   val node: NodeHashInput,
 ) : Struct2T.Shape<NodeType, NodeHashInput> {
   companion object : Encodable<TreeHashInput> {
-    override val dataT: DataType<TreeHashInput> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<TreeHashInput> =
       throwAnyError {
         struct("TreeHashInput") {
           it.field("node_type", NodeType.T)
             .select<NodeHashInput, _>(NodeType.T, "node_type") {
-              case(NodeType.Leaf).then(LeafNodeHashInput.dataT, "leaf_node")
-                .case(NodeType.Parent).then(ParentNodeHashInput.dataT, "parent_node")
+              case(NodeType.Leaf).then(LeafNodeHashInput.T, "leaf_node")
+                .case(NodeType.Parent).then(ParentNodeHashInput.T, "parent_node")
             }
         }.lift(::TreeHashInput)
       }
@@ -53,10 +54,11 @@ data class LeafNodeHashInput(
   val leafNode: Option<LeafNode<*>>,
 ) : NodeHashInput, Struct2T.Shape<LeafIndex, Option<LeafNode<*>>> {
   companion object : Encodable<LeafNodeHashInput> {
-    override val dataT: DataType<LeafNodeHashInput> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<LeafNodeHashInput> =
       struct("LeafNodeHashInput") {
-        it.field("leaf_index", LeafIndex.dataT)
-          .field("leaf_node", optional[LeafNode.dataT])
+        it.field("leaf_index", LeafIndex.T)
+          .field("leaf_node", optional[LeafNode.T])
       }.lift(::LeafNodeHashInput)
   }
 }
@@ -67,9 +69,10 @@ data class ParentNodeHashInput(
   val rightHash: ByteArray,
 ) : NodeHashInput, Struct3T.Shape<Option<ParentNode>, ByteArray, ByteArray> {
   companion object : Encodable<ParentNodeHashInput> {
-    override val dataT: DataType<ParentNodeHashInput> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<ParentNodeHashInput> =
       struct("LeafNodeHashInput") {
-        it.field("parent_node", optional[ParentNode.dataT])
+        it.field("parent_node", optional[ParentNode.T])
           .field("left_hash", opaque[V])
           .field("right_hash", opaque[V])
       }.lift(::ParentNodeHashInput)

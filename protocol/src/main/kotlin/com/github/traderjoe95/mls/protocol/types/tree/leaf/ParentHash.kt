@@ -10,7 +10,8 @@ import com.github.traderjoe95.mls.protocol.types.RefinedBytes
 @JvmInline
 value class ParentHash(override val bytes: ByteArray) : LeafNodeInfo, RefinedBytes<ParentHash> {
   companion object : Encodable<ParentHash> {
-    override val dataT: DataType<ParentHash> = opaque[V].derive({ ParentHash(it) }, { it.bytes })
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<ParentHash> = opaque[V].derive({ ParentHash(it) }, { it.bytes })
 
     val empty: ParentHash
       get() = ParentHash(byteArrayOf())

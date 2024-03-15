@@ -113,34 +113,38 @@ sealed interface Extension<V : Extension<V>> {
     get() = ExtensionType(type)
 
   companion object {
-    @Suppress("UNCHECKED_CAST", "kotlin:S6531")
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming", "UNCHECKED_CAST")
     val T: DataType<Extension<*>> =
       struct("Extension") {
         it.field("extension_type", uint16.asUShort)
           .field("extension_data", opaque[V])
       }.derive(
-        { (type, extensionValue) ->
-          when (type) {
-            in ExtensionType.ApplicationId.ord ->
-              extensionValue.decodeAs(ApplicationId.T)
-
-            in ExtensionType.RatchetTree.ord ->
-              extensionValue.decodeAs(RatchetTree.T)
-
-            in ExtensionType.RequiredCapabilities.ord ->
-              extensionValue.decodeAs(RequiredCapabilities.T)
-
-            in ExtensionType.ExternalPub.ord ->
-              extensionValue.decodeAs(ExternalPub.T)
-
-            in ExtensionType.ExternalSenders.ord ->
-              extensionValue.decodeAs(ExternalSenders.T)
-
-            else -> UnknownExtension(type, extensionValue)
-          }
-        },
+        { (type, extensionValue) -> decodeExtension(type, extensionValue) },
         { Struct2(it.type, (it.valueT as DataType<Extension<*>>).encode(it)) },
       )
+
+    fun Raise<DecoderError>.decodeExtension(
+      type: UShort,
+      value: ByteArray,
+    ): Extension<*> =
+      when (type) {
+        in ExtensionType.ApplicationId.ord ->
+          value.decodeAs(ApplicationId.T)
+
+        in ExtensionType.RatchetTree.ord ->
+          value.decodeAs(RatchetTree.T)
+
+        in ExtensionType.RequiredCapabilities.ord ->
+          value.decodeAs(RequiredCapabilities.T)
+
+        in ExtensionType.ExternalPub.ord ->
+          value.decodeAs(ExternalPub.T)
+
+        in ExtensionType.ExternalSenders.ord ->
+          value.decodeAs(ExternalSenders.T)
+
+        else -> UnknownExtension(type, value)
+      }
 
     fun grease(
       individualProbability: Double = 0.1,
@@ -196,7 +200,8 @@ fun <E : Extension<*>> DataType<E>.extensionList(): DataType<List<E>> =
 
 sealed interface GroupContextExtension<V : GroupContextExtension<V>> : Extension<V> {
   companion object : Encodable<GroupContextExtension<*>> {
-    override val dataT: DataType<GroupContextExtension<*>> = Extension.T.asSubtype<GroupContextExtension<*>>()
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<GroupContextExtension<*>> = Extension.T.asSubtype<GroupContextExtension<*>>()
   }
 }
 
@@ -204,7 +209,8 @@ typealias GroupContextExtensions = List<GroupContextExtension<*>>
 
 sealed interface GroupInfoExtension<V : GroupInfoExtension<V>> : Extension<V> {
   companion object : Encodable<GroupInfoExtension<*>> {
-    override val dataT: DataType<GroupInfoExtension<*>> = Extension.T.asSubtype<GroupInfoExtension<*>>()
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<GroupInfoExtension<*>> = Extension.T.asSubtype<GroupInfoExtension<*>>()
   }
 }
 
@@ -212,7 +218,8 @@ typealias GroupInfoExtensions = List<GroupInfoExtension<*>>
 
 sealed interface KeyPackageExtension<V : KeyPackageExtension<V>> : Extension<V> {
   companion object : Encodable<KeyPackageExtension<*>> {
-    override val dataT: DataType<KeyPackageExtension<*>> = Extension.T.asSubtype<KeyPackageExtension<*>>()
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<KeyPackageExtension<*>> = Extension.T.asSubtype<KeyPackageExtension<*>>()
   }
 }
 
@@ -220,7 +227,8 @@ typealias KeyPackageExtensions = List<KeyPackageExtension<*>>
 
 sealed interface LeafNodeExtension<V : LeafNodeExtension<V>> : Extension<V> {
   companion object : Encodable<LeafNodeExtension<*>> {
-    override val dataT: DataType<LeafNodeExtension<*>> = Extension.T.asSubtype<LeafNodeExtension<*>>()
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<LeafNodeExtension<*>> = Extension.T.asSubtype<LeafNodeExtension<*>>()
   }
 }
 
@@ -280,6 +288,10 @@ data class ExternalSenders(
   override val type: UShort = ExtensionType.ExternalSenders.asUShort
   override val valueT: DataType<ExternalSenders> = T
 
+  constructor(externalSender: ExternalSender) : this(listOf(externalSender))
+
+  operator fun plus(externalSender: ExternalSender): ExternalSenders = ExternalSenders(externalSenders + externalSender)
+
   companion object {
     val T: DataType<ExternalSenders> =
       ExternalSender.T[V].derive(
@@ -296,8 +308,8 @@ data class ExternalSenders(
     companion object {
       val T: DataType<ExternalSender> =
         struct("ExternalSender") {
-          it.field("signature_key", SignaturePublicKey.dataT)
-            .field("credential", Credential.dataT)
+          it.field("signature_key", SignaturePublicKey.T)
+            .field("credential", Credential.T)
         }.lift(::ExternalSender)
     }
   }
@@ -312,7 +324,7 @@ data class RatchetTree(
   override val valueT: DataType<RatchetTree> = T
 
   companion object {
-    val T: DataType<RatchetTree> = PublicRatchetTree.dataT.derive({ RatchetTree(it) }, { it.tree })
+    val T: DataType<RatchetTree> = PublicRatchetTree.T.derive({ RatchetTree(it) }, { it.tree })
   }
 }
 
@@ -325,7 +337,7 @@ data class ExternalPub(
   companion object {
     val T: DataType<ExternalPub> =
       struct("ExternalPub") {
-        it.field("external_pub", HpkePublicKey.dataT)
+        it.field("external_pub", HpkePublicKey.T)
       }.lift(::ExternalPub)
   }
 }

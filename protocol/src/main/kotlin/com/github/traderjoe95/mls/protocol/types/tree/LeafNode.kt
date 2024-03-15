@@ -127,38 +127,38 @@ data class LeafNode<S : LeafNodeSource>(
   }
 
   companion object : Encodable<LeafNode<*>> {
-    @Suppress("kotlin:6531")
-    override val dataT: DataType<LeafNode<*>> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<LeafNode<*>> =
       struct("LeafNode") {
-        it.field("encryption_key", HpkePublicKey.dataT)
-          .field("signature_key", SignaturePublicKey.dataT)
-          .field("credential", Credential.dataT)
-          .field("capabilities", Capabilities.dataT)
+        it.field("encryption_key", HpkePublicKey.T)
+          .field("signature_key", SignaturePublicKey.T)
+          .field("credential", Credential.T)
+          .field("capabilities", Capabilities.T)
           .field("leaf_node_source", LeafNodeSource.T)
           .select<LeafNodeInfo?, _>(LeafNodeSource.T, "leaf_node_source") {
-            case(LeafNodeSource.KeyPackage).then(Lifetime.dataT)
-              .case(LeafNodeSource.Commit).then(ParentHash.dataT)
+            case(LeafNodeSource.KeyPackage).then(Lifetime.T)
+              .case(LeafNodeSource.Commit).then(ParentHash.T)
               .orElseNothing()
           }
-          .field("extensions", LeafNodeExtension.dataT.extensionList())
-          .field("signature", Signature.dataT)
+          .field("extensions", LeafNodeExtension.T.extensionList())
+          .field("signature", Signature.T)
       }.lift(::LeafNode)
 
     @Suppress("UNCHECKED_CAST", "kotlin:6531")
     fun <S : LeafNodeSource> t(expectedSource: S): DataType<LeafNode<S>> =
       struct("LeafNode") {
-        it.field("encryption_key", HpkePublicKey.dataT)
-          .field("signature_key", SignaturePublicKey.dataT)
-          .field("credential", Credential.dataT)
-          .field("capabilities", Capabilities.dataT)
+        it.field("encryption_key", HpkePublicKey.T)
+          .field("signature_key", SignaturePublicKey.T)
+          .field("credential", Credential.T)
+          .field("capabilities", Capabilities.T)
           .field("leaf_node_source", LeafNodeSource.T as DataType<S>, expectedSource)
           .select<LeafNodeInfo?, _>(LeafNodeSource.T, "leaf_node_source") {
-            case(LeafNodeSource.KeyPackage).then(Lifetime.dataT)
-              .case(LeafNodeSource.Commit).then(ParentHash.dataT)
+            case(LeafNodeSource.KeyPackage).then(Lifetime.T)
+              .case(LeafNodeSource.Commit).then(ParentHash.T)
               .orElseNothing()
           }
-          .field("extensions", LeafNodeExtension.dataT.extensionList())
-          .field("signature", Signature.dataT)
+          .field("extensions", LeafNodeExtension.T.extensionList())
+          .field("signature", Signature.T)
       }.lift(::LeafNode)
 
     fun keyPackage(
@@ -318,22 +318,22 @@ data class LeafNode<S : LeafNodeSource>(
         LeafNodeLocation?,
       > {
     companion object : Encodable<Tbs> {
-      @Suppress("kotlin:6531")
-      override val dataT: DataType<Tbs> =
+      @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+      override val T: DataType<Tbs> =
         struct("LeafNodeTBS") {
-          it.field("encryption_key", HpkePublicKey.dataT)
-            .field("signature_key", SignaturePublicKey.dataT)
-            .field("credential", Credential.dataT)
-            .field("capabilities", Capabilities.dataT)
+          it.field("encryption_key", HpkePublicKey.T)
+            .field("signature_key", SignaturePublicKey.T)
+            .field("credential", Credential.T)
+            .field("capabilities", Capabilities.T)
             .field("leaf_node_source", LeafNodeSource.T)
             .select<LeafNodeInfo?, _>(LeafNodeSource.T, "leaf_node_source") {
-              case(LeafNodeSource.KeyPackage).then(Lifetime.dataT)
-                .case(LeafNodeSource.Commit).then(ParentHash.dataT)
+              case(LeafNodeSource.KeyPackage).then(Lifetime.T)
+                .case(LeafNodeSource.Commit).then(ParentHash.T)
                 .orElseNothing()
             }
-            .field("extensions", LeafNodeExtension.dataT.extensionList())
+            .field("extensions", LeafNodeExtension.T.extensionList())
             .select<LeafNodeLocation?, _>(LeafNodeSource.T, "leaf_node_source") {
-              case(LeafNodeSource.Update, LeafNodeSource.Commit).then(LeafNodeLocation.dataT)
+              case(LeafNodeSource.Update, LeafNodeSource.Commit).then(LeafNodeLocation.T)
                 .orElseNothing()
             }
         }.lift(::Tbs)
@@ -418,10 +418,11 @@ data class LeafNode<S : LeafNodeSource>(
     val leafIndex: LeafIndex,
   ) : Struct2T.Shape<GroupId, LeafIndex> {
     companion object : Encodable<LeafNodeLocation> {
-      override val dataT: DataType<LeafNodeLocation> =
+      @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+      override val T: DataType<LeafNodeLocation> =
         struct("LeafNodeLocation") {
-          it.field("group_id", GroupId.dataT)
-            .field("leaf_index", LeafIndex.dataT)
+          it.field("group_id", GroupId.T)
+            .field("leaf_index", LeafIndex.T)
         }.lift(::LeafNodeLocation)
     }
   }

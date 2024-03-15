@@ -86,17 +86,18 @@ class MlsMessage<out M : Message>
           raise(MessageRecipientError.UnexpectedWireFormat(this.wireFormat, wireFormat))
         }
 
-      override val dataT: DataType<MlsMessage<*>> =
+      @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+      override val T: DataType<MlsMessage<*>> =
         throwAnyError {
           struct("MLSMessage") {
             it.field("version", ProtocolVersion.T, MLS_1_0)
               .field("wire_format", WireFormat.T)
               .select<Message, _>(WireFormat.T, "wire_format") {
-                case(WireFormat.MlsPublicMessage).then(PublicMessage.dataT, "public_message")
-                  .case(WireFormat.MlsPrivateMessage).then(PrivateMessage.dataT, "private_message")
-                  .case(WireFormat.MlsWelcome).then(Welcome.dataT, "welcome")
-                  .case(WireFormat.MlsGroupInfo).then(GroupInfo.dataT, "group_info")
-                  .case(WireFormat.MlsKeyPackage).then(KeyPackage.dataT, "key_package")
+                case(WireFormat.MlsPublicMessage).then(PublicMessage.T, "public_message")
+                  .case(WireFormat.MlsPrivateMessage).then(PrivateMessage.T, "private_message")
+                  .case(WireFormat.MlsWelcome).then(Welcome.T, "welcome")
+                  .case(WireFormat.MlsGroupInfo).then(GroupInfo.T, "group_info")
+                  .case(WireFormat.MlsKeyPackage).then(KeyPackage.T, "key_package")
               }
           }.lift { v, _, msg -> MlsMessage(v, msg) }
         }

@@ -8,12 +8,14 @@ import com.github.traderjoe95.mls.codec.type.struct.Struct4T
 import com.github.traderjoe95.mls.codec.type.struct.Struct5T
 import com.github.traderjoe95.mls.codec.type.struct.lift
 import com.github.traderjoe95.mls.codec.type.struct.struct
+import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.error.GroupInfoError
 import com.github.traderjoe95.mls.protocol.error.VerifySignatureError
 import com.github.traderjoe95.mls.protocol.group.GroupContext
 import com.github.traderjoe95.mls.protocol.message.GroupInfo.Tbs.Companion.encodeUnsafe
 import com.github.traderjoe95.mls.protocol.tree.LeafIndex
 import com.github.traderjoe95.mls.protocol.tree.RatchetTreeOps
+import com.github.traderjoe95.mls.protocol.types.GroupId
 import com.github.traderjoe95.mls.protocol.types.GroupInfoExtension
 import com.github.traderjoe95.mls.protocol.types.GroupInfoExtensions
 import com.github.traderjoe95.mls.protocol.types.HasExtensions
@@ -34,6 +36,11 @@ data class GroupInfo(
   Struct5T.Shape<GroupContext, GroupInfoExtensions, Mac, LeafIndex, Signature> {
   override val wireFormat: WireFormat = WireFormat.MlsGroupInfo
 
+  val groupId: GroupId
+    get() = groupContext.groupId
+  val cipherSuite: CipherSuite
+    get() = groupContext.cipherSuite
+
   override val encoded: ByteArray by lazy { encodeUnsafe() }
 
   fun verifySignature(tree: RatchetTreeOps): Either<VerifySignatureError, GroupInfo> =
@@ -51,14 +58,14 @@ data class GroupInfo(
     }
 
   companion object : Encodable<GroupInfo> {
-    @Suppress("kotlin:S6531")
-    override val dataT: DataType<GroupInfo> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<GroupInfo> =
       struct("GroupInfo") {
-        it.field("group_context", GroupContext.dataT)
-          .field("extensions", GroupInfoExtension.dataT.extensionList())
-          .field("confirmation_tag", Mac.dataT)
-          .field("signer", LeafIndex.dataT)
-          .field("signature", Signature.dataT)
+        it.field("group_context", GroupContext.T)
+          .field("extensions", GroupInfoExtension.T.extensionList())
+          .field("confirmation_tag", Mac.T)
+          .field("signer", LeafIndex.T)
+          .field("signature", Signature.T)
       }.lift(::GroupInfo)
 
     fun create(
@@ -90,13 +97,13 @@ data class GroupInfo(
     val signer: LeafIndex,
   ) : Struct4T.Shape<GroupContext, List<GroupInfoExtension<*>>, Mac, LeafIndex> {
     companion object : Encodable<Tbs> {
-      @Suppress("kotlin:S6531")
-      override val dataT: DataType<Tbs> =
+      @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+      override val T: DataType<Tbs> =
         struct("GroupInfo") {
-          it.field("group_context", GroupContext.dataT)
-            .field("extensions", GroupInfoExtension.dataT.extensionList())
-            .field("confirmation_tag", Mac.dataT)
-            .field("signer", LeafIndex.dataT)
+          it.field("group_context", GroupContext.T)
+            .field("extensions", GroupInfoExtension.T.extensionList())
+            .field("confirmation_tag", Mac.T)
+            .field("signer", LeafIndex.T)
         }.lift(GroupInfo::Tbs)
     }
   }

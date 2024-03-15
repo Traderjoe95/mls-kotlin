@@ -18,7 +18,6 @@ import com.github.traderjoe95.mls.codec.type.struct.struct
 import com.github.traderjoe95.mls.codec.type.uint16
 import com.github.traderjoe95.mls.codec.type.uint64
 import com.github.traderjoe95.mls.codec.util.throwAnyError
-import com.github.traderjoe95.mls.protocol.crypto.CipherSuite
 import com.github.traderjoe95.mls.protocol.crypto.ICipherSuite
 import com.github.traderjoe95.mls.protocol.error.PskError
 import com.github.traderjoe95.mls.protocol.group.GroupState
@@ -88,7 +87,8 @@ sealed interface PreSharedKeyId : Struct2T.Shape<PskType, PreSharedKeyId> {
     }
 
   companion object : Encodable<PreSharedKeyId> {
-    override val dataT: DataType<PreSharedKeyId> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<PreSharedKeyId> =
       throwAnyError {
         struct("PreSharedKeyID") {
           it.field("psktype", PskType.T)
@@ -134,8 +134,13 @@ class ExternalPskId(
     internal val T: DataType<ExternalPskId> =
       struct("ExternalPskId") {
         it.field("psk_id", opaque[V])
-          .field("psk_nonce", Nonce.dataT)
+          .field("psk_nonce", Nonce.T)
       }.lift(::ExternalPskId, ExternalPskId::asStruct)
+
+    fun create(
+      pskId: ByteArray,
+      cipherSuite: ICipherSuite,
+    ): ExternalPskId = ExternalPskId(pskId, cipherSuite.generateNonce(cipherSuite.hashLen))
   }
 }
 
@@ -189,17 +194,30 @@ class ResumptionPskId(
   }
 
   companion object {
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
     internal val T: DataType<ResumptionPskId> =
       struct("ResumptionPskId") {
         it.field("usage", ResumptionPskUsage.T)
-          .field("psk_group_id", GroupId.dataT)
+          .field("psk_group_id", GroupId.T)
           .field("psk_epoch", uint64.asULong)
-          .field("psk_nonce", Nonce.dataT)
+          .field("psk_nonce", Nonce.T)
       }.lift(::ResumptionPskId, ResumptionPskId::asStruct)
+
+    fun application(
+      groupId: GroupId,
+      epoch: ULong,
+      cipherSuite: ICipherSuite,
+    ): ResumptionPskId =
+      ResumptionPskId(
+        ResumptionPskUsage.Application,
+        groupId,
+        epoch,
+        cipherSuite.generateNonce(cipherSuite.hashLen),
+      )
 
     fun reInit(
       resumptionEpoch: GroupState.Suspended,
-      cipherSuite: CipherSuite,
+      cipherSuite: ICipherSuite,
     ): ResumptionPskId =
       ResumptionPskId(
         ResumptionPskUsage.ReInit,
@@ -226,9 +244,10 @@ data class PskLabel(
   constructor(pskId: PreSharedKeyId, index: Int, count: Int) : this(pskId, index.toUShort(), count.toUShort())
 
   companion object : Encodable<PskLabel> {
-    override val dataT: DataType<PskLabel> =
+    @Suppress("kotlin:S6531", "ktlint:standard:property-naming")
+    override val T: DataType<PskLabel> =
       struct("PSKLabel") {
-        it.field("pskId", PreSharedKeyId.dataT)
+        it.field("pskId", PreSharedKeyId.T)
           .field("index", uint16.asUShort)
           .field("count", uint16.asUShort)
       }.lift(::PskLabel)
