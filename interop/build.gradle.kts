@@ -117,12 +117,13 @@ jib {
       )
 
     mainClass = "io.vertx.core.Launcher"
-
     args =
       listOf(
         "run",
         "com.github.traderjoe95.mls.interop.server.MlsClientVerticle",
       )
+
+    ports = listOf("8080")
 
     labels.set(
       mapOf("version" to project.version.toString()),
